@@ -175,8 +175,8 @@ From a shell, `claude plugin marketplace add maturada/gh-prs-monitor` and
 
 ## What it runs and what it sends
 
-The plugin has no server, no token of its own and no telemetry, and makes no network request itself. It works through
-your own `gh` and `git`, and Claude Code's own links.
+The plugin has no server, no token of its own and no telemetry, and makes no network request itself. It reads no
+credential to sign in with: it works through your own `gh` and `git`, and Claude Code's own links.
 
 - **GitHub, through `gh`.** It reads with `gh api`: one GraphQL request for the list at each check, and a few more for
   how pull requests that left the list ended, for the pull requests of your branch, and for what a press or a cleanup
@@ -193,16 +193,44 @@ your own `gh` and `git`, and Claude Code's own links.
   `dotnet restore` or `pod install`, on Windows tried once more through `cmd`. These fetch from the project's package
   registries and run its install scripts, as running the install yourself would. A fork's pull request gets none.
 - **Files.** A new worktree gets the ignored files the repository's `.worktreeinclude` names, copied from your checkout
-  (`cp`, or `robocopy` on Windows); a fork's pull request gets none. `.claude/worktrees/` goes in the clone's
-  `.git/info/exclude` when nothing ignores it yet.
+  (`mkdir` and `cp`, or `robocopy` on Windows); a fork's pull request gets none. An install in a worktree that succeeds
+  leaves a `.gh-prs-monitor-lock` marker in the folder it filled, such as `node_modules`, where git ignores it, and
+  empties it before installing again, so the next one is skipped while the lockfile and the command stay the same. With
+  cleanup on, once a pull request is merged or closed, the worktrees made for it and the branches they hold go, and so
+  do `pr-<number>` branches that still track it, when nothing in them would be lost (`git worktree remove`,
+  `git branch -D`). A new worktree whose checkout fails goes at once, and git's entry for one whose folder you deleted
+  goes when that pull request's worktree is next needed. The plugin also reads `pubspec.yaml`, `yarn.lock` and
+  `.yarnrc.yml` to pick an install, an Android `local.properties` in a worktree before removing it, to tell one the
+  tools wrote from one holding keys of yours, and its own `plugin.json` for `/prs report`. None of what it reads is sent
+  anywhere, besides the version and repository `/prs report` prints.
+- **Settings.** The only settings the plugin changes are git's: a `/.claude/worktrees/` line goes in the clone's
+  `.git/info/exclude` when nothing ignores that folder yet, and a pull request's branch it checks out, here or in a
+  worktree, gets its upstream in the clone's git config where it has none, as `gh pr checkout` sets it. A branch that
+  cleanup removes takes its settings with it.
 - **The skills** (Resolve Comments, Fix CI, Resolve Conflicts, Review and Create PR) work in your Claude Code
   conversation. What they read from GitHub, the diff, the comments, the CI logs, becomes part of it like anything else
   you show Claude. They commit, push, reply and post only on your yes. Where no pane shows, the list `/prs` prints goes
   into the conversation too, as does what `/prs report` prints.
+- **Slash commands.** A button that starts a skill in this session runs that skill's own command, as typing it would, at
+  once or once the turn under way ends: `/gh-prs-monitor:resolve-comments`, `/gh-prs-monitor:fix-ci`,
+  `/gh-prs-monitor:resolve-conflicts`, `/gh-prs-monitor:review` or `/gh-prs-monitor:create-pr`. It runs no other
+  command.
+- **Claude Code's events.** The plugin follows a session starting, and an app attaching to it, to start its checks and
+  to open the pane a `/prs` asked for in the last ten minutes with no app to show it; a session ending in a `/clear` or
+  a resume, and the `SessionStart` that follows, to load the list for the new conversation; each turn's start and end,
+  by the turn's id and whether a subagent runs it, to hold alerts back while one runs, to let a branch switch waiting
+  for it go on, and to see a skill's turn end; and the skills' commands above, to mark the row a skill works on. It
+  passes each of these on unchanged, and reads none of the conversation, only a skill command's arguments, which name
+  its pull request. For half an hour after a skill starts, a turn's end can start a check of the list, at most every
+  half minute; nothing of the turn goes into it. Besides, it answers `/prs` and its own tool, draws its pane and, in the
+  desktop app, the band above the prompt, follows the pane's scrolling and focus, and keeps the pane open when you close
+  it while it asks a question, cancelling the question instead.
 - **New session** opens a Claude Code session through Claude Code's own link, with `open`, `xdg-open` or `rundll32`
   (after `uname`, and `reg query` on Windows, tell which). `/prs report` runs `uname -sr`, on macOS `sw_vers`,
-  `gh --version` and `git --version` for the versions it fills in. On macOS the plugin can play a short sound with
-  alerts; that is off by default.
+  `gh --version` and `git --version` for the versions it fills in.
+- **Sound and images.** The plugin's `sounds/alert.wav` is the alert sound: with **Alert sound** on (it is off by
+  default), Claude Code plays it with `afplay` on macOS, and elsewhere plays nothing. Its `assets/` folder holds this
+  page's images and the icon `plugin.json` names for the plugin's listing. Neither holds code.
 - **A tool for Create PR.** Each session gets one tool, `create_pr_choices`, which the Create PR skill calls to read and
   keep your choices for a repository, in the plugin's store; it reads or writes nothing else.
 - **What it keeps**, in Claude Code's plugin store on this machine, never in a repository: the last list for each

@@ -18,10 +18,14 @@ In Claude Code's plugin store, on your machine: the last list of pull requests r
 seen of it, the alerts already shown, the answers your sessions in a repository share, whether the pane is compact,
 what a cleanup found in each clone, and the choices Create PR remembers for each repository.
 
-In your repositories it writes what you approve, commits and pushes, and what its own work needs: the worktrees and the
-`pr-<number>` branches the skills work in, with the dependencies and ignored files installed or copied into them, and a
-line for `.claude/worktrees/` in the clone's `.git/info/exclude`. With cleanup on (the default), those worktrees and
-branches are removed once their pull request is merged or closed, when nothing in them would be lost.
+In your repositories it writes what you approve, commits and pushes, and what its own work needs: the worktrees the
+skills work in, with the dependencies and ignored files installed or copied into them and a `.gh-prs-monitor-lock`
+marker where an install there succeeded; the dependencies **Here, switch branch** installs in your checkout when it
+changes a lockfile; the branch it checks out for a pull request, under that pull request's branch name or as
+`pr-<number>`, with its upstream in the clone's git config where it has none; and a line for `/.claude/worktrees/` in
+the clone's `.git/info/exclude`. With cleanup on (the default), once a pull request is merged or closed, the worktrees
+made for it and the branches they hold are removed, and so are `pr-<number>` branches that still track it, when nothing
+in them would be lost.
 
 ## What reaches the conversation
 
