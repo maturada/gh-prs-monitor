@@ -1,0 +1,153 @@
+{
+  "name": "gh-prs-monitor",
+  "version": "1.0.0",
+  "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
+  "author": {
+    "name": "David Matura",
+    "url": "https://github.com/maturada"
+  },
+  "homepage": "https://github.com/maturada/gh-prs-monitor",
+  "repository": "https://github.com/maturada/gh-prs-monitor",
+  "license": "MIT",
+  "keywords": ["github", "pull-requests", "code-review", "gh", "notifications", "status-line", "pane"],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/maturada/gh-prs-monitor#documentation",
+  "supportUrl": "https://github.com/maturada/gh-prs-monitor/issues",
+  "privacyPolicyUrl": "https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "refresh": {
+      "type": "string",
+      "title": "Refresh",
+      "description": "background: check from session start, with alerts and the summary. while-open: check only while the /prs pane is open. on-demand: check only when /prs runs, Refresh or Retry is pressed, after a row's button, and once when a session starts, or /clear or a resume starts a new conversation, with the pane open and no list in it",
+      "options": ["background", "while-open", "on-demand"],
+      "default": "background"
+    },
+    "pollMinutes": {
+      "type": "number",
+      "title": "Refresh interval (minutes)",
+      "description": "How often pull requests are checked in background and while-open modes, up to 1440 (a day)",
+      "min": 1,
+      "max": 1440,
+      "default": 3
+    },
+    "shareRefresh": {
+      "type": "boolean",
+      "title": "Share refreshes between sessions",
+      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval (the desktop app's sessions and the terminal's each among themselves); opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
+      "default": true
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Change alerts",
+      "description": "Show what changed on your pull requests and reviews: as alerts, as a note on each changed row in the pane, and in the list /prs prints where no pane shows; the alert rows below pick which kinds",
+      "default": true
+    },
+    "alertSeconds": {
+      "type": "number",
+      "title": "Alert duration (seconds)",
+      "description": "How long an alert stays up; hovering keeps it, a click dismisses it",
+      "min": 2,
+      "max": 60,
+      "default": 8
+    },
+    "recentChangesExpiryMinutes": {
+      "type": "number",
+      "title": "Recent changes expire after (minutes)",
+      "description": "How long the note of what changed stays at the foot of a pull request in the pane, and its dot in the compact view, from when a refresh noticed it; its ✕, one of its buttons or closing the pane clears it sooner",
+      "min": 1,
+      "max": 1440,
+      "default": 30
+    },
+    "holdWhileWorking": {
+      "type": "boolean",
+      "title": "Hold alerts while working",
+      "description": "Keep alerts back while a turn runs, and show them when it finishes, so they don't cover what you are reading",
+      "default": true
+    },
+    "alertSound": {
+      "type": "boolean",
+      "title": "Alert sound",
+      "description": "Play a short sound with alerts; macOS only, as Linux and Windows terminals have no player",
+      "default": false
+    },
+    "alertReady": {
+      "type": "boolean",
+      "title": "Alert: ready to merge",
+      "description": "One of your pull requests can merge: approved, checks green, nothing blocking",
+      "default": true
+    },
+    "alertComments": {
+      "type": "boolean",
+      "title": "Alert: comments",
+      "description": "New comments in your pull requests' conversations; those on the diff come with their review",
+      "default": true
+    },
+    "alertReviews": {
+      "type": "boolean",
+      "title": "Alert: reviews",
+      "description": "Approvals, change requests and reviews on your pull requests",
+      "default": true
+    },
+    "alertCi": {
+      "type": "boolean",
+      "title": "Alert: CI",
+      "description": "Checks on your pull requests failing, or passing after running",
+      "default": true
+    },
+    "alertConflicts": {
+      "type": "boolean",
+      "title": "Alert: conflicts",
+      "description": "New merge conflicts on your pull requests",
+      "default": true
+    },
+    "alertReviewRequests": {
+      "type": "boolean",
+      "title": "Alert: review requests",
+      "description": "Being asked to review a pull request, including being asked again",
+      "default": true
+    },
+    "alertNewCommits": {
+      "type": "boolean",
+      "title": "Alert: new commits",
+      "description": "New commits on pull requests you reviewed without approving",
+      "default": true
+    },
+    "alertMentions": {
+      "type": "boolean",
+      "title": "Alert: mentions",
+      "description": "Someone mentions you on another person's open pull request",
+      "default": true
+    },
+    "alertClosed": {
+      "type": "boolean",
+      "title": "Alert: merged and closed",
+      "description": "Your pull requests, and the ones on your review list, merged or closed by someone else",
+      "default": true
+    },
+    "statusLine": {
+      "type": "boolean",
+      "title": "Status line summary",
+      "description": "Count what needs you in the status line, or in a band above the prompt in the desktop app; with background refresh only, as nothing else keeps it current",
+      "default": true
+    },
+    "includeOutdated": {
+      "type": "boolean",
+      "title": "Count outdated comments",
+      "description": "Count unresolved review comments on code that has since changed, and let Resolve Comments work on them too",
+      "default": false
+    },
+    "hideDrafts": {
+      "type": "boolean",
+      "title": "Hide drafts",
+      "description": "Leave your own draft pull requests out of the pane, its counts and the list /prs prints; a line says how many are hidden. Drafts you are asked to review still show",
+      "default": false
+    },
+    "cleanupWorktrees": {
+      "type": "boolean",
+      "title": "Clean up worktrees and branches",
+      "description": "Remove the worktrees Resolve Comments, Fix CI and Resolve Conflicts made, their local branches, and the pr-<number> branches Here, switch branch left while they still track their pull request, once it is merged or closed and nothing would be lost: no uncommitted changes, every commit on GitHub, no ignored file the main checkout lacks or holds otherwise",
+      "default": true
+    }
+  }
+}

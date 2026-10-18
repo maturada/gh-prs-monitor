@@ -1,0 +1,62 @@
+name: Bug report
+description: Something the plugin does wrong, or doesn't do.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Open /prs in a repository with …
+        2. Press …
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      description: Shown in /plugin, under Installed.
+    validations:
+      required: true
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version
+      description: "`claude --version`"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Terminal
+        - Desktop app
+        - VS Code extension
+        - JetBrains
+        - Somewhere else
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System, gh and git
+      description: "For example: macOS 26, gh 2.97, git 2.50"
+  - type: textarea
+    id: output
+    attributes:
+      label: What the plugin said
+      description: The pane's message, what /prs printed, or the plugin's lines from a session started with `claude --debug`.
+      render: text
+  - type: checkboxes
+    id: private
+    attributes:
+      label: Before you send
+      options:
+        - label: I left out tokens, private repository names and anything else private.
+          required: true

@@ -1,0 +1,25 @@
+name: Pull request
+
+# Apart from CI, as it runs again when the description is edited, and the code doesn't change then.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    runs-on: ubuntu-latest
+    steps:
+      # The checker as main has it. A pull request that edits this workflow or the checker still runs its own copy of
+      # the workflow, so a change to .github/ or maintenance/ is proved by review, not by this check.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Branch name and description
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BRANCH: ${{ github.head_ref }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: python3 maintenance/pr-check.py

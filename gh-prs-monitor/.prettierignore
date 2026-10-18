@@ -1,0 +1,5 @@
+# Written by the engine when it loads the plugin from this folder.
+.claude-plugin/types/
+node_modules/
+# Hand-wrapped prose; the skills' layout is what the model reads.
+*.md

@@ -1,0 +1,152 @@
+// Author: David Matura
+//
+// H8's scenario: build.sh writes one test file per variant from this template, __VARIANT__ replaced.
+import { describe, expect, test } from "claude-code/testing"
+import { clockOf, machine, startSession, mountPane, runPrs, skillTurnEnd, skillTurnStart, GITHUB } from "./testing/world"
+import { traceTest, traceEvent } from "./testing/trace"
+import type { World } from "./testing/world"
+
+const TURN = { answer: "", durationMs: 1, isAborted: false, reason: "answer" } as never
+const SIGNED_OUT = {
+  stdout: '{"message":"Bad credentials","documentation_url":"https://docs.github.com/graphql","status":"401"}',
+  stderr: "gh: Bad credentials (HTTP 401)"
+}
+const OFFLINE = { stdout: "", stderr: "error connecting to api.github.com" }
+
+function rng(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const VARIANT = "__VARIANT__"
+const STEP = 0
+const SHARE = true
+const LEAVE = VARIANT.includes("L")
+const ALERT_OFF = VARIANT.includes("A")
+const CLEAN_OFF = VARIANT.includes("O")
+const SLOW = VARIANT.includes("S")
+const DEAD = VARIANT.includes("X")
+const CPR = VARIANT.includes("P")
+const OPENED = VARIANT.includes("Y")
+const MENT = VARIANT.includes("M")
+// Turns with ids (the main loop's and a subagent's), typed skills, answers to the questions, two presses in one
+// instant, the pane behind another.
+const TURNS = VARIANT.includes("W")
+const ANSWERS_W = ["This session", "Here, switch branch", "Worktree, this session", "Squash and merge", "Cancel", "New session"]
+const TYPED = ["2", "#2", "https://github.com/other/repo/pull/2", "", "7"]
+const ANSWERS: unknown[] = [{}, { data: { viewer: {} } }, { data: null }, { errors: [{ message: "x" }] }, { data: { viewer: { login: 1 } } }]
+let inj = 0
+let lastInj = 0
+const MODES = ["background", "while-open", "on-demand"] as const
+const POLLS = [1, 3, 10]
+const KEYS = ["refresh", "refresh", "refresh", "merge-2", "resolve-1", "review-7", "view", "retry", "seen-1", "answer-1", "ready-3", "rerun-1", ...(TURNS ? ["fixCi-1", "create-pr", "answer-0", "answer-3"] : [])]
+
+for (const mode of MODES) {
+  for (const poll of POLLS) {
+    describe(`zz9 ${mode} ${poll}`, () => {
+      for (let seed = 1; seed <= 25; seed++) {
+        test(`seed ${seed}`, { timeoutMs: 60_000, options: { refresh: mode, pollMinutes: poll, ...(ALERT_OFF ? { alertClosed: false } : {}), ...(CLEAN_OFF ? { cleanupWorktrees: false } : {}) } }, async ($, on) => {
+          const clock = clockOf(on, { now: 1_000_000 }); lastInj = 0
+          traceTest(`${VARIANT} ${mode} ${poll} seed ${seed}`, clock)
+          const open: { id: string; isSub: boolean }[] = []
+          let turns = 0
+          const next = rng(seed * 130363 + poll * 17)
+          const world: World = { github: GITHUB, branch: "main", uncommitted: 0, isPaneOpen: mode === "while-open" ? true : undefined,
+            closed: [{ number: 1, state: "MERGED", by: "bob" }, { number: 2, state: "MERGED", by: "bob" }, { number: 7, state: OPENED ? "OPEN" : "CLOSED", by: "bob" }, { number: 8, state: OPENED ? "OPEN" : "CLOSED", by: "bob" }],
+            pullWorktrees: LEAVE ? [{ number: 2, branch: "feature/branch-2" }, { number: 8, branch: "feature/8" }] : undefined,
+            slowClosedMs: DEAD ? 40_000 : SLOW ? 15_000 : undefined }
+          if (seed % 4 === 0) world.graphqlFailure = SIGNED_OUT
+          
+          const seen = machine($, on, world, clock)
+          await startSession($)
+          await clock.settle()
+          let ci = 0
+          let ui: Awaited<ReturnType<typeof mountPane>> | null = null
+          let presses = 0
+          for (let step = 0; step < 70; step++) {
+            const r = next()
+            try {
+              if (r < 0.08) {
+                ci++
+                world.github = LEAVE ? {
+                  ...GITHUB,
+                  mine: [{ ...GITHUB.mine![0]!, ci: ci % 2 ? "FAILURE" : "SUCCESS" }, ...(ci % 5 === 4 ? [] : [GITHUB.mine![1]!])],
+                  requested: ci % 7 === 6 ? [] : [...GITHUB.requested!, ...(ci % 3 === 0 ? [{ number: 8, title: "Activity cards", author: "bob" }] : [])],
+                  ...(MENT ? { mentioned: ci % 4 === 1 ? [] : [{ number: 7, title: "Usage chart", author: "ann" }, ...(ci % 3 === 0 ? [{ number: 8, title: "Activity cards", author: "bob" }] : [])] } : {})
+                } : { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, ci: ci % 2 ? "FAILURE" : "SUCCESS" }, GITHUB.mine![1]!] }
+              } else if (r < 0.12) {
+                world.graphqlFailure = world.graphqlFailure ? undefined : next() < 0.5 ? OFFLINE : SIGNED_OUT
+              } else if (r < 0.16) {
+                world.isPaneOpen = !world.isPaneOpen
+              } else if (r < 0.19) {
+                const gone = (world.surfaces ?? ["terminal"]).length === 0
+                world.surfaces = gone ? ["desktop"] : []
+                if (gone) await $.session.attach({ surface: "desktop", clientId: "desktop:default" })
+              } else if (r < 0.22 && r >= 0.19) {
+                await runPrs($, "")
+              } else if (r < 0.50 && r >= 0.22) {
+                if (ui) { try { await ui.unmount() } catch {} }
+                ui = await mountPane($, "terminal")
+                world.isPaneOpen = true
+                await clock.settle()
+                const key = KEYS[Math.floor(next() * KEYS.length)]!
+                presses++
+                await ui.press({ key })
+              } else if (r < 0.53) {
+                await $.session.attach({ surface: next() < 0.5 ? "desktop" : "terminal", clientId: "desktop:default" })
+              } else if (r < 0.56 && TURNS) {
+                const which = next()
+                if (open.length > 0 && which < 0.5) {
+                  const [turn] = open.splice(Math.floor(next() * open.length), 1)
+                  await $.turn.complete({ ...(skillTurnEnd(turn!.id) as object), ...(turn!.isSub ? { agentId: "agent-1" } : {}) } as never)
+                } else {
+                  const isSub = which > 0.85
+                  const id = `t${++turns}`
+                  open.push({ id, isSub })
+                  await $.turn.start({ ...(skillTurnStart(id) as object), ...(isSub ? { agentId: "agent-1" } : {}) } as never)
+                }
+              } else if (r < 0.56) {
+                await $.turn.complete(TURN)
+              } else if (r < 0.58) {
+                await runPrs($, "demo")
+              } else if (r < 0.62) {
+                if (ui) { await ui.unmount(); ui = null }
+                world.isPaneOpen = false
+              } else if (r < 0.64) {
+                world.branch = world.branch === "main" ? "feature/export" : "main"
+              } else if (r < 0.65) {
+                world.isStoreBroken = !world.isStoreBroken
+              } else if (r < 0.68 && CPR) {
+                await $.command.run({ command: "gh-prs-monitor:create-pr", args: "" } as never)
+              } else if (r < 0.71 && TURNS) {
+                const skill = next() < 0.7 ? "gh-prs-monitor:resolve-comments" : "gh-prs-monitor:review"
+                await $.command.run({ command: skill, args: TYPED[Math.floor(next() * TYPED.length)] } as never)
+              } else if (r < 0.74 && TURNS) {
+                world.answer = ANSWERS_W[Math.floor(next() * ANSWERS_W.length)]
+              } else if (r < 0.76 && TURNS) {
+                world.isPaneBehind = !world.isPaneBehind
+              } else if (r < 0.79 && TURNS && ui) {
+                // Two presses in one instant.
+                const first = KEYS[Math.floor(next() * KEYS.length)]!
+                const second = KEYS[Math.floor(next() * KEYS.length)]!
+                await Promise.allSettled([ui.press({ key: first }), ui.press({ key: second })])
+              }
+            } catch (error) {
+              traceEvent("err", String(error))
+            }
+            const adv = async (ms: number) => { let left = ms; do { const s = STEP ? Math.min(STEP, left) : left; await clock.advance(s); left -= s } while (left > 0) }
+            await adv(next() < 0.3 ? 1_000 + Math.floor(next() * 9) * 1_000 : 20_000 + Math.floor(next() * 3) * 20_000 + (next() < 0.1 ? 600_000 : 0))
+          }
+          await clock.settle()
+          expect(seen.runs.length).toBeGreaterThan(-1)
+        })
+      }
+    })
+  }
+}

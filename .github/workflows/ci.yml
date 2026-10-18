@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code@2.1.302
+      - name: Validate the marketplace and the plugin
+        run: |
+          claude plugin validate --strict .
+          claude plugin validate --strict gh-prs-monitor
+      - name: Prettier
+        working-directory: gh-prs-monitor
+        run: npx --yes prettier@3.8.3 --check .
+      - name: Tests
+        run: claude plugin test gh-prs-monitor
+      - name: README copy
+        run: python3 maintenance/readme.py --check
+
+  # Apart from `check`, so a contributor's pull request shows its own checks passing while the version, which the
+  # maintainer sets before merging, is still to come.
+  version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Version raised for a change to the plugin
+        run: python3 maintenance/version-check.py "origin/$GITHUB_BASE_REF"
+
+  release:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Two pushes in a row would both find the version unreleased.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Tag and publish the version in plugin.json, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -r .version gh-prs-monitor/.claude-plugin/plugin.json)
+          tag="v$version"
+          if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null; then
+            # Installs stay on a version until it changes: a change to the plugin under one already out reaches
+            # nobody.
+            if ! git diff --quiet "$tag" HEAD -- gh-prs-monitor; then
+              echo "gh-prs-monitor/ changed since $tag, which is out already: raise version in plugin.json." >&2
+              exit 1
+            fi
+            echo "$tag is out already."
+            exit 0
+          fi
+          python3 maintenance/release-notes.py "$version" > notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$version" --notes-file notes.md
