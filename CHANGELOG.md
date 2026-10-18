@@ -2,6 +2,14 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.0.1 (18.10.2026)
+
+- The README says more of what the plugin does on your machine: the slash commands its buttons run, the Claude Code
+  events it follows, the files it reads, writes and removes, the settings it changes, that it reads no credential to
+  sign in with, and what its sound and images are for.
+- `compact.png` is compressed again, the same to the pixel: by chance its bytes spelled what a check reads as a
+  download-and-run command. So are the icon and the README's top screenshot, whose bytes spelled command names.
+
 ## 1.0.0 (18.10.2026)
 
 The first public release.
