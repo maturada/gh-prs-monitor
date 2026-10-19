@@ -18,10 +18,10 @@ working in it.
   branch and changes are not touched, and no folder you work in is used. [More on the worktree](#the-worktree).
 - **Worktree, new session** — the worktree above, prepared here, and a new Claude Code session opened for it with
   the skill's command and the pull request's URL typed in, for you to send, the way [Review](review.md) opens one; this
-  conversation goes on undisturbed. Offered from the terminal and the desktop app. The terminal opens the session in
-  the worktree. The desktop app takes a worktree's folder for its repository and then starts a session in a scratch
-  folder of its own, so there the session opens at the repository's root, the command carries `--worktree`, and the
-  skill moves into the worktree itself.
+  conversation goes on undisturbed. Offered from the terminal, the desktop app and VS Code. The terminal opens the
+  session in the worktree. The desktop app takes a worktree's folder for its repository and then starts a session in a
+  scratch folder of its own, so there the session opens at the repository's root, the command carries `--worktree`,
+  and the skill moves into the worktree itself; VS Code opens its tab at the window's folder, so there too.
 - **Cancel**.
 
 ### Here, switch branch, in detail

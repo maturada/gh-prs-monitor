@@ -7,7 +7,7 @@ after `@` is the marketplace you installed the plugin from.
 |---|---|---|---|---|
 | Refresh | `refresh` | `background`, `while-open`, `on-demand` | `background` | When pull requests are checked. **background**: from session start, every interval, with alerts and the summary. **while-open**: only while the `/prs` pane is open; alerts while it is, no summary. **on-demand**: only when `/prs` runs, when Refresh (or a problem's Retry) is pressed, after a row's button, and once when a session starts, or a `/clear` or a resume starts a new conversation (not where an organization manages Claude Code: there a plugin you install isn't told), with the pane open and no list in it; no alerts and no summary. |
 | Refresh interval (minutes) | `pollMinutes` | 1 to 1440 | `3` | How often background and while-open check. |
-| Share refreshes between sessions | `shareRefresh` | on / off | on | Sessions in the same repository take turns asking GitHub and share its answers, which usually reach the others within 20 seconds: the timers ask GitHub about once an interval for the repository, however many of your sessions show it. Opening the pane, Refresh, `/prs` and the refreshes after a button's action or a skill's turn always ask GitHub. Off, each session asks for itself. The desktop app's sessions share among themselves, and the terminal's among themselves, but not with each other: Claude Code keeps the plugin's store apart for the two. |
+| Share refreshes between sessions | `shareRefresh` | on / off | on | Sessions in the same repository take turns asking GitHub and share its answers, which usually reach the others within 20 seconds: the timers ask GitHub about once an interval for the repository, however many of your sessions show it. Opening the pane, Refresh, `/prs` and the refreshes after a button's action or a skill's turn always ask GitHub. Off, each session asks for itself. The desktop app's sessions share among themselves, and the terminal's and VS Code's among themselves, but not with each other: Claude Code keeps the plugin's store apart for the desktop app. |
 | Change alerts | `notify` | on / off | on | Turns every way changes are shown on or off together: alerts, the note on a changed row, the list `/prs` prints where no pane shows. The rows below pick the kinds. |
 | Alert duration (seconds) | `alertSeconds` | 2 to 60 | `8` | How long an alert stays up. |
 | Recent changes expire after (minutes) | `recentChangesExpiryMinutes` | 1 to 1440 | `30` | How long the note of what changed stays at the foot of a pull request in the pane, and its dot in the compact view, from when a refresh noticed it. Its ✕, one of its buttons or closing the pane clears it sooner. |
@@ -34,10 +34,10 @@ after `@` is the marketplace you installed the plugin from.
     an hour your account gets. Every 3 minutes, that is 100 an hour, 2% of them, for each repository, as your sessions
     there share one request each interval (**Share refreshes between sessions**; off, it is 100 an hour per session).
   - **Sessions that ask for themselves:** those of another GitHub account, of a version of the plugin that asks GitHub
-    something else, or of another install of it. The desktop app's sessions and the terminal's count as two, as Claude
-    Code keeps a store apart for each. So does each session where the list GitHub sends is over 150,000 characters, too
-    large to share (the busiest repositories send about 110,000). What you ask for yourself asks GitHub in the session
-    you ask in.
+    something else, or of another install of it. The desktop app's sessions and the terminal's (VS Code's with them)
+    count as two, as Claude Code keeps a store apart for each. So does each session where the list GitHub sends is over
+    150,000 characters, too large to share (the busiest repositories send about 110,000). What you ask for yourself asks
+    GitHub in the session you ask in.
   - **The repository** is looked up once per session.
   - **A pull request that leaves the lists:** one more request of 1 point asks whether it was merged or closed, in each
     session whose lists it left, whatever **Alert: merged and closed** says, as what it finds carries on with the list:
@@ -55,6 +55,6 @@ after `@` is the marketplace you installed the plugin from.
 - **Model tokens:** the pane, refreshes, alerts and the status line use none. The bundled skills are hidden from the
   model until a button (or their slash command) runs them; only then do they cost tokens. The plugin's one tool,
   `create_pr_choices`, which Create PR uses for its kept choices, puts its description in each session's context, a
-  few hundred tokens, or only its name where Claude Code defers tools. In VS Code, an app that
-  places no panes, or a `claude -p` run, the list `/prs` prints is the command's output, which goes into the
-  conversation, so a long list adds to its context.
+  few hundred tokens, or only its name where Claude Code defers tools. Where no pane shows (a VS Code extension older
+  than 2.1.299, an app that places no panes, or a `claude -p` run), the list `/prs` prints is the command's output,
+  which goes into the conversation, so a long list adds to its context.

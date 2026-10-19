@@ -64,6 +64,7 @@ function hostOf(options: { isShown?: boolean; panes?: string[]; engine?: () => P
         isFocused: false,
         isPlaced: true
       })),
+    surfaces: async () => ["terminal"],
     isPaneShown: () => later("look", options.isShown ?? true),
     showQuestion: (question) => {
       seen.shown.push(question?.subject ?? null)

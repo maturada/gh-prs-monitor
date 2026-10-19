@@ -102,18 +102,24 @@ under "Merged or closed since" and the time, with its ✕. These go as the other
 
 | | Terminal | Desktop app | VS Code extension |
 |---|---|---|---|
-| The list | the pane | the pane | printed by `/prs` |
-| Alerts | toasts | toasts | listed by `/prs`: what changed since you last looked |
-| Summary | the status line | a band above the prompt, with an **Open** button (the app cuts a status line short) | none |
+| The list | the pane | the pane | the pane |
+| Alerts | toasts | toasts | toasts, above the prompt box |
+| Summary | the status line | a band above the prompt, with an **Open** button (the app cuts a status line short) | the status line, above the prompt box |
 
-The VS Code extension doesn't draw anything plugins add yet; only a command's own output shows there, rendered as
-markdown. So `/prs` prints the list there as tables under a heading with the pane header's counts and time, led by
-what changed since you last looked. Each number links to its pull request, and statuses and details link where they
-are dealt with, as in the pane: CI to the checks (a green one too), unresolved comments to the changed files,
-conflicts to GitHub's page for resolving them. As in the pane, a `●` in front of the number marks the pull request
-whose branch the session is on, details are parted by dots, an empty list is one line, and with nothing in either
-list a single line says so. The list there is already one row per pull request, with the details in a column of
-their own, so the pane's compact view has nothing to change in it.
+The VS Code extension, in VS Code or an editor built on it such as Cursor, draws what plugins add from its version
+2.1.299, in a session that
+[fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching). It lays the
+pane out in rows of text as the terminal does, with the desktop app's buttons and cards, and opens a new session as a
+tab of the editor (**New session**, see [Review](review.md)).
+
+Where nothing draws what plugins add, as in an older extension or a `claude -p` run, only a command's own output shows,
+rendered as markdown. So `/prs` prints the list there as tables under a heading with the pane header's counts and time,
+led by what changed since you last looked. Each number links to its pull request, and statuses and details link where
+they are dealt with, as in the pane: CI to the checks (a green one too), unresolved comments to the changed files,
+conflicts to GitHub's page for resolving them. As in the pane, a `●` in front of the number marks the pull request whose
+branch the session is on, details are parted by dots, an empty list is one line, and with nothing in either list a
+single line says so. The list there is already one row per pull request, with the details in a column of their own, so
+the pane's compact view has nothing to change in it.
 
 > **[acme/app](#)** · ✅ **1** · ❗ **1** · updated 09:12
 >
@@ -136,9 +142,9 @@ their own, so the pane's compact view has nothing to change in it.
 ### Your last look
 
 Your last look is the list as you last saw it, in any session: the pane while open (and as you closed it), or a `/prs`
-printed in the extension. A toast you may not have seen doesn't count. It is kept for each repository across sessions,
-for the 20 repositories you looked at last. The terminal's sessions and the desktop app's keep a last look each, as
-Claude Code keeps the plugin's store apart for the two.
+printed where no pane shows. A toast you may not have seen doesn't count. It is kept for each repository across
+sessions, for the 20 repositories you looked at last. The terminal's and VS Code's sessions keep one last look, and
+the desktop app's another, as Claude Code keeps the plugin's store apart for the desktop app.
 
 In the list `/prs` prints:
 
@@ -148,10 +154,8 @@ In the list `/prs` prints:
 - `/prs demo` prints the example list.
 
 No background checks run there, since nothing would show what they find. The same list with what changed comes from
-`/prs` wherever the pane can't show, whatever toasts told you meanwhile.
-
-Once the extension draws what plugins add, the plugin switches to the pane, alerts and summary there by itself. A
-`claude -p "/prs"` run prints the list the same way as the extension does today.
+`/prs` wherever the pane can't show, whatever toasts told you meanwhile. An extension updated to one that draws gets
+the pane, alerts and summary by itself.
 
 ## Your Pull Requests
 

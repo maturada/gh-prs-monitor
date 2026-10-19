@@ -265,6 +265,60 @@ describe("Resolve Comments", () => {
     expect(seen.commands).toEqual([])
   })
 
+  test("from VS Code, the new session opens as a tab of its editor, at the window's folder, and is told the worktree", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      editor: { scheme: "vscode-insiders" },
+      answer: "Worktree, new session"
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+    const prompt =
+      '/gh-prs-monitor:resolve-comments https://github.com/acme/app/pull/1 --worktree "/repo/.claude/worktrees/pr-1" --deps "no lockfile the plugin installs from, nothing installed"'
+
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "resolve-1" })
+    await clock.settle()
+
+    expect(world.choices).toEqual(["Here, switch branch", "Worktree, this session", "Worktree, new session", "Cancel"])
+    expect(seen.runs).toContain(
+      `open vscode-insiders://anthropic.claude-code/open?prompt=${encodeURIComponent(prompt)}`
+    )
+    expect(seen.commands).toEqual([])
+  })
+
+  test("from VS Code, a new session whose link won't open runs the skill in this session, in the worktree prepared", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      answer: "Worktree, new session",
+      openFailure: "LSOpenURLsWithRole() failed with error -10814"
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+    const command =
+      '/gh-prs-monitor:resolve-comments https://github.com/acme/app/pull/1 --worktree "/repo/.claude/worktrees/pr-1" --deps "no lockfile the plugin installs from, nothing installed"'
+
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "resolve-1" })
+    await clock.settle()
+
+    expect(seen.runs).toContain(`open vscode://anthropic.claude-code/open?prompt=${encodeURIComponent(command)}`)
+    expect(seen.commands).toEqual([command])
+    expect(seen.toasts).toContain(
+      "#1: no new session opened (LSOpenURLsWithRole() failed with error -10814), so it runs in this one"
+    )
+  })
+
   test("where no new session can be opened, the dialog offers none", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0, answer: "Cancel" }
@@ -272,7 +326,7 @@ describe("Resolve Comments", () => {
     await startSession($)
     await clock.settle()
 
-    const ui = await mountPane($, "vscode")
+    const ui = await mountPane($, "mobile")
     await ui.press({ key: "resolve-1" })
     await clock.settle()
 

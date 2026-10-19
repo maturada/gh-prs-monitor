@@ -21,6 +21,16 @@ After fixing a problem, press **Retry** (or **Refresh**) in the pane, or run `/p
 scrolls: Claude Code no longer passes the pane its clicks (seen in VS Code's terminal); clicking in the pane doesn't give
 it the keyboard either. `/prs close` closes it; restarting Claude Code brings the clicks back.
 
+**In VS Code, `/prs` prints the list instead of opening the pane**: the Claude Code extension draws what plugins add
+from its version 2.1.299, in a session that
+[fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching). Update the
+extension, or see that page for what turns the fetching off.
+
+**In VS Code, New session runs the skill in this session instead**, and the alert says the link didn't open: the
+plugin opens a new tab through the extension's link, in the scheme your editor names in its `product.json`, or in
+VS Code's where it can't read that, and nothing on the machine answered it. With VS Code installed beside another
+editor, that last case opens the tab in VS Code instead. A bug report naming your editor helps (`/prs report`).
+
 **The pane lists another repository than you expected**, as in a fork's clone: with several remotes, `gh` picks the
 repository, the one `gh repo set-default` chose, else the remote named `upstream`, `github`, then `origin`. Run
 `gh repo set-default` in the folder to choose; a session takes the repository once, so sessions started after it list

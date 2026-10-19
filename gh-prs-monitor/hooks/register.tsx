@@ -39,9 +39,9 @@ import { ask, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { messageOf, SETUP_NOTE_MS } from "./gh"
 import type { GhProblem } from "./gh"
-import { isTerminal } from "./layout"
+import { drawsToasts, isTerminal } from "./layout"
 import { linksOf, listText } from "./list"
-import { canOpenSession } from "./new-session"
+import { canOpenSession, editorScheme } from "./new-session"
 import { buttonKey } from "./keys"
 import { drawBand, drawPane } from "./pane"
 import { claimedBusy, resumeMerged, withBusy, withoutBusyIf } from "./press"
@@ -740,11 +740,10 @@ function keepTurns($: Engine, session: Session): void {
   )
 }
 
-// Toasts are drawn by the terminal and the desktop app. Elsewhere a message becomes a dim notice in the
-// conversation, which the model never sees; with nothing attached it goes to the SDK host as `ui_log`.
+// Where no surface draws toasts, a message becomes a dim notice in the conversation, which the model never sees; with
+// nothing attached it goes to the SDK host as `ui_log`.
 async function notify($: Engine, text: string, timeoutMs: number): Promise<void> {
-  const surfaces = await $.session.surfaces()
-  if (surfaces.some((surface) => surface === "terminal" || surface === "desktop")) {
+  if ((await $.session.surfaces()).some(drawsToasts)) {
     $.ui.toast(text, { timeoutMs })
   } else {
     $.ui.log(text)
@@ -903,8 +902,20 @@ function skillHostOf($: Engine, session: Session): SkillHost {
     inConversation: (line) => $.ui.log(line),
     runCommand: (command, args) => $.command.run({ command, args }),
     clearBusyIf: (mark, label) => update($, busyState, (all) => withoutBusyIf(all, mark, label)),
-    isCheckingMode: () => isCheckingMode(refreshHostOf($, session), session)
+    isCheckingMode: () => isCheckingMode(refreshHostOf($, session), session),
+    editorScheme: () => editorSchemeOf($, session)
   }
+}
+
+// The scheme of the editor the VS Code extension runs in, read once a load (`Session.editorScheme`); one that can't be
+// read is none.
+function editorSchemeOf($: Engine, session: Session): Promise<string | null> {
+  session.editorScheme ??= $.env
+    .get("VSCODE_NLS_CONFIG")
+    .then((config) => editorScheme(hostOf($), config))
+    .catch(() => null)
+
+  return session.editorScheme
 }
 
 // --- A row's busy mark ---
@@ -1117,6 +1128,7 @@ function dialogHostOf($: Engine): DialogHost {
     background: (work) => background($, work),
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
     panes: () => $.ui.panes(),
+    surfaces: () => $.session.surfaces(),
     isPaneShown: () => isPaneShown($),
     showQuestion: (question) => update($, dialogState, () => question),
     scrollToTop: () => $.ui.scroll({ in: PANE, to: "start" }),

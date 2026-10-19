@@ -10,7 +10,8 @@ import type { PullToOpen } from "./create-flow"
 import { noteEvents } from "./alerts"
 import { ago, checkingAgain, elapsed, lookedAt } from "./when"
 import { BACK_MARK, buttonKey, rowKey } from "./keys"
-import { buttonGaps, isTerminal } from "./layout"
+import { buttonGaps, colourOn, isTerminal, placesOutOfFlow, spacesByRows } from "./layout"
+import type { PaneColour } from "./layout"
 import {
   BRANCH_MARK,
   CUT_NOTE,
@@ -90,13 +91,15 @@ export function drawPane(kit: Kit, view: PaneView, actions: PaneActions, backRow
       {header(kit, view, actions)}
       {problem ? problemBox(kit, problem, view, actions) : null}
       {snapshot ? body(kit, snapshot, view, actions) : problem ? null : centred(kit, "loading", waiting(view))}
-      {backRow === null ? null : backMark(kit, backRow)}
+      {backRow === null || !placesOutOfFlow(view.surface) ? null : backMark(kit, backRow)}
     </Box>
   )
 }
 
 // The mark a question's close puts the window back on (`BACK_MARK`). Out of the flow, it takes no room and moves
-// nothing; it is empty, so it shows nothing, and a row high so a surface measures where it is.
+// nothing; it is empty, so it shows nothing, and a row high so a surface measures where it is. A surface that lays
+// every box out in the flow would draw it at the pane's foot, so there is none there, and the window goes to the
+// button pressed (`goBack`).
 function backMark(kit: Kit, row: number): RenderElement {
   const { Box } = kit
 
@@ -130,11 +133,12 @@ function problemBox(kit: Kit, problem: string, view: PaneView, actions: PaneActi
     view.snapshot ? `The list below is from ${lookedAt(view.snapshot.fetchedAt, view.now)}.` : null,
     view.retryMinutes === null ? null : checkingAgain(view.retryMinutes)
   ].filter((note) => note !== null)
+  const warning = colourOn(view.surface, "warning")
 
   return (
-    <Box key="problem" flexDirection="column" gap={1} borderStyle="round" borderColor="warning" paddingX={1}>
+    <Box key="problem" flexDirection="column" gap={1} borderStyle="round" borderColor={warning} paddingX={1}>
       <Box flexDirection="column">
-        <Text bold color="warning" wrap="wrap">
+        <Text bold color={warning} wrap="wrap">
           ⚠ Can't check pull requests
         </Text>
         <Text wrap="wrap">{problem}</Text>
@@ -217,7 +221,7 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
         {...buttonGaps(view.surface)}
         flexShrink={0}
         flexWrap="wrap"
-        {...(isStacked && !isTerminal(view.surface) ? { marginTop: 1 } : {})}
+        {...(isStacked && !spacesByRows(view.surface) ? { marginTop: 1 } : {})}
       >
         <Button key="view" label={viewLabel} dimColor onPress={actions.toggleCompact} />
         <Button key="refresh" label={REFRESH_LABEL} hotkey="r" dimColor onPress={actions.refresh} />
@@ -549,7 +553,12 @@ function pullRow(
   if (frame.layout !== "full") {
     const busy = view.busy[String(row.number)]
 
-    return compactRow(kit, titleParts, frame, busy ? <Text dimColor>{busy}</Text> : statusText(kit, group, row))
+    return compactRow(
+      kit,
+      titleParts,
+      frame,
+      busy ? <Text dimColor>{busy}</Text> : statusText(kit, group, row, view.surface)
+    )
   }
 
   return card(
@@ -559,7 +568,7 @@ function pullRow(
     <Box key={rowKey(row.number)} flexDirection="column" hover={{ scope: rowKey(row.number) }}>
       {titleLine(kit, titleParts, frame, null)}
       <Box key="status" paddingLeft={indent}>
-        {statusText(kit, group, row)}
+        {statusText(kit, group, row, view.surface)}
       </Box>
       {factsLine(kit, view, frame, row.details)}
       {actionsFor(kit, row, view, actions, frame)}
@@ -584,7 +593,7 @@ function factsLine(kit: Kit, view: PaneView, frame: RowFrame, facts: Badge[]): R
 
   return (
     <Box key="facts" paddingLeft={frame.indent} columnGap={1} flexWrap="wrap">
-      {facts.map((fact, index) => detailText(kit, fact, index < facts.length - 1, room))}
+      {facts.map((fact, index) => detailText(kit, fact, index < facts.length - 1, room, view.surface))}
     </Box>
   )
 }
@@ -602,7 +611,7 @@ function mergedRow(kit: Kit, pull: MergedPull, frame: RowFrame, view: PaneView):
     stack: null
   }
   const status = (
-    <Text bold color="merged">
+    <Text bold color={colourOn(view.surface, "merged")}>
       {MERGED_STATUS}
     </Text>
   )
@@ -773,23 +782,24 @@ function recentChanges(
 // The status is the one thing drawn in its colour and bold, marked as the summary counts it, so the list reads at
 // a glance; a waiting status has no colour or mark and is dimmed, so it doesn't read as a second title. Conflicts
 // and failing checks link to where they are dealt with.
-function statusText(kit: Kit, group: Group, row: PullRow): RenderElement {
+function statusText(kit: Kit, group: Group, row: PullRow, surface: string): RenderElement {
   const { Text } = kit
   const label = linkedText(kit, markedStatus(group, row), row.status.href)
+  const { tone } = row.status
 
-  return row.status.tone === "neutral" ? (
+  return tone === "neutral" ? (
     <Text bold dimColor>
       {label}
     </Text>
   ) : (
-    <Text bold color={row.status.tone}>
+    <Text bold color={colourOn(surface, tone)}>
       {label}
     </Text>
   )
 }
 
 // A CI result's mark in GitHub's colours: passed, running, failed.
-const CI_COLOURS: Readonly<Record<CiMark, "success" | "warning" | "error">> = {
+const CI_COLOURS: Readonly<Record<CiMark, PaneColour>> = {
   "✓": "success",
   "●": "warning",
   "✗": "error"
@@ -801,7 +811,7 @@ const CI_COLOURS: Readonly<Record<CiMark, "success" | "warning" | "error">> = {
 // that parts a detail from the next ends its text, a no-break space before it, so it stays with the detail's last
 // word and no line starts with one. Spaces inside a detail are the text's own, as an app's cells are wider than its
 // text: a CI result is short and kept whole; any other may be long enough to wrap.
-function detailText(kit: Kit, detail: Badge, isParted: boolean, room: number | null): RenderElement {
+function detailText(kit: Kit, detail: Badge, isParted: boolean, room: number | null, surface: string): RenderElement {
   const { Box, Text } = kit
   const href = detail.tone === "success" ? undefined : detail.href
   const dot = isParted ? <Text dimColor>{`\u00a0${DETAIL_SEPARATOR}`}</Text> : null
@@ -811,7 +821,7 @@ function detailText(kit: Kit, detail: Badge, isParted: boolean, room: number | n
       <Box flexShrink={0}>
         <Text>
           <Text dimColor>{linkedText(kit, detail.text.slice(0, -mark.length).trimEnd(), href)}</Text>{" "}
-          <Text color={CI_COLOURS[mark]}>{mark}</Text>
+          <Text color={colourOn(surface, CI_COLOURS[mark])}>{mark}</Text>
           {dot}
         </Text>
       </Box>
@@ -845,8 +855,9 @@ function linkedText(kit: Kit, text: string, href: string | undefined): RenderEle
   return href ? <Link href={href} label={text} /> : text
 }
 
-// The buttons get a line of their own under the facts, so a narrow pane keeps the facts readable. An app draws a
-// button taller than a line of text, and it would sit flush against the facts without a line's space above it.
+// The buttons get a line of their own under the facts, so a narrow pane keeps the facts readable. A surface that
+// spaces by steps draws a button taller than a line of text, and it would sit flush against the facts without a step's
+// space above it; a button a line high has its own line already.
 function actionsFor(
   kit: Kit,
   row: PullRow,
@@ -855,7 +866,7 @@ function actionsFor(
   frame: RowFrame
 ): RenderElement | null {
   const { Box, Button, Text } = kit
-  const spacing = isTerminal(view.surface) ? {} : { marginTop: 1 }
+  const spacing = spacesByRows(view.surface) ? {} : { marginTop: 1 }
   // What is under way wraps in the row's column, as its facts do.
   const busy = view.busy[String(row.number)]
   if (busy) {

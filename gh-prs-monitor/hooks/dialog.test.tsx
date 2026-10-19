@@ -413,6 +413,11 @@ describe("the plugin's dialog", () => {
     expect(mark?.props).toMatchObject({ position: "absolute", top: 7, left: 0, width: 1, height: 1 })
     expect(mark?.children ?? []).toEqual([])
     expect(await ui.find({ key: "pr-1" })).toBeDefined()
+    // VS Code, which would lay the mark out in the flow at the pane's foot, draws none meanwhile.
+    const editor = await mountPane($, "vscode")
+    expect(await editor.find({ key: "pr-1" })).toBeDefined()
+    expect(await editor.find({ key: BACK_MARK })).toBeUndefined()
+    await editor.unmount()
 
     await clock.advance(5_000)
     expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
@@ -468,6 +473,35 @@ describe("the plugin's dialog", () => {
     await pressDrawn(clock, again, "answer-3")
     await clock.settle()
     expect((await again.find({ key: BACK_MARK }))?.props).not.toMatchObject({ top: 9 })
+  })
+
+  test("VS Code, which lays every box out in the flow, gets no mark at the pane's foot: the window goes to the button pressed at once", async ($, on) => {
+    const clock = clockOf(on)
+    // The drawings the plugin asks for: a try that finds no mark asks for one, and the end of going back one more.
+    let redraws = 0
+    on("ui.invalidate", async (_, e, next) => {
+      redraws++
+
+      return next(e)
+    })
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["vscode"] }, clock)
+    await startSession($)
+    await clock.settle()
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "resolve-1" })
+    await clock.settle()
+    const cancel = (await ui.findAll({ type: "Button" })).find((button) => button.props.label === "Cancel")
+    const before = redraws
+
+    await ui.press({ key: String(cancel?.props.key) })
+    await clock.settle()
+    expect(await ui.find({ key: "pr-1" })).toBeDefined()
+    expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
+    // No tries for a mark that isn't drawn: the end's drawing alone, with no time passed.
+    expect(redraws - before).toBe(1)
+    await clock.advance(5_000)
+    expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
+    expect(redraws - before).toBe(1)
   })
 
   // The kit models no keyboard and raises no close by the person, so the ring moving onto the first answer and back to

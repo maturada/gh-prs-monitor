@@ -643,14 +643,18 @@ describe("acting on GitHub from the pane", () => {
     expect(await ui.find({ key: "merge-2" })).toBeUndefined()
     expect((await ui.find({ type: "Text", text: "✓ Merged" }))?.props).toMatchObject({ color: "merged", bold: true })
     expect(await ui.find({ type: "Text", text: "into main" })).toBeDefined()
+    // VS Code knows no merged colour: there it is the theme's terminal magenta.
+    const editor = await mountPane($, "vscode")
+    expect((await editor.find({ type: "Text", text: "✓ Merged" }))?.props.color).toBe("magenta")
+    await editor.unmount()
     expect(await order()).toEqual(["pr-1", "pr-2", "pr-3"])
-    expect(seen.statuses.at(-1)).toBe("PRs ❗ 1 Needs You  (/prs)")
+    expect(seen.statuses.at(-1)).toBe("PRs ❗ 1 Needs You\u00a0\u00a0(/prs)")
     // The search still lists it open, and a refresh in the meantime leaves it merged and out of the counts.
     await ui.press({ key: "refresh" })
     await clock.settle()
     expect(await ui.find({ type: "Text", text: /Ready To Merge/ })).toBeUndefined()
     expect(await ui.find({ type: "Text", text: "✓ Merged" })).toBeDefined()
-    expect(seen.statuses.at(-1)).toBe("PRs ❗ 1 Needs You  (/prs)")
+    expect(seen.statuses.at(-1)).toBe("PRs ❗ 1 Needs You\u00a0\u00a0(/prs)")
 
     world.github = { mine: [world.github.mine![0]!, world.github.mine![2]!] }
     await clock.advance(15_000)

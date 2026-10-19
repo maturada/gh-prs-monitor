@@ -2,6 +2,17 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.1.0 (19.10.2026)
+
+- **VS Code**, and editors built on it such as Cursor: the Claude Code extension draws the pane, its alerts and the
+  status line from its version 2.1.299, and the pane now fits it. No blank line above a row's buttons or between their
+  rows; warnings (Changes Requested, Review Requested, a running check) in yellow and a merge in purple, from the
+  editor's own theme; alerts as toasts above the prompt box, not lines left in the conversation; and the status line
+  keeps the space between its counts.
+- **New session from VS Code**: Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR offer a new session
+  there too, a tab of the editor with the command typed in. Where its link doesn't open, the skill runs in this session
+  instead.
+
 ## 1.0.1 (18.10.2026)
 
 - The README says more of what the plugin does on your machine: the slash commands its buttons run, the Claude Code

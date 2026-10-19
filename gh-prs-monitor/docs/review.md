@@ -17,8 +17,12 @@ looks at, never what it asks you.
     them installed. So from Warp or an editor's terminal, the window opens in one of those.
   - **From the desktop app** it is a new session there, which asks you to confirm the folder. The app types the command
     in with a space after its `/`: delete that before sending.
-  - **Where the link can't be opened**, the alert gives the command to type yourself, and the conversation keeps it
-    too, as an alert goes in seconds.
+  - **From VS Code** it is a new tab of the extension in the window you pressed in, opened through the extension's own
+    link in the scheme your editor answers on (`vscode://`, `cursor://`, …), which the plugin reads from the editor's
+    `product.json`, or else VS Code's. Where that link doesn't open, the review runs in this session instead, and the
+    alert says why.
+  - **Where the link can't be opened** from the terminal or the desktop app, the alert gives the command to type
+    yourself, and the conversation keeps it too, as an alert goes in seconds.
 
 Instructions typed in the dialog's field, such as "focus on the migration", go with **This session** or **New
 session**, whichever you then press, or Enter sends them alone to a review here. Sent alone, "Cancel", "no thanks" and

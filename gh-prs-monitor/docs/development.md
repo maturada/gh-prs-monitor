@@ -60,7 +60,8 @@ hooks/args.ts             a skill's argument line: written with values quoted an
                           pull request it names read back
 hooks/create-choices.ts   the choices the create-pr skill keeps per repository, and the tool it reads and keeps
                           them through
-hooks/new-session.ts      the links that open a new session, and the system's opener for them
+hooks/new-session.ts      the links that open a new session, VS Code's editor's scheme for them, and the system's
+                          opener
 hooks/report.ts           /prs report: where to report, and the versions a bug report asks for
 hooks/checkout.ts         the checkouts the branch skills work in: /prs's worktree for a pull request, or a switch of
                           this checkout to its branch
@@ -90,8 +91,8 @@ hooks/dialog-flow.ts      the dialog as it runs: one question at a time, in the 
 hooks/back-to-row.ts      the pane's window put back on its row once a question is answered
 hooks/question.ts         what a question is about, text typed in place of a choice read as an answer, and where a
                           skill runs: this session or a new one
-hooks/layout.ts           what tells the terminal's cells from an app's pixels: which surface is which, and the gaps
-                          in a row of buttons
+hooks/layout.ts           what each surface draws differently: text in cells or a font, space by rows or steps, a box
+                          out of the flow, toasts, and the colours VS Code names otherwise
 hooks/stable-buttons.ts   a button drawn again unchanged kept as the same element, so its handle outlives a redraw
 hooks/*.test.ts           the modules' logic, apart from the engine (helpers.test.ts holds the small ones')
 hooks/*.test.tsx          the hooks module, by area, against the machine in hooks/testing/
@@ -158,6 +159,16 @@ changes one is where to look first.
   app moves the window without drawing the pane again, and its drawing carries the row as the app last sent it, so the
   `ui.scroll` hook keeps where each of the person's moves over the list lands. The test kit carries out no plugin's
   scroll, so the mark drawn is tested in the pane, and the window's way to it (`goBack`) through a host of its own.
+- The VS Code extension (2.1.299 and later) lays a tree out in rows of text as the terminal does, a gap of 1 a blank
+  line, while it draws the desktop app's buttons and cards. It ignores `position` (so the mark above isn't drawn there,
+  and the window goes to the button pressed), `hover`, and a button's `plain` and `hotkey`. It draws the theme's
+  `warning` in its menus' text colour and knows no `merged`, while a named colour follows the editor theme's terminal
+  colours; it folds the status line's plain spaces into one; and it draws toasts, above its prompt box.
+  `hooks/layout.ts` names each of these. Its new tab opens from `<scheme>://anthropic.claude-code/open?prompt=…`, the
+  scheme the editor's `product.json` names (`urlProtocol`), which `VSCODE_NLS_CONFIG`'s messages file leads to
+  (`editorScheme`): the extension tells the plugin neither. Where it isn't found, VS Code's own scheme is tried, and a
+  link that doesn't open runs the skill in this session (`runsHereWhenUnopened`); a scheme that opens another app, as
+  VS Code beside the editor pressed in, can't be told from one that opens the right one.
 - Sizes are in character cells on every surface, and an app's cells are wider than its text: a width that holds a
   text to its length in the terminal leaves a gap after it in an app. So such widths are the terminal's alone (a
   detail's, a column's), and in an app a text shrinks to its line and wraps, as a title does.
@@ -167,11 +178,11 @@ changes one is where to look first.
   and a cleanup's claim make, is two calls, which another session's may come between). It holds 4 MiB of JSON across all
   keys: a write that would pass that is refused in words the plugin reads ("the store would be N characters, over the M
   limit", `isStoreFull`, as of 2.1.296), and the answers sessions share give way first. No event says another session
-  wrote it, so a session looks (`checkShared`). It is kept per plugin source
-  (`name@marketplace`, or `name@inline` for a plugin handed in with `--plugin-dir`, as the desktop app hands in
-  installed plugins), so the desktop app's sessions and the terminal's never share it. The test kit has no store of its
-  own: the tests' world answers the store's events from a store in memory (`hooks/testing/memory-store.ts`), and
-  store.test.ts hands store.ts a host over the same one.
+  wrote it, so a session looks (`checkShared`). It is kept per plugin source (`name@marketplace`, or `name@inline` for a
+  plugin handed in with `--plugin-dir`, as the desktop app hands in installed plugins), so the desktop app's sessions
+  never share it with the terminal's, nor with VS Code's, which load the installed plugin as the terminal does. The test
+  kit has no store of its own: the tests' world answers the store's events from a store in memory
+  (`hooks/testing/memory-store.ts`), and store.test.ts hands store.ts a host over the same one.
 - Claude Code asks before a command writes a file into a repository's `.git` folder, as hooks or config planted there
   run on the next git command; git's own writes there go on unasked. So the create-pr skill keeps its choices in the
   plugin's store, through a tool the plugin registers (`$.tool.register`; the model calls it

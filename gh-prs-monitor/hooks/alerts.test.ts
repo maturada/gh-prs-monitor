@@ -925,9 +925,9 @@ describe("hidden drafts in the printed list", () => {
 describe("summaryText", () => {
   test("names only the counts there are", () => {
     expect(summaryText({ ready: 1, needsYou: 2, toReview: 1 })).toBe(
-      "PRs ✅ 1 Ready  ❗ 2 Need You  🔍 1 To Review  (/prs)"
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 2 Need You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
     )
-    expect(summaryText({ ready: 0, needsYou: 0, toReview: 3 })).toBe("PRs 🔍 3 To Review  (/prs)")
+    expect(summaryText({ ready: 0, needsYou: 0, toReview: 3 })).toBe("PRs 🔍 3 To Review\u00a0\u00a0(/prs)")
     expect(summaryText({ ready: 0, needsYou: 0, toReview: 0 })).toBe(undefined)
   })
 })
@@ -945,7 +945,9 @@ describe("statusSummary", () => {
       commented: [{ number: 6, author: "bob" }]
     })
 
-    expect(statusSummary(snapshot)).toBe("PRs ✅ 1 Ready  ❗ 2 Need You  🔍 1 To Review  (/prs)")
+    expect(statusSummary(snapshot)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 2 Need You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
   })
 
   test("open review comments on an unapproved pull request need the viewer", () => {
@@ -960,7 +962,7 @@ describe("statusSummary", () => {
       ]
     })
 
-    expect(statusSummary(snapshot)).toBe("PRs ❗ 1 Needs You  (/prs)")
+    expect(statusSummary(snapshot)).toBe("PRs ❗ 1 Needs You\u00a0\u00a0(/prs)")
   })
 
   test("waiting on reviewers needs nobody: asked to re-review, or approved by fewer than required", () => {
@@ -984,7 +986,9 @@ describe("statusSummary", () => {
   })
 
   test("one that needs the viewer reads in the singular", () => {
-    expect(statusSummary(snapshotOf({ mine: [{ number: 2, ci: "FAILURE" }] }))).toBe("PRs ❗ 1 Needs You  (/prs)")
+    expect(statusSummary(snapshotOf({ mine: [{ number: 2, ci: "FAILURE" }] }))).toBe(
+      "PRs ❗ 1 Needs You\u00a0\u00a0(/prs)"
+    )
   })
 
   test("nothing to report clears the line", () => {

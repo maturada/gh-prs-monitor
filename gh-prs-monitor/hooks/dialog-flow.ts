@@ -10,6 +10,7 @@ import type { AskOptions, Timer, UiPane, UiScrollResult } from "claude-code"
 import type { Answer, Question } from "../types"
 import { goBack } from "./back-to-row"
 import { answerKey, BACK_MARK } from "./keys"
+import { placesOutOfFlow } from "./layout"
 import { readAnswer } from "./question"
 import type { GoingBack, OpenQuestion, Session } from "./session"
 
@@ -23,6 +24,8 @@ export type DialogHost = {
   background: (work: Promise<unknown>) => void
   notify: (text: string, timeoutMs: number) => Promise<void>
   panes: () => Promise<readonly UiPane[]>
+  // The surfaces the session draws on.
+  surfaces: () => Promise<readonly string[]>
   // Whether the pane is drawn and in front.
   isPaneShown: () => Promise<boolean>
   // The question the pane draws in place of the list, or none.
@@ -173,9 +176,11 @@ async function moveToQuestion(host: DialogHost): Promise<void> {
 }
 
 // The window back on the row kept, through the mark the list draws there (`goBack`), until the person moves it or a
-// question is asked again.
+// question is asked again. Where no surface the session draws on can place the mark (VS Code), none is drawn, and the
+// window goes to the button pressed at once.
 async function backToRow(host: DialogHost, session: Session, pressed: string, back: GoingBack): Promise<void> {
   const isGoingBack = () => session.goingBack === back
+  const mark = (await host.surfaces()).some(placesOutOfFlow) ? BACK_MARK : null
 
   await goBack(
     {
@@ -192,7 +197,7 @@ async function backToRow(host: DialogHost, session: Session, pressed: string, ba
         host.redraw()
       }
     },
-    BACK_MARK,
+    mark,
     pressed
   )
 }
