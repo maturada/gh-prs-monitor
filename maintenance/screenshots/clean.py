@@ -1,7 +1,7 @@
 # Author: David Matura
 #
 # A rendered composite made ready for the plugin's assets, its pixels kept: the transparent rows a render leaves under
-# the card trimmed, the text and colour-profile chunks dropped (as in the other screenshots), and the image data
+# the card trimmed, the text and ICC-profile chunks dropped (as in the other screenshots), and the image data
 # compressed again until no run of its bytes reads as a command the directory's scan flags. 1.0.1's compact.png spelled
 # PowerShell's `iex` and `irm`, its icon and hero `iwr` and `npx`.
 # Usage: python3 maintenance/screenshots/clean.py <render.png> <gh-prs-monitor/assets/screenshots/name.png>
@@ -56,8 +56,11 @@ if depth != 8 or interlace != 0 or color != 6:
     sys.exit("Expected an 8-bit RGBA PNG without interlacing, as headless Chrome renders.")
 raw = zlib.decompress(b"".join(body for kind, body in parts if kind == b"IDAT"))
 rows = unfiltered(raw, width, height, 4)
+drawn = [y for y in range(height) if any(rows[y][3::4])]
+if not drawn:
+    sys.exit("The render is empty: every pixel is transparent.")
 # A row's filter refers only to the rows above it, so the rows kept keep their bytes.
-kept = max(y for y in range(height) if any(rows[y][3::4])) + 1
+kept = drawn[-1] + 1
 image = raw[: kept * (width * 4 + 1)]
 header = chunk(b"IHDR", struct.pack(">IIBBBBB", width, kept, 8, 6, 0, 0, 0))
 extras = b"".join(chunk(kind, body) for kind, body in parts if kind in KEPT)
@@ -66,7 +69,8 @@ for level in range(9, 0, -1):
     for strategy in (zlib.Z_DEFAULT_STRATEGY, zlib.Z_FILTERED):
         for memory in (9, 8):
             packer = zlib.compressobj(level, zlib.DEFLATED, 15, memory, strategy)
-            png = data[:8] + header + extras + chunk(b"IDAT", packer.compress(image) + packer.flush()) + chunk(b"IEND", b"")
+            idat = chunk(b"IDAT", packer.compress(image) + packer.flush())
+            png = data[:8] + header + extras + idat + chunk(b"IEND", b"")
             if not FLAGGED.search(png):
                 open(target, "wb").write(png)
                 print(f"{target}: {width}x{kept}, {len(png):,} bytes, no flagged run")

@@ -15,12 +15,12 @@ their rules, and `clean.py` makes a render ready for the plugin. None of this fo
 
 ## Rules (`composite.html`)
 
-Set for a card 880px wide, as `desktop.png` is (1,760 pixels at 2×); `--scale` fits them to a screenshot of another
-width, its width over 830px.
+Measured on `desktop.png` (1,760 pixels at 2×), whose pane is 830px wide; `--scale` fits them to a screenshot of
+another width, its width over 830px. The template's `--shot` and `--scale` are `vscode.png`'s.
 
 | Part | Rule |
 |---|---|
-| Card | `#0d1117`, a 1px `#30363d` border, corners of 11px, 25px of space at the sides and 27px at the foot |
+| Card | `#0d1117`, a 1px `#30363d` border, corners of 11px; inside it 5px of space at the top, 25px at the sides, 27px at the foot |
 | Caption | 14.7px, weight 500, `#9198a1`, in the system font; 20px above it, 11px below |
 | Panel | the screenshot at its own width, a 1px `#30363d` frame, corners of 8px |
 | A panel cut short | fades into the card over its last 108px, its frame with it |
@@ -33,10 +33,12 @@ From the repository's root, with the screenshots in `maintenance/.work/screensho
 ```
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
   --force-device-scale-factor=2 --default-background-color=00000000 --window-size=<card width>,<more than its height> \
-  --screenshot="$PWD/maintenance/.work/screenshots/render.png" "file://$PWD/maintenance/.work/screenshots/composite.html"
-python3 maintenance/screenshots/clean.py maintenance/.work/screenshots/render.png gh-prs-monitor/assets/screenshots/<name>.png
+  --screenshot="$PWD/maintenance/.work/screenshots/render.png" \
+  "file://$PWD/maintenance/.work/screenshots/composite.html"
+python3 maintenance/screenshots/clean.py maintenance/.work/screenshots/render.png \
+  gh-prs-monitor/assets/screenshots/<name>.png
 ```
 
-`clean.py` trims the rows under the card, drops text and colour-profile chunks, and compresses the image again until no
+`clean.py` trims the rows under the card, drops text and ICC-profile chunks, and compresses the image again until no
 run of its bytes reads as a command the directory's scan flags (as `iex` and `irm` did in 1.0.1's `compact.png`). Keep
 each file under 5 MiB, the directory's limit for a file in the plugin folder.
