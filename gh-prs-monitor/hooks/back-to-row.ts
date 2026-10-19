@@ -22,14 +22,14 @@ export const BACK_TO_ROW_PAUSE_MS = 200
 // the ring stays where it was. A plugin's scroll names something drawn rather than a row, so the list comes back with
 // `mark` drawn on that row for the window to go to. A surface knows where the mark is once it has drawn the list
 // again, so a try that finds none asks for that drawing and comes again a moment later; a try that moved is made once
-// more, for a surface that held the window to the question's length as it moved. Where the mark is never found, the
-// window goes to the button pressed. The person's own scroll or keys meanwhile end it where they are, and leave the
-// ring, as moving it would scroll its button into view again.
-export async function goBack(host: BackHost, mark: string, pressed: string): Promise<void> {
+// more, for a surface that held the window to the question's length as it moved. Where the mark is never found, or
+// none is drawn (null, a surface that can't place it), the window goes to the button pressed. The person's own scroll
+// or keys meanwhile end it where they are, and leave the ring, as moving it would scroll its button into view again.
+export async function goBack(host: BackHost, mark: string | null, pressed: string): Promise<void> {
   let hasMoved = false
   let isUndisturbed = false
   try {
-    for (let tries = 1; tries <= BACK_TO_ROW_TRIES && host.isGoingBack(); tries++) {
+    for (let tries = 1; mark !== null && tries <= BACK_TO_ROW_TRIES && host.isGoingBack(); tries++) {
       const scrolled = await host.scrollTo(mark, "start").catch(() => ({ deny: "failed" }))
       if (scrolled.deny !== undefined) {
         host.redraw()

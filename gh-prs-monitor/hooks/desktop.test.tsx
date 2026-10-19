@@ -82,7 +82,9 @@ describe("the desktop app", () => {
     await startSession($)
     await clock.settle()
 
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
     const band = await mountBand($, "terminal")
     expect(await band.find({ type: "Text", text: "engine band" })).toBeDefined()
     expect(await band.find({ key: "open-prs" })).toBeUndefined()
@@ -109,7 +111,9 @@ describe("the desktop app", () => {
     await startSession($)
     await clock.settle()
 
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
   })
 
   test("the demo shows its example counts in the band until the examples are left", async ($, on) => {

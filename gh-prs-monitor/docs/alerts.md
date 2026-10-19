@@ -68,8 +68,8 @@ about the review list; mentions about anyone else's open pull request in the rep
 - **Several sessions in one repository** (worktrees side by side, say) show each change once: the first session to show
   it notes it in the plugin's store, and the others leave it out for a while. They share GitHub's answers too
   ([cost](settings.md#cost)), so a change one of them saw usually shows in the others' lists and status lines within 20
-  seconds, its alert still shown once. The terminal's sessions and the desktop app's each do this among themselves:
-  Claude Code keeps the plugin's store apart for the two.
+  seconds, its alert still shown once. The terminal's and VS Code's sessions do this among themselves, and the desktop
+  app's among themselves: Claude Code keeps the plugin's store apart for the desktop app.
 - **Alert sound** plays a short chime with the toasts. It's off by default and macOS only: Linux and Windows
   terminals have no player.
 

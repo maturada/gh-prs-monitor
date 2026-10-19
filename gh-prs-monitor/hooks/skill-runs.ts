@@ -26,8 +26,16 @@ import type { PullToOpen } from "./create-flow"
 import { pullNumberOf, pullRefIn } from "./args"
 import { messageOf } from "./gh"
 import type { RepoRef } from "./gh"
-import { canOpenInWorktree, canOpenSession, linkRefusal, newSessionLink, openLink } from "./new-session"
-import type { SessionSurface } from "./new-session"
+import {
+  canOpenInWorktree,
+  canOpenSession,
+  linkRefusal,
+  newSessionLink,
+  openLink,
+  runsHereWhenUnopened,
+  sessionAppFor
+} from "./new-session"
+import type { SessionApp } from "./new-session"
 import { buttonKey } from "./keys"
 import { lookBeforeAsking, markName, pressing, sessionRepo } from "./press"
 import type { PressHost } from "./press"
@@ -53,6 +61,8 @@ export type SkillHost = PressHost &
     clearBusyIf: (mark: Mark, label: string) => Promise<unknown>
     // Whether checks run now (`isCheckingMode`, refresh.ts).
     isCheckingMode: () => Promise<boolean>
+    // The scheme of the editor the VS Code extension runs in, or null where it isn't found (`editorScheme`).
+    editorScheme: () => Promise<string | null>
   }
 
 export const RESOLVE_COMMAND = "gh-prs-monitor:resolve-comments"
@@ -214,8 +224,8 @@ export function installNotices(host: SkillHost, session: Session, number: number
 
 // --- Review, Resolve Comments, Fix CI and Resolve Conflicts ---
 
-// Asks whether to review here or in a new session where the person's surface can open one, the terminal and the
-// desktop app; elsewhere it starts here.
+// Asks whether to review here or in a new session where the person's surface can open one (`canOpenSession`);
+// elsewhere it starts here.
 export async function review(host: SkillHost, session: Session, row: PullRow, surface: string): Promise<void> {
   await pressing(host, session, row.number, "Checking…", async () => {
     if (!(await lookBeforeAsking(host, session, "review", row)).isGoing) {
@@ -225,24 +235,25 @@ export async function review(host: SkillHost, session: Session, row: PullRow, su
     if (place.kind === "cancel") {
       return
     }
-    if (place.kind === "new" && canOpenSession(surface)) {
-      const prompt = `/${REVIEW_COMMAND} ${reviewArgs(row.url, place.note)}`
-      await typeIntoNewSession(
-        host,
-        session,
-        row.number,
-        surface,
-        await host.cwd(),
-        prompt,
-        "the review is typed into a new session"
-      )
+    const args = reviewArgs(row.url, place.note)
+    const here = async (): Promise<"started"> => {
+      await host.setBusy(row.number, "Starting Review…")
+      await runSkill(host, session, REVIEW_COMMAND, args, row.number)
 
-      return
+      return "started"
     }
-    await host.setBusy(row.number, "Starting Review…")
-    await runSkill(host, session, REVIEW_COMMAND, reviewArgs(row.url, place.note), row.number)
+    if (place.kind !== "new" || !canOpenSession(surface)) {
+      return here()
+    }
 
-    return "started"
+    return typeIntoNewSession(host, session, {
+      mark: row.number,
+      app: await sessionAppFor(surface, host.editorScheme),
+      folder: await host.cwd(),
+      prompt: `/${REVIEW_COMMAND} ${args}`,
+      typed: "the review is typed into a new session",
+      here
+    })
   })
 }
 
@@ -283,10 +294,13 @@ export async function workOnBranch(
       return
     }
     const work = { host, session, skill, row, repo: look.repo, base, note: place.note }
+    if (place.kind === "here") {
+      return workHere(work, isHere ? null : checkout)
+    }
+    const newSession =
+      place.isNewSession && canOpenSession(surface) ? await sessionAppFor(surface, host.editorScheme) : null
 
-    return place.kind === "here"
-      ? workHere(work, isHere ? null : checkout)
-      : workInWorktree(work, place.isNewSession, surface)
+    return workInWorktree(work, newSession)
   })
 }
 
@@ -367,8 +381,8 @@ async function isCheckoutAsAsked({ host, session, row }: BranchWork, asked: Aske
   return isSame
 }
 
-// The skill runs in the pull request's worktree, in this session or a new one opened there.
-async function workInWorktree(work: BranchWork, isNewSession: boolean, surface: string): Promise<"started" | void> {
+// The skill runs in the pull request's worktree, in this session, or in a new one `newSession` opens there.
+async function workInWorktree(work: BranchWork, newSession: SessionApp | null): Promise<"started" | void> {
   const { host, session, skill, row } = work
   const command = BRANCH_SKILLS[skill]
   await host.setBusy(row.number, "Preparing Worktree…")
@@ -379,49 +393,62 @@ async function workInWorktree(work: BranchWork, isNewSession: boolean, surface: 
   const deps = row.isCrossRepository
     ? FORK_DEPS_NOTE
     : await ensureDependencies(host, worktree.path, installNotices(host, session, row.number))
-  if (isNewSession && canOpenSession(surface)) {
-    // A session opened in the worktree works there from the start; one opened at the repository's root is told
-    // the worktree to enter.
-    const isInWorktree = canOpenInWorktree(surface)
-    const worktreeArg = isInWorktree ? undefined : worktree.path
-    const args = skillArgs(row.url, { ...work.base, worktree: worktreeArg, deps, note: work.note })
-    await typeIntoNewSession(
-      host,
-      session,
-      row.number,
-      surface,
-      isInWorktree ? worktree.path : await mainRoot(host),
-      `/${command} ${args}`,
-      `${ACTION_LABELS[skill]} is typed into a new session for its worktree`
-    )
+  const here = async (): Promise<"started"> => {
+    const args = skillArgs(row.url, { ...work.base, worktree: worktree.path, deps, note: work.note })
+    await runSkill(host, session, command, args, row.number)
 
-    return
+    return "started"
   }
-  const args = skillArgs(row.url, { ...work.base, worktree: worktree.path, deps, note: work.note })
-  await runSkill(host, session, command, args, row.number)
+  if (!newSession) {
+    return here()
+  }
+  // A session opened in the worktree works there from the start; one opened elsewhere is told the worktree to enter.
+  const isInWorktree = canOpenInWorktree(newSession)
+  const worktreeArg = isInWorktree ? undefined : worktree.path
+  const args = skillArgs(row.url, { ...work.base, worktree: worktreeArg, deps, note: work.note })
 
-  return "started"
+  return typeIntoNewSession(host, session, {
+    mark: row.number,
+    app: newSession,
+    folder: isInWorktree ? worktree.path : await mainRoot(host),
+    prompt: `/${command} ${args}`,
+    typed: `${ACTION_LABELS[skill]} is typed into a new session for its worktree`,
+    here
+  })
 }
 
-// A session of the person's own opens in `folder` with the command typed in, for them to send. The command names the
-// pull request by its address, so the skill finds it wherever that session is.
+// A new session's work: what it marks, the app and folder it opens in, the command typed in, what the alert says once
+// it opened, and the same work in this session (`here`), for where its link can't be opened (`runsHereWhenUnopened`).
+type NewSessionWork = {
+  mark: Mark
+  app: SessionApp
+  folder: string
+  prompt: string
+  typed: string
+  here: () => Promise<"started">
+}
+
+// A session of the person's own opens with the command typed in, for them to send: in `folder`, where its link names
+// one. The command names the pull request by its address, so the skill finds it wherever that session is.
 async function typeIntoNewSession(
   host: SkillHost,
   session: Session,
-  mark: Mark,
-  surface: SessionSurface,
-  folder: string,
-  prompt: string,
-  typed: string
-): Promise<void> {
+  { mark, app, folder, prompt, typed, here }: NewSessionWork
+): Promise<"started" | void> {
   await host.setBusy(mark, "Opening A New Session…")
   try {
     const refusal = linkRefusal(prompt)
     if (refusal) {
       throw new Error(refusal)
     }
-    await openLink(host, newSessionLink(surface, folder, prompt))
+    await openLink(host, newSessionLink(app, folder, prompt))
   } catch (error) {
+    if (runsHereWhenUnopened(app)) {
+      const note = `${markName(mark)}: no new session opened (${messageOf(error)}), so it runs in this one`
+      await host.notify(note, session.settings.alertMs)
+
+      return here()
+    }
     const message = `could not open a new session (${messageOf(error)}); in ${folder}, type ${prompt} into one yourself`
     // A toast goes in seconds and may be cut to a line; the conversation keeps the command to copy.
     host.inConversation(`${markName(mark)}: ${message}`)
@@ -463,27 +490,31 @@ export async function createPull(host: SkillHost, session: Session, surface: str
     if (place.kind === "cancel") {
       return
     }
-    if (place.kind === "new" && canOpenSession(surface)) {
-      const folder = await host.cwd()
-      // The desktop app opens a session for a worktree at the repository's root, so it is told where the branch is.
-      const worktree = canOpenInWorktree(surface) ? undefined : folder
-      const args = createArgs({ branch: toOpen.branch, worktree, note: place.note })
-      await typeIntoNewSession(
-        host,
-        session,
-        CREATE_PR,
-        surface,
-        folder,
-        `/${CREATE_PR_COMMAND} ${args}`,
-        "its command is typed into a new session"
-      )
+    const here = async (): Promise<"started"> => {
+      await host.setBusy(CREATE_PR, "Starting Create PR…")
+      const args = createArgs({ branch: toOpen.branch, note: place.note })
+      await runSkill(host, session, CREATE_PR_COMMAND, args, CREATE_PR)
 
-      return
+      return "started"
     }
-    await host.setBusy(CREATE_PR, "Starting Create PR…")
-    await runSkill(host, session, CREATE_PR_COMMAND, createArgs({ branch: toOpen.branch, note: place.note }), CREATE_PR)
+    if (place.kind !== "new" || !canOpenSession(surface)) {
+      return here()
+    }
+    const app = await sessionAppFor(surface, host.editorScheme)
+    const folder = await host.cwd()
+    // The desktop app opens a session for a worktree at the repository's root, and VS Code at the window's folder, so
+    // either is told where the branch is.
+    const worktree = canOpenInWorktree(app) ? undefined : folder
+    const args = createArgs({ branch: toOpen.branch, worktree, note: place.note })
 
-    return "started"
+    return typeIntoNewSession(host, session, {
+      mark: CREATE_PR,
+      app,
+      folder,
+      prompt: `/${CREATE_PR_COMMAND} ${args}`,
+      typed: "its command is typed into a new session",
+      here
+    })
   })
 }
 

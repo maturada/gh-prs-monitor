@@ -36,7 +36,8 @@ function skillHostOf(list: PullsSnapshot | null, ref = "refs/heads/fix/menu") {
     inConversation: () => {},
     runCommand: async () => undefined,
     clearBusyIf: async () => undefined,
-    isCheckingMode: async () => true
+    isCheckingMode: async () => true,
+    editorScheme: async () => null
   }
 
   return { host, marks, calls: git.calls }

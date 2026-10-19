@@ -1,6 +1,6 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
   "author": {
     "name": "David Matura",
@@ -34,7 +34,7 @@
     "shareRefresh": {
       "type": "boolean",
       "title": "Share refreshes between sessions",
-      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval (the desktop app's sessions and the terminal's each among themselves); opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
+      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval (the desktop app's sessions among themselves, the terminal's and VS Code's among theirs); opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
       "default": true
     },
     "notify": {

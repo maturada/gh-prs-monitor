@@ -38,7 +38,9 @@ describe("background refresh", () => {
     await clock.settle()
 
     expect(seen.runs.filter((run) => run.startsWith("gh "))).toHaveLength(2)
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
     expect(seen.toasts).toEqual([])
 
     world.github = {
@@ -241,7 +243,9 @@ describe("a repository renamed or moved on GitHub", () => {
     await startSession($)
     await clock.settle()
     expect(searched()).toEqual(["acme/app", "acme/application"])
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
 
     await clock.advance(3 * MINUTE)
     expect(searched()).toEqual(["acme/app", "acme/application", "acme/application"])
@@ -924,6 +928,12 @@ describe("the pane's problem box", () => {
     // Retry's row adds no spacing of its own: the box's gap is the line before it.
     const retryRow = nodes.find((node) => node.type === "Box" && node.children?.includes(retry))
     expect(retryRow?.props ?? {}).toEqual({})
+
+    // VS Code draws the theme's warning as plain text: there the frame and the title are the theme's terminal yellow.
+    const editor = await mountPane($, "vscode")
+    expect((await problemBox(editor)).props).toMatchObject({ borderColor: "yellow" })
+    expect((await editor.find({ type: "Text", text: "⚠ Can't check pull requests" }))?.props.color).toBe("yellow")
+    await editor.unmount()
 
     // Retry once GitHub answers brings the list, and the box goes.
     world.repoViewFailure = undefined
@@ -2038,6 +2048,20 @@ describe("an app attached after the session starts", () => {
 
   test("alerts become notices in the conversation where the app draws no toasts", async ($, on) => {
     const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["mobile"] }
+    const seen = machine($, on, world)
+
+    await $.session.attach({ surface: "mobile", clientId: "mobile:default" })
+    await clock.settle()
+    world.github = { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, ci: "FAILURE" }, GITHUB.mine![1]!] }
+    await clock.advance(3 * MINUTE)
+
+    expect(seen.notices).toEqual(["✗ #1 Fix the menu — CI failed"])
+    expect(seen.toasts).toEqual([])
+  })
+
+  test("VS Code draws alerts as toasts above its prompt box, not as notices that stay in the conversation", async ($, on) => {
+    const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["vscode"] }
     const seen = machine($, on, world)
 
@@ -2046,8 +2070,8 @@ describe("an app attached after the session starts", () => {
     world.github = { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, ci: "FAILURE" }, GITHUB.mine![1]!] }
     await clock.advance(3 * MINUTE)
 
-    expect(seen.notices).toEqual(["✗ #1 Fix the menu — CI failed"])
-    expect(seen.toasts).toEqual([])
+    expect(seen.toasts).toEqual(["✗ #1 Fix the menu — CI failed"])
+    expect(seen.notices).toEqual([])
   })
 })
 
@@ -2491,3 +2515,76 @@ function endsLikeClear(
 function listLoads(seen: { runs: string[] }): number {
   return seen.runs.filter((run) => run.startsWith("gh api graphql") && run.includes("$mine")).length
 }
+
+describe("/prs over Remote Control", () => {
+  // A message from the phone comes once the session's start has settled.
+  test("from a phone, where no pane draws, prints the list, and opens the pane on the computer too", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(lines(ran.text)).toContain("**Your Pull Requests** (2)")
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  // The pane opens once the list is printed, on that list: its own load would take the look the list leads with.
+  test("the list from a phone leads with what changed since the last look, from one request", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: {
+        ...GITHUB,
+        mine: [{ ...GITHUB.mine![0]!, comments: { count: 1, lastAuthor: "ann" } }, GITHUB.mine![1]!]
+      },
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["terminal"],
+      store: { "look:github.com/acme/app": snapshotOf(GITHUB, { at: new Date(2026, 9, 6, 17, 40).getTime() }) }
+    }
+    const seen = machine($, on, world)
+    await clock.set(new Date(2026, 9, 7, 9, 0).getTime())
+    await startSession($)
+    await clock.settle()
+    const loads = seen.runs.filter((run) => run.startsWith("gh api graphql")).length
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(lines(ran.text)[1]).toBe("**Since You Last Looked** (yesterday 17:40)")
+    expect(lines(ran.text).some((line) => line.includes("✎ new comment from ann"))).toBe(true)
+    expect(seen.runs.filter((run) => run.startsWith("gh api graphql"))).toHaveLength(loads + 1)
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  test("from a phone that draws the pane, opens it", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal", "mobile"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(ran.text).toBe("Opened the pull requests pane.")
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  test("typed at the computer, opens the pane alone", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "composer" })
+    await clock.settle()
+
+    expect(ran.text).toBe("Opened the pull requests pane.")
+    expect(world.isPaneOpen).toBe(true)
+  })
+})

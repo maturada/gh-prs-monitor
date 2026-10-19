@@ -83,8 +83,8 @@ Where the pane holds the keyboard, as after a press in the terminal, it moves on
 step back: arrow keys or Tab, then Enter. Escape cancels, as the pane's close mark does then, and leaves the pane open
 with the keyboard back at the prompt. Should the question still show after that, as when Claude Code never answers the
 plugin's call to put it away, the next Escape or close closes the pane, and it opens again on the list; an answer given
-goes ahead all the same. Once answered, the list comes back scrolled as you left it, with the keyboard back on the
-button where the pane holds it.
+goes ahead all the same. Once answered, the list comes back scrolled as you left it (in VS Code, to the button you
+pressed), with the keyboard back on the button where the pane holds it.
 
 The question is never part of the conversation or a turn, so it never interrupts Claude, and one asked while you work
 with Claude stays out of the chat. One question at a time: a button pressed while one is open says so and leaves its row

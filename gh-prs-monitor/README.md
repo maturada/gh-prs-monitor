@@ -63,6 +63,10 @@ branch is on. [The pane](docs/pane.md)
 
 ![The compact pane, in a terminal and in the desktop app](assets/screenshots/compact.png)
 
+**`#` in the prompt** offers the pull requests listed, yours first: type `#` and the start of a number, or of a word
+in a title, and pick one to write its number. In the terminal: the desktop app and VS Code don't ask plugins for
+these yet.
+
 ### Alerts and the status line
 
 From the moment a session starts, it checks in the background every 3 minutes. An alert says when:
@@ -110,28 +114,36 @@ Dart, iOS, Python, Ruby, PHP and .NET), and the ignored files your `.worktreeinc
 pull request gets neither. Once the pull request is merged or closed, the worktree goes, when nothing in it would be
 lost. [Where the skills work](docs/working-on-a-branch.md)
 
-### In the desktop app too
+### In the desktop app
 
 The pane sits beside the conversation, with both lists side by side when there is room, and the count in a band above
-the prompt. In the VS Code extension, which doesn't draw what plugins add yet, `/prs` prints the list instead, led by
-what changed since you last looked. [Where each part shows](docs/pane.md#where-each-part-shows)
+the prompt. [Where each part shows](docs/pane.md#where-each-part-shows)
 
 ![The /prs pane in the Claude desktop app, both lists side by side, and the summary band above the prompt](assets/screenshots/desktop.png)
 
+### In VS Code
+
+In VS Code, and editors built on it such as Cursor, the Claude Code extension (2.1.299 or later) draws the pane, its
+alerts and the count above the prompt box, and New session opens a new tab of the editor. Where nothing draws what
+plugins add, as in an older extension, `/prs` prints the list instead, led by what changed since you last looked.
+[Where each part shows](docs/pane.md#where-each-part-shows)
+
+![The /prs pane in VS Code, each pull request a card with its buttons, and a button's question in place of the list](assets/screenshots/vscode.png)
+
 ### Light on tokens and rate limits
 
-The pane, the checks, the alerts and the status line make no model requests; a skill does once you start it. The
-skills stay out of the model's context until one runs; the plugin's one tool, `create_pr_choices`, adds its
-description, a few hundred tokens, or only its name where Claude Code defers tools. Each check is one GitHub request of
-5 rate-limit points, which your sessions in a repository share: every 3 minutes, that is 2% of the 5,000 points an hour
-your account gets, for each repository and each app (the terminal's sessions and the desktop app's share among
-themselves). [Cost](docs/settings.md#cost)
+The pane, the checks, the alerts and the status line make no model requests; a skill does once you start it. The skills
+stay out of the model's context until one runs; the plugin's one tool, `create_pr_choices`, adds its description, a few
+hundred tokens, or only its name where Claude Code defers tools. Each check is one GitHub request of 5 rate-limit
+points, which your sessions in a repository share: every 3 minutes, that is 2% of the 5,000 points an hour your account
+gets, for each repository and each app (the desktop app's sessions share among themselves, the terminal's and VS Code's
+among theirs). [Cost](docs/settings.md#cost)
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/prs` | Opens the pane. Esc closes it. |
+| `/prs` | Opens the pane. Esc closes it. Sent over Remote Control, from your phone or claude.ai, it also prints the list there. |
 | `/prs demo` | Shows example pull requests, one of each status, with their alerts. Nothing is sent to GitHub. |
 | `/prs close` | Closes the pane, for when a click does nothing. |
 | `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
@@ -148,7 +160,10 @@ it; **Cancel** (or Esc, in the terminal) leaves it.
 
 ## Requirements
 
-- **Claude Code 2.1.293 or later**: tested on 2.1.295, 2.1.296 and 2.1.299 to 2.1.302, and the desktop app's 2.1.293.
+- **Claude Code 2.1.293 or later**: tested on 2.1.295, 2.1.296 and 2.1.299 to 2.1.303, the desktop app's 2.1.293, and
+  the VS Code extension's 2.1.303.
+  In VS Code and editors built on it, the pane needs the Claude Code extension 2.1.299 or later, in a session that
+  [fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching).
 - **The [GitHub CLI](https://cli.github.com) (`gh`) 2.53 or later**, signed in with `gh auth login`. The plugin works
   through your `gh` account and has no token of its own, so it sees what you can see. **Update Branch** needs
   `gh pr update-branch`, which came with 2.53. Tested with `gh` 2.97.
@@ -201,8 +216,9 @@ credential to sign in with: it works through your own `gh` and `git`, and Claude
   `git branch -D`). A new worktree whose checkout fails goes at once, and git's entry for one whose folder you deleted
   goes when that pull request's worktree is next needed. The plugin also reads `pubspec.yaml`, `yarn.lock` and
   `.yarnrc.yml` to pick an install, an Android `local.properties` in a worktree before removing it, to tell one the
-  tools wrote from one holding keys of yours, and its own `plugin.json` for `/prs report`. None of what it reads is sent
-  anywhere, besides the version and repository `/prs report` prints.
+  tools wrote from one holding keys of yours, its own `plugin.json` for `/prs report`, and in VS Code the editor's
+  `product.json` for the scheme of its links (**New session**, below). None of what it reads is sent anywhere, besides
+  the version and repository `/prs report` prints.
 - **Settings.** The only settings the plugin changes are git's: a `/.claude/worktrees/` line goes in the clone's
   `.git/info/exclude` when nothing ignores that folder yet, and a pull request's branch it checks out, here or in a
   worktree, gets its upstream in the clone's git config where it has none, as `gh pr checkout` sets it. A branch that
@@ -222,12 +238,16 @@ credential to sign in with: it works through your own `gh` and `git`, and Claude
   for it go on, and to see a skill's turn end; and the skills' commands above, to mark the row a skill works on. It
   passes each of these on unchanged, and reads none of the conversation, only a skill command's arguments, which name
   its pull request. For half an hour after a skill starts, a turn's end can start a check of the list, at most every
-  half minute; nothing of the turn goes into it. Besides, it answers `/prs` and its own tool, draws its pane and, in the
-  desktop app, the band above the prompt, follows the pane's scrolling and focus, and keeps the pane open when you close
-  it while it asks a question, cancelling the question instead.
+  half minute; nothing of the turn goes into it. Besides, it answers `/prs`, printing the list too where it came over
+  Remote Control, and its own tool, offers pull requests for a word in the prompt that starts with `#`, reading that
+  word alone, draws its pane and, in the desktop app, the band above the prompt, follows the pane's scrolling and focus,
+  and keeps the pane open when you close it while it asks a question, cancelling the question instead.
 - **New session** opens a Claude Code session through Claude Code's own link, with `open`, `xdg-open` or `rundll32`
-  (after `uname`, and `reg query` on Windows, tell which). `/prs report` runs `uname -sr`, on macOS `sw_vers`,
-  `gh --version` and `git --version` for the versions it fills in.
+  (after `uname`, and `reg query` on Windows, tell which). In VS Code it is the extension's link, in the scheme the
+  editor answers on (`vscode`, `cursor`, …): the editor's folder comes from `VSCODE_NLS_CONFIG`, the one environment
+  variable the plugin reads, and the scheme from that folder's `product.json`, else VS Code's is tried; where the link
+  doesn't open, the skill runs in this session. `/prs report` runs `uname -sr`, on macOS `sw_vers`, `gh --version` and
+  `git --version` for the versions it fills in.
 - **Sound and images.** The plugin's `sounds/alert.wav` is the alert sound: with **Alert sound** on (it is off by
   default), Claude Code plays it with `afplay` on macOS, and elsewhere plays nothing. Its `assets/` folder holds this
   page's images and the icon `plugin.json` names for the plugin's listing. Neither holds code.

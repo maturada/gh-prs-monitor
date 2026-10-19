@@ -155,6 +155,55 @@ describe("pressing Create PR", () => {
     expect(seen.runs).toContain(`open claude://code/new?folder=%2Frepo&q=${encodeURIComponent(typed)}`)
   })
 
+  test("New session from VS Code names the folder too, as its editor opens the tab at the window's folder", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "feature/export",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      editor: { scheme: "cursor" },
+      answer: "New session"
+    }
+    const seen = machine($, on, world, clock)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+
+    const ui = await mountPane($, "vscode")
+    await ui.press(CREATE)
+    await settleAll(clock, seen, () => seen.runs.some((run) => run.startsWith("open ")))
+
+    const typed = '/gh-prs-monitor:create-pr --branch "feature/export" --worktree "/repo"'
+    expect(seen.runs).toContain(`open cursor://anthropic.claude-code/open?prompt=${encodeURIComponent(typed)}`)
+  })
+
+  test("New session from VS Code whose link won't open creates it in this session instead", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "feature/export",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      answer: "New session",
+      openFailure: "LSOpenURLsWithRole() failed with error -10814"
+    }
+    const seen = machine($, on, world, clock)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+
+    const ui = await mountPane($, "vscode")
+    await ui.press(CREATE)
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    const typed = '/gh-prs-monitor:create-pr --branch "feature/export" --worktree "/repo"'
+    expect(seen.runs).toContain(`open vscode://anthropic.claude-code/open?prompt=${encodeURIComponent(typed)}`)
+    // This session works in this folder already, so its command names none.
+    expect(seen.commands).toEqual(['/gh-prs-monitor:create-pr --branch "feature/export"'])
+    expect(seen.toasts).toEqual([
+      "Create PR: no new session opened (LSOpenURLsWithRole() failed with error -10814), so it runs in this one"
+    ])
+  })
+
   test("where no new session can be opened, it starts here without asking", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "feature/export", uncommitted: 0 }
@@ -162,7 +211,7 @@ describe("pressing Create PR", () => {
     await startSession($)
     await clock.settle()
 
-    const ui = await mountPane($, "vscode")
+    const ui = await mountPane($, "mobile")
     await ui.press(CREATE)
     await settleAll(clock, seen, () => seen.commands.length > 0)
 

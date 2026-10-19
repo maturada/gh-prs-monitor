@@ -93,5 +93,8 @@ export function summaryParts(counts: SummaryCounts, length: "short" | "long"): S
 export function summaryText(counts: SummaryCounts): string | undefined {
   const parts = summaryParts(counts, "short").map((part) => `${markText(part)} ${part.label}`)
 
-  return parts.length > 0 ? `PRs ${parts.join("  ")}  (/prs)` : undefined
+  return parts.length > 0 ? `PRs ${parts.join(COUNT_GAP)}${COUNT_GAP}(/prs)` : undefined
 }
+
+// Two no-break spaces between the counts: VS Code draws the line as a web page does, folding plain spaces into one.
+const COUNT_GAP = "\u00a0\u00a0"

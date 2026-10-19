@@ -23,7 +23,16 @@ import {
   GITHUB
 } from "./testing/world"
 import type { World, Drawn } from "./testing/world"
-import type { On } from "claude-code"
+import type { On, RenderSurface } from "claude-code"
+
+// Written out per surface rather than read from layout.ts, so a change there shows here as the drawing it changes.
+// The space down between framed buttons and what is above them, or their wrapped rows (`buttonsApart`).
+const BUTTONS_APART: Readonly<Record<RenderSurface, number>> = {
+  terminal: 0,
+  desktop: 1,
+  vscode: 0.25,
+  mobile: 1
+}
 
 describe("the pane", () => {
   test("the pane lists both groups with their status on every surface", async ($, on) => {
@@ -49,22 +58,37 @@ describe("the pane", () => {
       expect(counts.map((node) => node.children?.[0])).toEqual(["1", "1", "1"])
       expect((await ui.find({ key: "panel-mine" }))?.props.borderStyle).toBe("round")
       expect((await ui.find({ key: "panel-review" }))?.props.borderStyle).toBe("round")
+      // VS Code draws a frame flush on what it holds, where buttons at its edge would touch it.
+      for (const frame of ["header", "panel-mine", "card-1"]) {
+        expect((await ui.find({ key: frame }))?.props.paddingY).toBe(surface === "vscode" ? 0.25 : undefined)
+      }
       // A rule under each title and between rows, as in a table, none above the first row; an app spaces them
       // apart instead.
       const titleRule = await ui.find({ key: "rule-title" })
       expect(surface === "terminal" ? titleRule?.props.height : titleRule?.props.marginTop).toBe(1)
       // There each pull request is a card of its own instead.
       expect((await ui.find({ key: "card-1" }))?.props.borderStyle).toBe(surface === "terminal" ? undefined : "round")
-      // An app's buttons are taller than a line of text, so they keep a line's space from the facts above.
-      expect((await ui.find({ key: "actions" }))?.props.marginTop).toBe(surface === "terminal" ? undefined : 1)
+      // Framed buttons keep their frames off the facts above; the terminal's are text a line high.
+      expect((await ui.find({ key: "actions" }))?.props.marginTop).toBe(BUTTONS_APART[surface] || undefined)
+      // VS Code wraps a row unless told not to: there the number and the title say so, and the title wraps beside it.
+      const titleLine = drawnNodes(await ui.find({ key: "pr-1" })).find(
+        (node) => node.type === "Box" && node.props?.gap === 1
+      )
+      expect(wordsIn(drawnNodes(titleLine))).toContain("Fix the menu")
+      expect(titleLine?.props?.flexWrap).toBe(surface === "vscode" ? "nowrap" : undefined)
+      expect((titleLine?.children?.[0] as Drawn | undefined)?.props?.flexWrap).toBe(
+        surface === "vscode" ? "nowrap" : undefined
+      )
       expect(await ui.find({ key: "rule-2" })).toBeDefined()
       expect(await ui.find({ key: "rule-1" })).toBeUndefined()
+      // VS Code draws the theme's warning as plain text, so there it is the theme's terminal yellow.
+      const warning = surface === "vscode" ? "yellow" : "warning"
       const changes = await ui.find({ type: "Text", text: "❗ Changes Requested" })
-      expect(changes?.props).toMatchObject({ color: "warning", bold: true })
+      expect(changes?.props).toMatchObject({ color: warning, bold: true })
       expect(changes?.props.backgroundColor).toBe(undefined)
       expect((await ui.find({ type: "Text", text: "✅ Ready To Merge" }))?.props.color).toBe("success")
       expect((await ui.find({ type: "Text", text: "✅ Ready To Merge" }))?.props.dimColor).toBe(undefined)
-      expect((await ui.find({ type: "Text", text: "🔍 Review Requested" }))?.props.color).toBe("warning")
+      expect((await ui.find({ type: "Text", text: "🔍 Review Requested" }))?.props.color).toBe(warning)
       expect(await ui.findAll({ type: "Text", text: /[▐▌\u{E0B6}\u{E0B4}]/u })).toEqual([])
       expect(await ui.find({ type: "Link", text: "#1" })).toBeDefined()
       expect(await ui.find({ key: "resolve-1" })).toBeDefined()
@@ -155,6 +179,13 @@ describe("the pane", () => {
     ])
     expect((await ui.find({ type: "Text", text: /^●$/ }))?.props.color).toBe("warning")
     expect((await ui.find({ type: "Text", text: /^✗$/ }))?.props.color).toBe("error")
+    await ui.unmount()
+
+    // VS Code draws the theme's warning as plain text: there a running check is the theme's terminal yellow.
+    const editor = await mountPane($, "vscode")
+    expect((await editor.find({ type: "Text", text: /^✓$/ }))?.props.color).toBe("success")
+    expect((await editor.find({ type: "Text", text: /^●$/ }))?.props.color).toBe("yellow")
+    expect((await editor.find({ type: "Text", text: /^✗$/ }))?.props.color).toBe("error")
   })
 
   test("the header links the repository, counts like the status line, and r refreshes", async ($, on) => {
@@ -190,7 +221,7 @@ describe("the pane", () => {
     }
   })
 
-  test("buttons sit a cell apart; their rows wrap one under the other in the terminal, a line apart in an app", async ($, on) => {
+  test("buttons sit a cell apart, and their wrapped rows keep their frames apart: none in the terminal, a quarter of a line in VS Code", async ($, on) => {
     const clock = clockOf(on)
     machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
     await startSession($)
@@ -198,7 +229,7 @@ describe("the pane", () => {
 
     for (const surface of SURFACES) {
       const ui = await mountPane($, surface)
-      const gaps = { columnGap: 1, rowGap: surface === "terminal" ? 0 : 1 }
+      const gaps = { columnGap: 1, rowGap: BUTTONS_APART[surface] }
 
       expect((await ui.find({ key: "actions" }))?.props).toMatchObject({ ...gaps, flexWrap: "wrap" })
       expect((await ui.find({ key: "header-buttons" }))?.props).toMatchObject({ ...gaps, flexWrap: "wrap" })
@@ -691,7 +722,7 @@ describe("the pane", () => {
     expect(await indentAt("desktop", 30)).toBe(6)
   })
 
-  test("the header keeps its shape while refreshing, and spaces its buttons under the name in an app", async ($, on) => {
+  test("the header keeps its shape while refreshing, and spaces its buttons under the name where a surface spaces by steps", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: { mine: [GITHUB.mine![1]!] }, branch: "main", uncommitted: 0 }
     machine($, on, world, clock)
@@ -711,6 +742,12 @@ describe("the pane", () => {
 
     const app = await mountPane($, "desktop", 41)
     expect((await app.find({ key: "header-buttons" }))?.props.marginTop).toBe(1)
+    await app.unmount()
+
+    // VS Code spaces by rows, as the terminal does: a margin there would be a blank line.
+    const editor = await mountPane($, "vscode", 41)
+    expect((await editor.find({ key: "header" }))?.props.flexDirection).toBe("column")
+    expect((await editor.find({ key: "header-buttons" }))?.props.marginTop).toBe(undefined)
   })
 
   test(

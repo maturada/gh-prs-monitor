@@ -36,10 +36,10 @@ export type BranchPlace =
 export type CheckoutState = { uncommitted: number; isDetached: boolean; isOnBranch: boolean }
 
 // From the nearest to the furthest away: this checkout, a worktree in this session, then one in a new session where
-// the surface pressed on can open one (the terminal and the desktop app). Asked even on the pull request's branch,
-// as another session may be working in this checkout, where working here needs no switch. Elsewhere switching here
-// is offered whatever the checkout holds; the question says what it would cost, and a switch that would overwrite a
-// change, or a file git ignores, stops (`switchHere`).
+// the surface pressed on can open one (`canOpenSession`). Asked even on the pull request's branch, as another session
+// may be working in this checkout, where working here needs no switch. Elsewhere switching here is offered whatever
+// the checkout holds; the question says what it would cost, and a switch that would overwrite a change, or a file git
+// ignores, stops (`switchHere`).
 export function placeChoices(canOpenSession: boolean, isOnBranch: boolean): string[] {
   const here = isOnBranch ? CHOICES.hereOnBranch : CHOICES.here
 

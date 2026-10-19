@@ -20,8 +20,8 @@ it the button comes a moment after the list; while GitHub can't be asked, it wai
 requests open at all, both lists still show, for the button.
 
 Typed, it is `/gh-prs-monitor:create-pr [-- <instructions>]`, for the branch checked out. The pane adds
-`--branch "<name>"`, the branch it offered, and, where the new session may open at the repository's root (the desktop
-app), `--worktree "<path>"`, the folder that branch is checked out in.
+`--branch "<name>"`, the branch it offered, and, where the new session may open in another folder (the desktop app at
+the repository's root, VS Code at the window's folder), `--worktree "<path>"`, the folder that branch is checked out in.
 
 **Create PR** asks where to create it, as [Review](review.md) does, naming the branch and the one it goes into:
 
@@ -29,7 +29,8 @@ app), `--worktree "<path>"`, the folder that branch is checked out in.
   skill starts once the turn ends.
 - **New session** — a new Claude Code session opens in this folder with the command typed in, for you to send. From
   the desktop app it also names the folder the branch is checked out in, as the app opens a new session at the
-  repository's root, from where the skill goes to that folder.
+  repository's root, from where the skill goes to that folder; from VS Code too, as its new tab opens at the window's
+  folder. Where VS Code's link doesn't open, it runs in this session instead, as [Review](review.md)'s does.
 
 The pull request goes into the repository's default branch, unless your instructions name another ("into develop").
 Instructions typed in the dialog's field go with either answer, or Enter sends them alone to this session: "as a draft",

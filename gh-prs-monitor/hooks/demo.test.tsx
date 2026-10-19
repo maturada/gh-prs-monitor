@@ -14,11 +14,13 @@ import {
   wordsIn,
   GITHUB,
   settleUntil,
-  pressDrawn
+  pressDrawn,
+  lines,
+  SURFACES
 } from "./testing/world"
 import type { On } from "claude-code"
 import type { Engine, MockClock } from "claude-code/testing"
-import type { World } from "./testing/world"
+import type { Drawn, World } from "./testing/world"
 
 // The person leaves the examples with their Refresh; closing the pane ends them too, but the kit raises no close by
 // the person.
@@ -39,6 +41,36 @@ describe("/prs demo", () => {
     )
   })
 
+  test("sent from a phone, where no pane draws, demo prints the example list there and shows the examples on the computer", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "demo", { kind: "bridge" })
+
+    expect(lines(ran.text)[0]).toBe(
+      "Remote Control shows no pane, so /prs prints the list here, while the pane, its alerts and summary show on " +
+        "the computer. With example pull requests:"
+    )
+    expect(lines(ran.text)).toContain("**Your Pull Requests** (14)")
+    expect(world.isPaneOpen).toBe(true)
+    await leaveExamples($, clock)
+  })
+
+  test("sent from a phone that draws the pane, demo shows the examples there", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal", "mobile"] })
+    await startSession($)
+    await clock.settle()
+
+    expect((await runPrs($, "demo", { kind: "bridge" })).text).toBe(
+      "Showing example pull requests, their alerts and summary until you close the pane."
+    )
+    await leaveExamples($, clock)
+  })
+
   test("demo shows the examples' alerts one at a time, and their summary until they are left", async ($, on) => {
     const clock = clockOf(on)
     const seen = machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
@@ -47,7 +79,9 @@ describe("/prs demo", () => {
 
     expect(ran.text).toBe("Showing example pull requests, their alerts and summary until you close the pane.")
     expect(seen.toasts).toEqual([DEMO_ALERTS[0]])
-    expect(seen.statuses).toEqual(["PRs ✅ 1 Ready  ❗ 6 Need You  🔍 4 To Review  (/prs)"])
+    expect(seen.statuses).toEqual([
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)"
+    ])
 
     // One at a time, so each is the newest on the stack while it shows, all before the examples go.
     await clock.advance(1_500)
@@ -68,7 +102,9 @@ describe("/prs demo", () => {
     ])
 
     await clock.advance(10 * MINUTE)
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 6 Need You  🔍 4 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)"
+    )
   })
 
   test("after the demo the real summary comes back", async ($, on) => {
@@ -79,10 +115,12 @@ describe("/prs demo", () => {
     const real = seen.statuses.at(-1)
 
     await runPrs($, "demo")
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 6 Need You  🔍 4 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)"
+    )
 
     await leaveExamples($, clock)
-    expect(real).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(real).toBe("PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)")
     expect(seen.statuses.at(-1)).toBe(real)
   })
 
@@ -95,7 +133,10 @@ describe("/prs demo", () => {
     await runPrs($, "demo")
     await leaveExamples($, clock)
 
-    expect(seen.statuses).toEqual(["PRs ✅ 1 Ready  ❗ 6 Need You  🔍 4 To Review  (/prs)", undefined])
+    expect(seen.statuses).toEqual([
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)",
+      undefined
+    ])
   })
 })
 
@@ -114,6 +155,15 @@ describe("the demo pane", () => {
     expect(wordsIn(drawnNodes(await ui.find({ key: "ended-1230" })))).toMatch(
       /^✓ #1230 PDF export — merged by a-teammate, #1242 is next in stack #30 \d+m ago ✕$/
     )
+    // VS Code wraps a row unless told not to: the note keeps its mark and number beside its words.
+    for (const surface of SURFACES.filter((other) => other !== "terminal")) {
+      const drawn = await mountPane($, surface)
+      const ended = await drawn.find({ key: "ended-1230" })
+      const nowrap = surface === "vscode" ? "nowrap" : undefined
+      expect(ended?.props.flexWrap).toBe(nowrap)
+      expect((ended?.children?.[0] as Drawn | undefined)?.props?.flexWrap).toBe(nowrap)
+      await drawn.unmount()
+    }
     for (const status of [
       "❗ CI Failing",
       "❗ Conflicts",
@@ -237,7 +287,7 @@ describe("the demo pane", () => {
     await startSession($)
     await clock.settle()
     await runPrs($, "demo")
-    const ui = await mountPane($, "vscode")
+    const ui = await mountPane($, "mobile")
     const reviewKey = drawnNodes(await ui.drawn())
       .map((node) => String(node.props?.key ?? ""))
       .find((key) => key.startsWith("review-"))!
@@ -254,6 +304,30 @@ describe("the demo pane", () => {
         demoStartNote("feature/export-csv", "Create PR")
       ])
     )
+    expect(seen.commands).toEqual([])
+  })
+
+  test("in VS Code, an example's Review and Create PR ask where, as the real ones", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["vscode"], answer: "Cancel" }
+    const seen = machine($, on, world, clock)
+    await startSession($)
+    await clock.settle()
+    await runPrs($, "demo")
+    const ui = await mountPane($, "vscode")
+    const reviewKey = drawnNodes(await ui.drawn())
+      .map((node) => String(node.props?.key ?? ""))
+      .find((key) => key.startsWith("review-"))!
+
+    await ui.press({ key: reviewKey })
+    await clock.settle()
+    expect(world.header).toBe("Review PR")
+    expect(world.choices).toEqual(["This session", "New session", "Cancel"])
+    await pressDrawn(clock, ui, "create-pr")
+    await clock.settle()
+
+    expect(world.asked).toBe(2)
+    expect(world.choices).toEqual(["This session", "New session", "Cancel"])
     expect(seen.commands).toEqual([])
   })
 
@@ -359,7 +433,9 @@ describe("leaving the demo", () => {
 
     const pane = await mountPane($, "terminal")
     expect(await pane.find({ type: "Text", text: "Fix the menu" })).toBeDefined()
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
   })
 
   test(
@@ -403,10 +479,14 @@ describe("leaving the demo", () => {
     await clock.advance(3 * MINUTE - 5_000)
     await runPrs($, "demo")
     await clock.advance(10_000)
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 6 Need You  🔍 4 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)"
+    )
 
     await leaveExamples($, clock)
-    expect(seen.statuses.at(-1)).toBe("PRs ✅ 1 Ready  ❗ 1 Needs You  🔍 1 To Review  (/prs)")
+    expect(seen.statuses.at(-1)).toBe(
+      "PRs ✅ 1 Ready\u00a0\u00a0❗ 1 Needs You\u00a0\u00a0🔍 1 To Review\u00a0\u00a0(/prs)"
+    )
   })
 
   test("a refresh behind the examples does not count the real list as seen", async ($, on) => {

@@ -61,6 +61,9 @@ export type Session = {
   // putting back there, or null while none is.
   listOffset: number
   goingBack: GoingBack | null
+  // The scheme of the editor the VS Code extension runs in (`editorScheme`), read the first time New session is pressed
+  // there: neither the editor nor its files change while the module runs.
+  editorScheme: Promise<string | null> | null
 }
 
 // A question's close putting the pane's window back on the row it showed first over the list (`backToRow`), which the
@@ -203,7 +206,8 @@ export function createSession(settings: Settings): Session {
     asking: null,
     questionCount: 0,
     listOffset: 0,
-    goingBack: null
+    goingBack: null,
+    editorScheme: null
   }
 }
 

@@ -8,7 +8,16 @@ import { describeGhFailure, failureLine, firstLine, GH_MISSING, ghRunFailure, la
 import { pullNumberOf, pullRefIn } from "./args"
 import { createArgs } from "./create-flow"
 import { mainRootOf, parseWorktreeList, prNumberOf, worktreePath } from "./worktrees"
-import { canOpenInWorktree, canOpenSession, linkRefusal, newSessionLink, openLink } from "./new-session"
+import {
+  canOpenInWorktree,
+  canOpenSession,
+  editorScheme,
+  linkRefusal,
+  newSessionLink,
+  openLink,
+  runsHereWhenUnopened,
+  sessionAppFor
+} from "./new-session"
 import { reviewArgs, reviewDetail, reviewPlaceQuestion } from "./review-flow"
 import { stableButtons } from "./stable-buttons"
 import { answerChoices, choicesKey, readChoices } from "./create-choices"
@@ -517,24 +526,109 @@ describe("a new session", () => {
     return { host, runs }
   }
 
-  test("only the terminal and the desktop app can open one", () => {
-    expect(["terminal", "desktop", "vscode", "mobile"].filter(canOpenSession)).toEqual(["terminal", "desktop"])
+  test("the terminal, the desktop app and VS Code can open one; the phone app can't", () => {
+    expect(["terminal", "desktop", "vscode", "mobile"].filter(canOpenSession)).toEqual([
+      "terminal",
+      "desktop",
+      "vscode"
+    ])
+  })
+
+  test("VS Code's opens by its editor's scheme, or else VS Code's; the scheme is read for VS Code alone", async () => {
+    let reads = 0
+    const scheme = async () => {
+      reads++
+
+      return "cursor"
+    }
+    const none = async () => null
+
+    expect(await sessionAppFor("terminal", scheme)).toEqual({ surface: "terminal" })
+    expect(await sessionAppFor("desktop", scheme)).toEqual({ surface: "desktop" })
+    expect(reads).toBe(0)
+    expect(await sessionAppFor("vscode", scheme)).toEqual({ surface: "vscode", scheme: "cursor" })
+    expect(reads).toBe(1)
+    expect(await sessionAppFor("vscode", none)).toEqual({ surface: "vscode", scheme: "vscode" })
+  })
+
+  test("only VS Code, whose scheme may be a guess, goes on in this session where its link can't be opened", () => {
+    expect(runsHereWhenUnopened({ surface: "vscode", scheme: "vscode" })).toBe(true)
+    expect(runsHereWhenUnopened({ surface: "terminal" })).toBe(false)
+    expect(runsHereWhenUnopened({ surface: "desktop" })).toBe(false)
   })
 
   test("only the terminal opens one inside a worktree's folder", () => {
-    expect(canOpenInWorktree("terminal")).toBe(true)
-    expect(canOpenInWorktree("desktop")).toBe(false)
+    expect(canOpenInWorktree({ surface: "terminal" })).toBe(true)
+    expect(canOpenInWorktree({ surface: "desktop" })).toBe(false)
+    expect(canOpenInWorktree({ surface: "vscode", scheme: "vscode" })).toBe(false)
   })
 
-  test("the link names the folder and the prompt, encoded, for the terminal or the desktop app", () => {
+  test("the link names the folder and the prompt, encoded; VS Code's, by its editor's scheme, the prompt alone", () => {
     const encoded =
       "%2Fgh-prs-monitor%3Areview%20https%3A%2F%2Fgithub.com%2Facme%2Fapp%2Fpull%2F7%20--%20a%20%26%20b%3F"
-    expect(newSessionLink("terminal", "/Users/me/My Repos/app", PROMPT)).toBe(
+    expect(newSessionLink({ surface: "terminal" }, "/Users/me/My Repos/app", PROMPT)).toBe(
       `claude-cli://open?cwd=%2FUsers%2Fme%2FMy%20Repos%2Fapp&q=${encoded}`
     )
-    expect(newSessionLink("desktop", "/Users/me/My Repos/app", PROMPT)).toBe(
+    expect(newSessionLink({ surface: "desktop" }, "/Users/me/My Repos/app", PROMPT)).toBe(
       `claude://code/new?folder=%2FUsers%2Fme%2FMy%20Repos%2Fapp&q=${encoded}`
     )
+    expect(newSessionLink({ surface: "vscode", scheme: "cursor" }, "/Users/me/My Repos/app", PROMPT)).toBe(
+      `cursor://anthropic.claude-code/open?prompt=${encoded}`
+    )
+  })
+
+  describe("the editor's scheme", () => {
+    // `VSCODE_NLS_CONFIG` as an editor's extension host is handed it, and a machine whose files answer by path.
+    const config = (messages: unknown) => JSON.stringify({ locale: "en", defaultMessagesFile: messages })
+    function filesHost(files: Record<string, string>) {
+      const reads: string[] = []
+      const host = {
+        read: async (path: string) => {
+          reads.push(path)
+          const content = files[path]
+          if (content === undefined) {
+            throw new Error(`ENOENT: no such file or directory, open '${path}'`)
+          }
+
+          return content
+        }
+      }
+
+      return { host, reads }
+    }
+
+    test("is the urlProtocol of the product file in the app folder the messages file lies in", async () => {
+      const cursor = filesHost({
+        "/Applications/Cursor.app/Contents/Resources/app/product.json": JSON.stringify({ urlProtocol: "cursor" })
+      })
+      expect(
+        await editorScheme(cursor.host, config("/Applications/Cursor.app/Contents/Resources/app/out/nls.messages.json"))
+      ).toBe("cursor")
+      expect(cursor.reads).toEqual(["/Applications/Cursor.app/Contents/Resources/app/product.json"])
+
+      // On Windows, by its own separator.
+      const app = "C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code Insiders\\resources\\app"
+      const insiders = filesHost({ [`${app}\\product.json`]: JSON.stringify({ urlProtocol: "vscode-insiders" }) })
+      expect(await editorScheme(insiders.host, config(`${app}\\out\\nls.messages.json`))).toBe("vscode-insiders")
+    })
+
+    test("is none where the variable, its messages file, the product file or its scheme reads otherwise", async () => {
+      const product = "/opt/editor/resources/app/product.json"
+      const messages = config("/opt/editor/resources/app/out/nls.messages.json")
+      const answering = (urlProtocol: unknown) => filesHost({ [product]: JSON.stringify({ urlProtocol }) }).host
+
+      expect(await editorScheme(answering("vscode"), undefined)).toBeNull()
+      expect(await editorScheme(answering("vscode"), "not json")).toBeNull()
+      expect(await editorScheme(answering("vscode"), JSON.stringify({ locale: "en" }))).toBeNull()
+      expect(await editorScheme(answering("vscode"), config(42))).toBeNull()
+      expect(await editorScheme(answering("vscode"), config("/opt/editor/resources/app/nls.messages.json"))).toBeNull()
+      expect(await editorScheme(filesHost({}).host, messages)).toBeNull()
+      expect(await editorScheme(filesHost({ [product]: "{" }).host, messages)).toBeNull()
+      expect(await editorScheme(answering(undefined), messages)).toBeNull()
+      expect(await editorScheme(answering("not a scheme://"), messages)).toBeNull()
+      expect(await editorScheme(answering(""), messages)).toBeNull()
+      expect(await editorScheme(answering("vscode"), messages)).toBe("vscode")
+    })
   })
 
   test("a prompt Claude Code's handler would turn away: over 5,000 characters, or with a control character", () => {
@@ -765,6 +859,13 @@ describe("putting the pane's window back after a question", () => {
     // No pause after the last try.
     expect(calls.filter((call) => call === PAUSE)).toHaveLength(BACK_TO_ROW_TRIES - 1)
     expect(calls.slice(-3)).toEqual([`scroll ${PRESSED} center`, "end", `focus ${PRESSED}`])
+  })
+
+  test("where no mark is drawn (a surface that can't place one), the window goes to the button pressed at once", async () => {
+    const { host, calls } = backHost([])
+    await goBack(host, null, PRESSED)
+
+    expect(calls).toEqual([`scroll ${PRESSED} center`, "end", `focus ${PRESSED}`])
   })
 
   test("a fallback or a focus the engine refuses ends it all the same", async () => {

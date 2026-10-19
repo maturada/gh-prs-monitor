@@ -3,7 +3,7 @@
 // The machine the hooks module's tests run against: gh, git and the system answer from a world each test sets up,
 // and the engine's own nouns are mocked through the test kit. Shared by the *.test.tsx files beside this folder.
 
-import type { On, ProcessRunResult, RenderSurface } from "claude-code"
+import type { On, ProcessRunResult, PromptOrigin, RenderSurface } from "claude-code"
 import { mock } from "claude-code/testing"
 import type { Engine, MockClock, MockClockOptions, Mounted } from "claude-code/testing"
 
@@ -18,6 +18,11 @@ import type { StoreWorld } from "./memory-store"
 export const PLUGIN = "gh-prs-monitor"
 export const SURFACES: readonly RenderSurface[] = ["terminal", "desktop", "vscode", "mobile"]
 export { MINUTE }
+
+// An editor's app folder, as its extension host's messages file and product file lie in it.
+const EDITOR_APP = "/Applications/Editor.app/Contents/Resources/app"
+const EDITOR_MESSAGES = `${EDITOR_APP}/out/nls.messages.json`
+const EDITOR_PRODUCT = `${EDITOR_APP}/product.json`
 
 export type World = StoreWorld & {
   // What the next GraphQL query answers; swapped by a test to move GitHub on.
@@ -70,6 +75,10 @@ export type World = StoreWorld & {
   system?: string
   // What the system's link opener says when it cannot open a link.
   openFailure?: string
+  // The editor the VS Code extension runs in, where a test stands for one: the scheme its product file names, found
+  // through the messages file its extension host is handed (`editorScheme`), and how often that file was read. None
+  // unless given.
+  editor?: { scheme: string; reads?: number }
   // How pull requests that left the lists ended, and their last commit (`head-<n>` unless given).
   // Each with the branch it came from: by default the one its /prs worktree holds.
   closed?: { number: number; state: string; by: string | null; head?: string; branch?: string; isFork?: boolean }[]
@@ -264,6 +273,20 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
 
     return { value }
   })
+  // The environment is an editor's extension host's where a test stands for one, and never the one the tests run in.
+  mock.env(on, world.editor ? { VSCODE_NLS_CONFIG: JSON.stringify({ defaultMessagesFile: EDITOR_MESSAGES }) } : {})
+  // Only then, as a test may answer files of its own and `fs.read` takes one hook.
+  const editor = world.editor
+  if (editor) {
+    on("fs.read", async (_, e, next) => {
+      if (e.path !== EDITOR_PRODUCT) {
+        return next(e)
+      }
+      editor.reads = (editor.reads ?? 0) + 1
+
+      return { value: JSON.stringify({ urlProtocol: editor.scheme }) }
+    })
+  }
   on("fs.list", async () => ({ value: [] }))
   on("fs.stat", async ($, e) => ({
     value: {
@@ -785,9 +808,10 @@ export function skillTurnEnd(turnId: string, reason = "answer"): never {
   return { answer: "", durationMs: 1, isAborted: reason === "aborted", reason, turnId } as never
 }
 
-// A command as the person types it; the test kit raises the raw event, which also carries where it came from.
-export function runPrs($: Engine, args: string) {
-  return $.command.run({ command: "prs", args } as Parameters<Engine["command"]["run"]>[0])
+// A command as the person types it, or as it came over Remote Control (`bridge`); the test kit raises the raw event,
+// which carries where it came from as the engine stamps it.
+export function runPrs($: Engine, args: string, origin: PromptOrigin = { kind: "composer" }) {
+  return $.command.run({ command: "prs", args, origin } as Parameters<Engine["command"]["run"]>[0])
 }
 
 export async function startSession($: Engine): Promise<void> {

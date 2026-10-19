@@ -145,6 +145,13 @@ describe("what changed, noted on each row", () => {
     const keys = drawnNodes(await ui.find({ key: "pr-1" })).map((node) => node.props?.key)
     expect(keys.indexOf("activity")).toBeGreaterThan(keys.indexOf("actions"))
     expect((await ui.find({ key: "activity" }))?.props).toMatchObject({ marginTop: 1 })
+    for (const surface of SURFACES.filter((other) => other !== "terminal")) {
+      // A line apart from the row, as its own part; in VS Code a whole line under framed buttons reads as the gap
+      // between rows, so a quarter of one.
+      const drawn = await mountPane($, surface)
+      expect((await drawn.find({ key: "activity" }))?.props.marginTop).toBe(surface === "vscode" ? 0.25 : 1)
+      await drawn.unmount()
+    }
     expect((await ui.find({ type: "Text", text: "✎ new comment from ann" }))?.props).toMatchObject({
       italic: true,
       color: "suggestion"

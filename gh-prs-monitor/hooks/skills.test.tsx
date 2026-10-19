@@ -354,14 +354,128 @@ describe("Review", () => {
     expect(seen.commands).toEqual([])
   })
 
-  test("where no new session can be opened, on any surface but the terminal and the desktop app, Review starts here", async ($, on) => {
+  test("New session from VS Code opens a tab of its editor, by the editor's own scheme, with the review typed in", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      editor: { scheme: "cursor" },
+      answer: "New session"
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "review-7" })
+    await settleAll(clock, seen, () => seen.runs.some((run) => run.startsWith("open ")) && seen.toasts.length > 0)
+
+    expect(world.choices).toEqual(["This session", "New session", "Cancel"])
+    expect(seen.runs).toContain(
+      "open cursor://anthropic.claude-code/open?prompt=%2Fgh-prs-monitor%3Areview%20https%3A%2F%2Fgithub.com%2Facme%2Fapp%2Fpull%2F7"
+    )
+    expect(seen.commands).toEqual([])
+    expect(seen.toasts).toEqual(["#7: the review is typed into a new session; send it there"])
+  })
+
+  test("the editor's scheme is read once a load, when New session is first pressed in VS Code, and not for the question", async ($, on) => {
+    const clock = clockOf(on)
+    const editor = { scheme: "cursor", reads: 0 }
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      editor,
+      answer: "Cancel"
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+    const ui = await mountPane($, "vscode")
+
+    await ui.press({ key: "review-7" })
+    await clock.settle()
+    expect(world.asked).toBe(1)
+    expect(editor.reads).toBe(0)
+
+    world.answer = "New session"
+    await ui.press({ key: "review-7" })
+    await clock.settle()
+    await ui.press({ key: "review-7" })
+    await clock.settle()
+
+    expect(seen.runs.filter((run) => run.startsWith("open cursor://"))).toHaveLength(2)
+    expect(editor.reads).toBe(1)
+  })
+
+  test("from VS Code whose editor isn't found, New session tries VS Code's own link, and where it won't open, the review runs here", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      answer: "New session",
+      instructions: "focus on the naming",
+      openFailure: "LSOpenURLsWithRole() failed with error -10814"
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "review-7" })
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    const command = "/gh-prs-monitor:review https://github.com/acme/app/pull/7 -- focus on the naming"
+    expect(seen.runs).toContain(`open vscode://anthropic.claude-code/open?prompt=${encodeURIComponent(command)}`)
+    expect(seen.commands).toEqual([command])
+    expect(seen.toasts).toEqual([
+      "#7: no new session opened (LSOpenURLsWithRole() failed with error -10814), so it runs in this one"
+    ])
+    expect(seen.notices).toEqual([])
+    // Its row says so until the skill's turn ends, as one started with This session.
+    await clock.settle()
+    expect(await ui.find({ type: "Text", text: "Reviewing…" })).toBeDefined()
+  })
+
+  test("from VS Code, a command too long for a link runs the review here, its instructions with it", async ($, on) => {
+    const clock = clockOf(on)
+    const instructions = "focus on the naming ".repeat(300).trim()
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["vscode"],
+      answer: "New session",
+      instructions
+    }
+    const seen = machine($, on, world)
+    await $.session.start({ cwd: "/repo", surface: null, isInteractive: false })
+    await clock.settle()
+
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "review-7" })
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    expect(seen.runs.filter((run) => run.startsWith("open "))).toEqual([])
+    expect(seen.commands).toEqual([`/gh-prs-monitor:review https://github.com/acme/app/pull/7 -- ${instructions}`])
+    expect(seen.toasts).toEqual([
+      "#7: no new session opened (its command is longer than the 5,000 characters a link may carry), so it runs in this one"
+    ])
+  })
+
+  test("where no new session can be opened, as in the phone app, Review starts here", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
     const seen = machine($, on, world)
     await startSession($)
     await clock.settle()
 
-    const ui = await mountPane($, "vscode")
+    const ui = await mountPane($, "mobile")
     await ui.press({ key: "review-7" })
 
     expect(world.asked).toBe(undefined)

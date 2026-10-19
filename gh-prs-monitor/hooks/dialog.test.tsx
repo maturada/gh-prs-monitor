@@ -16,7 +16,8 @@ import {
   mountPane,
   runPrs,
   GITHUB,
-  pressDrawn
+  pressDrawn,
+  SURFACES
 } from "./testing/world"
 import type { Drawn, World } from "./testing/world"
 
@@ -220,6 +221,13 @@ describe("the plugin's dialog", () => {
     )
 
     expect(nodes[0]?.props).toMatchObject({ borderStyle: "round", paddingX: 1 })
+    // VS Code draws a frame flush on what it holds, where the answers at its foot would touch it.
+    expect(nodes[0]?.props?.paddingY).toBe(undefined)
+    for (const surface of SURFACES.filter((other) => other !== "terminal")) {
+      const drawn = await mountPane($, surface)
+      expect(drawnNodes(await drawn.drawn())[0]?.props?.paddingY).toBe(surface === "vscode" ? 0.25 : undefined)
+      await drawn.unmount()
+    }
     // The header keeps its width and nothing is cut short: the subject, as all the rest, wraps; the detail is dim.
     const header = nodes.find((node) => node.type === "Text" && node.children?.[0] === "Resolve PR")
     const headerBox = nodes.find((node) => node.type === "Box" && (node.children ?? []).includes(header))
@@ -413,6 +421,11 @@ describe("the plugin's dialog", () => {
     expect(mark?.props).toMatchObject({ position: "absolute", top: 7, left: 0, width: 1, height: 1 })
     expect(mark?.children ?? []).toEqual([])
     expect(await ui.find({ key: "pr-1" })).toBeDefined()
+    // VS Code, which would lay the mark out in the flow at the pane's foot, draws none meanwhile.
+    const editor = await mountPane($, "vscode")
+    expect(await editor.find({ key: "pr-1" })).toBeDefined()
+    expect(await editor.find({ key: BACK_MARK })).toBeUndefined()
+    await editor.unmount()
 
     await clock.advance(5_000)
     expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
@@ -468,6 +481,35 @@ describe("the plugin's dialog", () => {
     await pressDrawn(clock, again, "answer-3")
     await clock.settle()
     expect((await again.find({ key: BACK_MARK }))?.props).not.toMatchObject({ top: 9 })
+  })
+
+  test("VS Code, which lays every box out in the flow, gets no mark at the pane's foot: the window goes to the button pressed at once", async ($, on) => {
+    const clock = clockOf(on)
+    // The drawings the plugin asks for: a try that finds no mark asks for one, and the end of going back one more.
+    let redraws = 0
+    on("ui.invalidate", async (_, e, next) => {
+      redraws++
+
+      return next(e)
+    })
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["vscode"] }, clock)
+    await startSession($)
+    await clock.settle()
+    const ui = await mountPane($, "vscode")
+    await ui.press({ key: "resolve-1" })
+    await clock.settle()
+    const cancel = (await ui.findAll({ type: "Button" })).find((button) => button.props.label === "Cancel")
+    const before = redraws
+
+    await ui.press({ key: String(cancel?.props.key) })
+    await clock.settle()
+    expect(await ui.find({ key: "pr-1" })).toBeDefined()
+    expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
+    // No tries for a mark that isn't drawn: the end's drawing alone, with no time passed.
+    expect(redraws - before).toBe(1)
+    await clock.advance(5_000)
+    expect(await ui.find({ key: BACK_MARK })).toBeUndefined()
+    expect(redraws - before).toBe(1)
   })
 
   // The kit models no keyboard and raises no close by the person, so the ring moving onto the first answer and back to
