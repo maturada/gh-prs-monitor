@@ -26,11 +26,12 @@ import type { World, Drawn } from "./testing/world"
 import type { On, RenderSurface } from "claude-code"
 
 // Written out per surface rather than read from layout.ts, so a change there shows here as the drawing it changes.
-const SPACES_BY_ROWS: Readonly<Record<RenderSurface, boolean>> = {
-  terminal: true,
-  desktop: false,
-  vscode: true,
-  mobile: false
+// The space down between framed buttons and what is above them, or their wrapped rows (`buttonsApart`).
+const BUTTONS_APART: Readonly<Record<RenderSurface, number>> = {
+  terminal: 0,
+  desktop: 1,
+  vscode: 0.25,
+  mobile: 1
 }
 
 describe("the pane", () => {
@@ -57,15 +58,27 @@ describe("the pane", () => {
       expect(counts.map((node) => node.children?.[0])).toEqual(["1", "1", "1"])
       expect((await ui.find({ key: "panel-mine" }))?.props.borderStyle).toBe("round")
       expect((await ui.find({ key: "panel-review" }))?.props.borderStyle).toBe("round")
+      // VS Code draws a frame flush on what it holds, where buttons at its edge would touch it.
+      for (const frame of ["header", "panel-mine", "card-1"]) {
+        expect((await ui.find({ key: frame }))?.props.paddingY).toBe(surface === "vscode" ? 0.25 : undefined)
+      }
       // A rule under each title and between rows, as in a table, none above the first row; an app spaces them
       // apart instead.
       const titleRule = await ui.find({ key: "rule-title" })
       expect(surface === "terminal" ? titleRule?.props.height : titleRule?.props.marginTop).toBe(1)
       // There each pull request is a card of its own instead.
       expect((await ui.find({ key: "card-1" }))?.props.borderStyle).toBe(surface === "terminal" ? undefined : "round")
-      // Where a surface spaces by steps, its buttons are taller than a line of text, so they keep a step's space from
-      // the facts above; where it spaces by rows, a button is a line high and that space would be a blank line.
-      expect((await ui.find({ key: "actions" }))?.props.marginTop).toBe(SPACES_BY_ROWS[surface] ? undefined : 1)
+      // Framed buttons keep their frames off the facts above; the terminal's are text a line high.
+      expect((await ui.find({ key: "actions" }))?.props.marginTop).toBe(BUTTONS_APART[surface] || undefined)
+      // VS Code wraps a row unless told not to: there the number and the title say so, and the title wraps beside it.
+      const titleLine = drawnNodes(await ui.find({ key: "pr-1" })).find(
+        (node) => node.type === "Box" && node.props?.gap === 1
+      )
+      expect(wordsIn(drawnNodes(titleLine))).toContain("Fix the menu")
+      expect(titleLine?.props?.flexWrap).toBe(surface === "vscode" ? "nowrap" : undefined)
+      expect((titleLine?.children?.[0] as Drawn | undefined)?.props?.flexWrap).toBe(
+        surface === "vscode" ? "nowrap" : undefined
+      )
       expect(await ui.find({ key: "rule-2" })).toBeDefined()
       expect(await ui.find({ key: "rule-1" })).toBeUndefined()
       // VS Code draws the theme's warning as plain text, so there it is the theme's terminal yellow.
@@ -208,7 +221,7 @@ describe("the pane", () => {
     }
   })
 
-  test("buttons sit a cell apart; their rows wrap one under the other where a surface spaces by rows, a step apart elsewhere", async ($, on) => {
+  test("buttons sit a cell apart, and their wrapped rows keep their frames apart: none in the terminal, a quarter of a line in VS Code", async ($, on) => {
     const clock = clockOf(on)
     machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
     await startSession($)
@@ -216,7 +229,7 @@ describe("the pane", () => {
 
     for (const surface of SURFACES) {
       const ui = await mountPane($, surface)
-      const gaps = { columnGap: 1, rowGap: SPACES_BY_ROWS[surface] ? 0 : 1 }
+      const gaps = { columnGap: 1, rowGap: BUTTONS_APART[surface] }
 
       expect((await ui.find({ key: "actions" }))?.props).toMatchObject({ ...gaps, flexWrap: "wrap" })
       expect((await ui.find({ key: "header-buttons" }))?.props).toMatchObject({ ...gaps, flexWrap: "wrap" })

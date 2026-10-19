@@ -11,6 +11,7 @@ import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOp
 import type { Activity, CheckoutAt, PullAction, PullRow, Question } from "../types"
 import { ACTION_LABELS } from "./actions"
 import { nextNoteExpiry, recentNotes } from "./alerts"
+import { pullSuggestions } from "./autocomplete"
 import { checkingAgain } from "./when"
 import { focusMoved, forgetWindow, windowMoved } from "./back-to-row"
 import { lookUpBranch } from "./branch-lookup"
@@ -243,7 +244,12 @@ export const register: Register = (on, options) => {
     // With nothing attached (a `-p` run, the SDK, or the desktop app before it attaches) the engine places a pane
     // nobody draws, and only the command's own output shows, so the list and the demo come as text; the list's pane
     // opens if an app attaches soon after.
-    const isDrawn = (await $.session.surfaces()).length > 0
+    const surfaces = await $.session.surfaces()
+    const isDrawn = surfaces.length > 0
+    // Sent over Remote Control, from a phone or the web, where no pane draws while none attaches as `mobile`: the list
+    // comes as text there, and the pane opens on the computer too. An engine older than these types may stamp no
+    // origin; its /prs only opens the pane.
+    const isSentFromAfar = e.origin?.kind === "bridge" && !surfaces.includes("mobile")
     if (args === "demo") {
       if (!isDrawn) {
         return { text: demoText(await $.clock.now()) }
@@ -252,41 +258,35 @@ export const register: Register = (on, options) => {
       const isPlaced = await showDemo($, session)
 
       return {
-        text: isPlaced
-          ? "Showing example pull requests, their alerts and summary until you close the pane."
-          : demoText(await $.clock.now(), true)
+        text: !isPlaced
+          ? demoText(await $.clock.now(), "unplaced")
+          : isSentFromAfar
+            ? demoText(await $.clock.now(), "remote")
+            : "Showing example pull requests, their alerts and summary until you close the pane."
       }
     }
-    if (isDrawn && (await openPane($, session)).isPlaced) {
+    // Sent from afar, the pane opens only after the list is printed: the load opening it starts would take the last
+    // look, which the printed list leads with.
+    if (isDrawn && !isSentFromAfar && (await openPane($, session)).isPlaced) {
       return { text: "Opened the pull requests pane." }
     }
     if (!isDrawn) {
       const now = await $.clock.now()
       await update($, paneAskedState, () => now)
     }
-
-    // The list printed is a look like the pane's, and leads with what changed since the last one, whatever toasts
-    // said meanwhile: a toast nobody may have seen is no look, and `awayLine` and `alertLines` send the person here.
-    const host = refreshHostOf($, session)
-    await refresh(host, session, false)
-    const snapshot = await read($, snapshotState)
-    const problem = await read($, problemState)
-    if (problem || !snapshot) {
-      const checksEvery = retryMinutes(session)
-
-      return {
-        text: problem
-          ? [problem, checksEvery === null ? null : checkingAgain(checksEvery)].filter(Boolean).join("\n\n")
-          : "No pull requests loaded yet."
-      }
+    const text = await printedList($, session)
+    if (isDrawn && isSentFromAfar) {
+      await openPane($, session, true)
     }
 
-    const since = await lookBack(host, session, snapshot)
-    const branch = (await read($, checkoutState))?.branch ?? null
+    return { text }
+  })
 
-    const links = session.repo ? linksOf(session.repo) : null
+  on("prompt.autocomplete", { token: /^#/ }, async ($, e, next) => {
+    const snapshot = storedSnapshot(await read($, snapshotState))
+    const rows = snapshot ? pullSuggestions(snapshot, e.token) : []
 
-    return { text: listText(snapshot, since, links, branch, await $.clock.now()) }
+    return { suggestions: [...(await next(e)).suggestions, ...rows] }
   })
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
@@ -512,18 +512,44 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
 
 // --- The pane, the band and the status line ---
 
-async function openPane($: Engine, session: Session): Promise<UiOpenResult> {
+// `isLoaded`: the list was loaded just now, for the text a /prs printed, and draws as it is.
+async function openPane($: Engine, session: Session, isLoaded = false): Promise<UiOpenResult> {
   await endDemo($, session)
   // The load under way, and its state written, before the pane draws, so its first drawing says it is checking rather
   // than to press Refresh; the timer after, as while-open mode polls only once the pane is open. The drawing reads
   // state alone: a write redraws only the drawings that read it.
   const host = refreshHostOf($, session)
-  checkAgain(host, session)
-  await session.checks.marking?.catch(() => undefined)
+  if (!isLoaded) {
+    checkAgain(host, session)
+    await session.checks.marking?.catch(() => undefined)
+  }
   const opened = await $.ui.open({ id: PANE, title: PANE_TITLE, closeOnEscape: true })
   await ensurePolling(host, session)
 
   return opened
+}
+
+// The list /prs prints where no pane shows it, or a problem. It is a look like the pane's, and leads with what changed
+// since the last one, whatever toasts said meanwhile: a toast nobody may have seen is no look, and `awayLine` and
+// `alertLines` send the person here.
+async function printedList($: Engine, session: Session): Promise<string> {
+  const host = refreshHostOf($, session)
+  await refresh(host, session, false)
+  const snapshot = await read($, snapshotState)
+  const problem = await read($, problemState)
+  if (problem || !snapshot) {
+    const checksEvery = retryMinutes(session)
+
+    return problem
+      ? [problem, checksEvery === null ? null : checkingAgain(checksEvery)].filter(Boolean).join("\n\n")
+      : "No pull requests loaded yet."
+  }
+
+  const since = await lookBack(host, session, snapshot)
+  const branch = (await read($, checkoutState))?.branch ?? null
+  const links = session.repo ? linksOf(session.repo) : null
+
+  return listText(snapshot, since, links, branch, await $.clock.now())
 }
 
 // How long after a /prs that found no app attached the pane still opens when one attaches.
@@ -907,8 +933,8 @@ function skillHostOf($: Engine, session: Session): SkillHost {
   }
 }
 
-// The scheme of the editor the VS Code extension runs in, read once a load (`Session.editorScheme`); one that can't be
-// read is none.
+// The scheme of the editor the VS Code extension runs in, read once for each load of the module
+// (`Session.editorScheme`); one that can't be read is none.
 function editorSchemeOf($: Engine, session: Session): Promise<string | null> {
   session.editorScheme ??= $.env
     .get("VSCODE_NLS_CONFIG")

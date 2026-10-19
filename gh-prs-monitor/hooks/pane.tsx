@@ -10,7 +10,17 @@ import type { PullToOpen } from "./create-flow"
 import { noteEvents } from "./alerts"
 import { ago, checkingAgain, elapsed, lookedAt } from "./when"
 import { BACK_MARK, buttonKey, rowKey } from "./keys"
-import { buttonGaps, colourOn, isTerminal, placesOutOfFlow, spacesByRows } from "./layout"
+import {
+  buttonGaps,
+  buttonsApart,
+  colourOn,
+  framePadding,
+  isTerminal,
+  lineApart,
+  placesOutOfFlow,
+  spacesByRows,
+  unwrapped
+} from "./layout"
 import type { PaneColour } from "./layout"
 import {
   BRANCH_MARK,
@@ -136,7 +146,15 @@ function problemBox(kit: Kit, problem: string, view: PaneView, actions: PaneActi
   const warning = colourOn(view.surface, "warning")
 
   return (
-    <Box key="problem" flexDirection="column" gap={1} borderStyle="round" borderColor={warning} paddingX={1}>
+    <Box
+      key="problem"
+      flexDirection="column"
+      gap={1}
+      borderStyle="round"
+      borderColor={warning}
+      paddingX={1}
+      {...framePadding(view.surface)}
+    >
       <Box flexDirection="column">
         <Text bold color={warning} wrap="wrap">
           ⚠ Can't check pull requests
@@ -200,6 +218,7 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
       borderStyle="round"
       borderDimColor
       paddingX={1}
+      {...framePadding(view.surface)}
     >
       <Box columnGap={2} flexWrap="wrap" flexShrink={1}>
         <Box key="header-title" columnGap={2} flexWrap="wrap" flexShrink={1} minWidth={0}>
@@ -281,8 +300,8 @@ function endedNotes(kit: Kit, snapshot: PullsSnapshot, view: PaneView, actions: 
         const label = `#${number}`
 
         return (
-          <Box key={`ended-${number}`} gap={1}>
-            <Box gap={1} flexShrink={0} {...column}>
+          <Box key={`ended-${number}`} gap={1} {...unwrapped(view.surface)}>
+            <Box gap={1} flexShrink={0} {...unwrapped(view.surface)} {...column}>
               <Text color="suggestion" italic>
                 {latest.symbol}
               </Text>
@@ -353,6 +372,7 @@ function emptyPanel(
       borderStyle="round"
       borderDimColor
       paddingX={1}
+      {...framePadding(view.surface)}
       columnGap={2}
       rowGap={buttonGaps(view.surface).rowGap}
       flexWrap="wrap"
@@ -412,6 +432,7 @@ function panel(
       borderStyle="round"
       borderDimColor
       paddingX={1}
+      {...framePadding(view.surface)}
       {...(width === undefined ? {} : { width })}
     >
       <Box
@@ -462,6 +483,7 @@ type RowFrame = {
   gutter: number
   layout: RowLayout
   columns: number
+  surface: string
 }
 
 // The branch mark and a space in front of the number, as `git branch` marks the current branch.
@@ -502,7 +524,7 @@ function rowFrame(group: Group, entries: ListEntry[], view: PaneView, rowColumns
     statusColumns
   const layout = !view.isCompact ? "full" : titleColumns >= MIN_TITLE_COLUMNS ? "line" : "lines"
 
-  return { indent, gutter, layout, columns: rowColumns }
+  return { indent, gutter, layout, columns: rowColumns, surface: view.surface }
 }
 
 // The columns a text of ours takes in the terminal: one a character, two for each mark (✅ ❗ 🔍), which appears in
@@ -573,7 +595,7 @@ function pullRow(
       {factsLine(kit, view, frame, row.details)}
       {actionsFor(kit, row, view, actions, frame)}
       {activity.length > 0 && view.snapshot
-        ? recentChanges(kit, row, activity, { indent, now: view.snapshot.fetchedAt }, actions)
+        ? recentChanges(kit, row, activity, { indent, now: view.snapshot.fetchedAt, surface: view.surface }, actions)
         : null}
     </Box>
   )
@@ -677,8 +699,13 @@ function titleLine(kit: Kit, parts: TitleParts, frame: RowFrame, status: RenderE
   const stack = frame.layout !== "full" ? parts.stack : null
 
   return (
-    <Box key={status ? scope : undefined} gap={1} {...(status ? { hover: { scope } } : {})}>
-      <Box width={frame.indent - 1} flexShrink={0}>
+    <Box
+      key={status ? scope : undefined}
+      gap={1}
+      {...unwrapped(frame.surface)}
+      {...(status ? { hover: { scope } } : {})}
+    >
+      <Box width={frame.indent - 1} flexShrink={0} {...unwrapped(frame.surface)}>
         {frame.gutter > 0 ? (
           <Box key="mark" width={frame.gutter} flexShrink={0}>
             {parts.isOnBranch ? (
@@ -722,7 +749,14 @@ function card(kit: Kit, view: PaneView, number: number, content: RenderElement):
   return isTerminal(view.surface) ? (
     content
   ) : (
-    <Box key={`card-${number}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+    <Box
+      key={`card-${number}`}
+      flexDirection="column"
+      borderStyle="round"
+      borderDimColor
+      paddingX={1}
+      {...framePadding(view.surface)}
+    >
       {content}
     </Box>
   )
@@ -749,7 +783,7 @@ function recentChanges(
   kit: Kit,
   row: PullRow,
   entries: Activity[],
-  { indent, now }: { indent: number; now: number },
+  { indent, now, surface }: { indent: number; now: number; surface: string },
   actions: PaneActions
 ): RenderElement {
   const { Box, Text, Button } = kit
@@ -760,7 +794,7 @@ function recentChanges(
   const when = noteTime(latest, now)
 
   return (
-    <Box key="activity" paddingLeft={indent} columnGap={2} flexWrap="wrap" marginTop={1}>
+    <Box key="activity" paddingLeft={indent} columnGap={2} flexWrap="wrap" marginTop={lineApart(surface)}>
       <Text color="suggestion" italic wrap="wrap">
         {`${latest.symbol} ${shown.join(`\u00a0${DETAIL_SEPARATOR} `)}${earlier > 0 ? ` (+${earlier} earlier)` : ""}`}
       </Text>
@@ -855,9 +889,8 @@ function linkedText(kit: Kit, text: string, href: string | undefined): RenderEle
   return href ? <Link href={href} label={text} /> : text
 }
 
-// The buttons get a line of their own under the facts, so a narrow pane keeps the facts readable. A surface that
-// spaces by steps draws a button taller than a line of text, and it would sit flush against the facts without a step's
-// space above it; a button a line high has its own line already.
+// The buttons get a line of their own under the facts, so a narrow pane keeps the facts readable, their frames apart
+// from the facts (`buttonsApart`).
 function actionsFor(
   kit: Kit,
   row: PullRow,
@@ -866,7 +899,8 @@ function actionsFor(
   frame: RowFrame
 ): RenderElement | null {
   const { Box, Button, Text } = kit
-  const spacing = spacesByRows(view.surface) ? {} : { marginTop: 1 }
+  const apart = buttonsApart(view.surface)
+  const spacing = apart > 0 ? { marginTop: apart } : {}
   // What is under way wraps in the row's column, as its facts do.
   const busy = view.busy[String(row.number)]
   if (busy) {

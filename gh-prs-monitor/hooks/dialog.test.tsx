@@ -16,7 +16,8 @@ import {
   mountPane,
   runPrs,
   GITHUB,
-  pressDrawn
+  pressDrawn,
+  SURFACES
 } from "./testing/world"
 import type { Drawn, World } from "./testing/world"
 
@@ -220,6 +221,13 @@ describe("the plugin's dialog", () => {
     )
 
     expect(nodes[0]?.props).toMatchObject({ borderStyle: "round", paddingX: 1 })
+    // VS Code draws a frame flush on what it holds, where the answers at its foot would touch it.
+    expect(nodes[0]?.props?.paddingY).toBe(undefined)
+    for (const surface of SURFACES.filter((other) => other !== "terminal")) {
+      const drawn = await mountPane($, surface)
+      expect(drawnNodes(await drawn.drawn())[0]?.props?.paddingY).toBe(surface === "vscode" ? 0.25 : undefined)
+      await drawn.unmount()
+    }
     // The header keeps its width and nothing is cut short: the subject, as all the rest, wraps; the detail is dim.
     const header = nodes.find((node) => node.type === "Text" && node.children?.[0] === "Resolve PR")
     const headerBox = nodes.find((node) => node.type === "Box" && (node.children ?? []).includes(header))

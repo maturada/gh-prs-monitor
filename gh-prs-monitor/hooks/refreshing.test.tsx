@@ -2515,3 +2515,76 @@ function endsLikeClear(
 function listLoads(seen: { runs: string[] }): number {
   return seen.runs.filter((run) => run.startsWith("gh api graphql") && run.includes("$mine")).length
 }
+
+describe("/prs over Remote Control", () => {
+  // A message from the phone comes once the session's start has settled.
+  test("from a phone, where no pane draws, prints the list, and opens the pane on the computer too", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(lines(ran.text)).toContain("**Your Pull Requests** (2)")
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  // The pane opens once the list is printed, on that list: its own load would take the look the list leads with.
+  test("the list from a phone leads with what changed since the last look, from one request", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: {
+        ...GITHUB,
+        mine: [{ ...GITHUB.mine![0]!, comments: { count: 1, lastAuthor: "ann" } }, GITHUB.mine![1]!]
+      },
+      branch: "main",
+      uncommitted: 0,
+      surfaces: ["terminal"],
+      store: { "look:github.com/acme/app": snapshotOf(GITHUB, { at: new Date(2026, 9, 6, 17, 40).getTime() }) }
+    }
+    const seen = machine($, on, world)
+    await clock.set(new Date(2026, 9, 7, 9, 0).getTime())
+    await startSession($)
+    await clock.settle()
+    const loads = seen.runs.filter((run) => run.startsWith("gh api graphql")).length
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(lines(ran.text)[1]).toBe("**Since You Last Looked** (yesterday 17:40)")
+    expect(lines(ran.text).some((line) => line.includes("✎ new comment from ann"))).toBe(true)
+    expect(seen.runs.filter((run) => run.startsWith("gh api graphql"))).toHaveLength(loads + 1)
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  test("from a phone that draws the pane, opens it", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal", "mobile"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "bridge" })
+    await clock.settle()
+
+    expect(ran.text).toBe("Opened the pull requests pane.")
+    expect(world.isPaneOpen).toBe(true)
+  })
+
+  test("typed at the computer, opens the pane alone", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "", { kind: "composer" })
+    await clock.settle()
+
+    expect(ran.text).toBe("Opened the pull requests pane.")
+    expect(world.isPaneOpen).toBe(true)
+  })
+})

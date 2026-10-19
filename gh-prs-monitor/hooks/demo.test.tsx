@@ -14,11 +14,13 @@ import {
   wordsIn,
   GITHUB,
   settleUntil,
-  pressDrawn
+  pressDrawn,
+  lines,
+  SURFACES
 } from "./testing/world"
 import type { On } from "claude-code"
 import type { Engine, MockClock } from "claude-code/testing"
-import type { World } from "./testing/world"
+import type { Drawn, World } from "./testing/world"
 
 // The person leaves the examples with their Refresh; closing the pane ends them too, but the kit raises no close by
 // the person.
@@ -37,6 +39,36 @@ describe("/prs demo", () => {
     expect((await runPrs($, " Demo ")).text).toBe(
       "Showing example pull requests, their alerts and summary until you close the pane."
     )
+  })
+
+  test("sent from a phone, where no pane draws, demo prints the example list there and shows the examples on the computer", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal"] }
+    machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ran = await runPrs($, "demo", { kind: "bridge" })
+
+    expect(lines(ran.text)[0]).toBe(
+      "Remote Control shows no pane, so /prs prints the list here, while the pane, its alerts and summary show on " +
+        "the computer. With example pull requests:"
+    )
+    expect(lines(ran.text)).toContain("**Your Pull Requests** (14)")
+    expect(world.isPaneOpen).toBe(true)
+    await leaveExamples($, clock)
+  })
+
+  test("sent from a phone that draws the pane, demo shows the examples there", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, surfaces: ["terminal", "mobile"] })
+    await startSession($)
+    await clock.settle()
+
+    expect((await runPrs($, "demo", { kind: "bridge" })).text).toBe(
+      "Showing example pull requests, their alerts and summary until you close the pane."
+    )
+    await leaveExamples($, clock)
   })
 
   test("demo shows the examples' alerts one at a time, and their summary until they are left", async ($, on) => {
@@ -123,6 +155,15 @@ describe("the demo pane", () => {
     expect(wordsIn(drawnNodes(await ui.find({ key: "ended-1230" })))).toMatch(
       /^✓ #1230 PDF export — merged by a-teammate, #1242 is next in stack #30 \d+m ago ✕$/
     )
+    // VS Code wraps a row unless told not to: the note keeps its mark and number beside its words.
+    for (const surface of SURFACES.filter((other) => other !== "terminal")) {
+      const drawn = await mountPane($, surface)
+      const ended = await drawn.find({ key: "ended-1230" })
+      const nowrap = surface === "vscode" ? "nowrap" : undefined
+      expect(ended?.props.flexWrap).toBe(nowrap)
+      expect((ended?.children?.[0] as Drawn | undefined)?.props?.flexWrap).toBe(nowrap)
+      await drawn.unmount()
+    }
     for (const status of [
       "❗ CI Failing",
       "❗ Conflicts",

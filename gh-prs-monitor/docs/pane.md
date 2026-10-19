@@ -105,6 +105,11 @@ under "Merged or closed since" and the time, with its ✕. These go as the other
 | The list | the pane | the pane | the pane |
 | Alerts | toasts | toasts | toasts, above the prompt box |
 | Summary | the status line | a band above the prompt, with an **Open** button (the app cuts a status line short) | the status line, above the prompt box |
+| `#` in the prompt | the prompt's suggestions | not yet | not yet |
+
+Over Remote Control, the Claude app on your phone and claude.ai draw none of it yet. A `/prs` sent from there prints
+the list in the conversation and opens the pane on the computer too; `/prs demo` prints the example list and shows the
+examples on the computer. Once they draw the pane, `/prs` opens it there instead, with no update of the plugin.
 
 The VS Code extension, in VS Code or an editor built on it such as Cursor, draws what plugins add from its version
 2.1.299, in a session that
@@ -156,6 +161,14 @@ In the list `/prs` prints:
 No background checks run there, since nothing would show what they find. The same list with what changed comes from
 `/prs` wherever the pane can't show, whatever toasts told you meanwhile. An extension updated to one that draws gets
 the pane, alerts and summary by itself.
+
+### `#` in the prompt
+
+Type `#` and the start of a pull request's number, or two letters or more of a word in its title, and the prompt's
+suggestions offer the pull requests of the last list, yours first, then those waiting on your review, eight at most,
+each with its status. Picking one writes its number, `#142`. A bare `#` offers none, and nothing shows before a list
+has loaded, nor from the demo's examples. The terminal asks for these; the desktop app and VS Code don't ask plugins
+for suggestions yet, and get them once they do, with no update of the plugin.
 
 ## Your Pull Requests
 

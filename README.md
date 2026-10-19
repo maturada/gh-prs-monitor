@@ -79,6 +79,10 @@ branch is on. [The pane](gh-prs-monitor/docs/pane.md)
 
 ![The compact pane, in a terminal and in the desktop app](gh-prs-monitor/assets/screenshots/compact.png)
 
+**`#` in the prompt** offers the pull requests listed, yours first: type `#` and the start of a number, or of a word
+in a title, and pick one to write its number. In the terminal: the desktop app and VS Code don't ask plugins for
+these yet.
+
 ### Alerts and the status line
 
 From the moment a session starts, it checks in the background every 3 minutes. An alert says when:
@@ -126,14 +130,21 @@ Dart, iOS, Python, Ruby, PHP and .NET), and the ignored files your `.worktreeinc
 pull request gets neither. Once the pull request is merged or closed, the worktree goes, when nothing in it would be
 lost. [Where the skills work](gh-prs-monitor/docs/working-on-a-branch.md)
 
-### In the desktop app and VS Code
+### In the desktop app
 
 The pane sits beside the conversation, with both lists side by side when there is room, and the count in a band above
-the prompt. In VS Code, and editors built on it such as Cursor, the Claude Code extension draws the pane, its alerts and
-the count above the prompt box, from extension 2.1.299. Where nothing draws what plugins add, `/prs` prints the list
-instead, led by what changed since you last looked. [Where each part shows](gh-prs-monitor/docs/pane.md#where-each-part-shows)
+the prompt. [Where each part shows](gh-prs-monitor/docs/pane.md#where-each-part-shows)
 
 ![The /prs pane in the Claude desktop app, both lists side by side, and the summary band above the prompt](gh-prs-monitor/assets/screenshots/desktop.png)
+
+### In VS Code
+
+In VS Code, and editors built on it such as Cursor, the Claude Code extension (2.1.299 or later) draws the pane, its
+alerts and the count above the prompt box, and New session opens a new tab of the editor. Where nothing draws what
+plugins add, as in an older extension, `/prs` prints the list instead, led by what changed since you last looked.
+[Where each part shows](gh-prs-monitor/docs/pane.md#where-each-part-shows)
+
+![The /prs pane in VS Code, each pull request a card with its buttons, and a button's question in place of the list](gh-prs-monitor/assets/screenshots/vscode.png)
 
 ### Light on tokens and rate limits
 
@@ -148,7 +159,7 @@ among theirs). [Cost](gh-prs-monitor/docs/settings.md#cost)
 
 | Command | What it does |
 |---|---|
-| `/prs` | Opens the pane. Esc closes it. |
+| `/prs` | Opens the pane. Esc closes it. Sent over Remote Control, from your phone or claude.ai, it also prints the list there. |
 | `/prs demo` | Shows example pull requests, one of each status, with their alerts. Nothing is sent to GitHub. |
 | `/prs close` | Closes the pane, for when a click does nothing. |
 | `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
@@ -165,7 +176,8 @@ it; **Cancel** (or Esc, in the terminal) leaves it.
 
 ## Requirements
 
-- **Claude Code 2.1.293 or later**: tested on 2.1.295, 2.1.296 and 2.1.299 to 2.1.302, and the desktop app's 2.1.293.
+- **Claude Code 2.1.293 or later**: tested on 2.1.295, 2.1.296 and 2.1.299 to 2.1.303, the desktop app's 2.1.293, and
+  the VS Code extension's 2.1.303.
   In VS Code and editors built on it, the pane needs the Claude Code extension 2.1.299 or later, in a session that
   [fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching).
 - **The [GitHub CLI](https://cli.github.com) (`gh`) 2.53 or later**, signed in with `gh auth login`. The plugin works
@@ -242,9 +254,10 @@ credential to sign in with: it works through your own `gh` and `git`, and Claude
   for it go on, and to see a skill's turn end; and the skills' commands above, to mark the row a skill works on. It
   passes each of these on unchanged, and reads none of the conversation, only a skill command's arguments, which name
   its pull request. For half an hour after a skill starts, a turn's end can start a check of the list, at most every
-  half minute; nothing of the turn goes into it. Besides, it answers `/prs` and its own tool, draws its pane and, in the
-  desktop app, the band above the prompt, follows the pane's scrolling and focus, and keeps the pane open when you close
-  it while it asks a question, cancelling the question instead.
+  half minute; nothing of the turn goes into it. Besides, it answers `/prs`, printing the list too where it came over
+  Remote Control, and its own tool, offers pull requests for a word in the prompt that starts with `#`, reading that
+  word alone, draws its pane and, in the desktop app, the band above the prompt, follows the pane's scrolling and focus,
+  and keeps the pane open when you close it while it asks a question, cancelling the question instead.
 - **New session** opens a Claude Code session through Claude Code's own link, with `open`, `xdg-open` or `rundll32`
   (after `uname`, and `reg query` on Windows, tell which). In VS Code it is the extension's link, in the scheme the
   editor answers on (`vscode`, `cursor`, …): the editor's folder comes from `VSCODE_NLS_CONFIG`, the one environment

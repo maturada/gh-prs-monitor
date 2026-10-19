@@ -3,7 +3,7 @@
 // The machine the hooks module's tests run against: gh, git and the system answer from a world each test sets up,
 // and the engine's own nouns are mocked through the test kit. Shared by the *.test.tsx files beside this folder.
 
-import type { On, ProcessRunResult, RenderSurface } from "claude-code"
+import type { On, ProcessRunResult, PromptOrigin, RenderSurface } from "claude-code"
 import { mock } from "claude-code/testing"
 import type { Engine, MockClock, MockClockOptions, Mounted } from "claude-code/testing"
 
@@ -808,9 +808,10 @@ export function skillTurnEnd(turnId: string, reason = "answer"): never {
   return { answer: "", durationMs: 1, isAborted: reason === "aborted", reason, turnId } as never
 }
 
-// A command as the person types it; the test kit raises the raw event, which also carries where it came from.
-export function runPrs($: Engine, args: string) {
-  return $.command.run({ command: "prs", args } as Parameters<Engine["command"]["run"]>[0])
+// A command as the person types it, or as it came over Remote Control (`bridge`); the test kit raises the raw event,
+// which carries where it came from as the engine stamps it.
+export function runPrs($: Engine, args: string, origin: PromptOrigin = { kind: "composer" }) {
+  return $.command.run({ command: "prs", args, origin } as Parameters<Engine["command"]["run"]>[0])
 }
 
 export async function startSession($: Engine): Promise<void> {

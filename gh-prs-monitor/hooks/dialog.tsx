@@ -4,7 +4,7 @@ import type { BoxProps, ButtonProps, ElementConstructor, InputProps, RenderEleme
 
 import type { Answer, Question } from "../types"
 import { answerKey } from "./keys"
-import { buttonGaps } from "./layout"
+import { buttonGaps, framePadding } from "./layout"
 import { readAnswer } from "./question"
 
 // The elements the dialog draws with; `Input` only where the surface has one (not the mobile app).
@@ -35,7 +35,7 @@ export function dialogView(
   const { Box, Text, Button, Input } = kit
 
   return (
-    <Box flexDirection="column" gap={1} borderStyle="round" paddingX={1}>
+    <Box flexDirection="column" gap={1} borderStyle="round" paddingX={1} {...framePadding(site.surface)}>
       <Box columnGap={1} flexWrap="wrap">
         {/* The header keeps its width; the subject sits beside it, or under it whole where a narrow pane would squeeze
             it into a strip, and wraps there. */}

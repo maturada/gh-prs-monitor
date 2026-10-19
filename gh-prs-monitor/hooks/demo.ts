@@ -458,14 +458,24 @@ export const DEMO_ALERTS: readonly string[] = [
   awayLine(new Set(DEMO_CHANGES.map((change) => change.number)).size, AWAY_SINCE)
 ]
 
-// Where nothing draws the pane, /prs prints the list instead, led by what changed since the last look; an app that
-// places no panes still shows the alerts (`isAlerting`).
-export function demoText(now: number, isAlerting = false): string {
+// Where nothing draws the pane, /prs prints the list instead, led by what changed since the last look: with nothing
+// attached; in an app that places no panes, which still shows the alerts; or sent over Remote Control, while the pane
+// shows on the computer.
+export type DemoPrint = "unattached" | "unplaced" | "remote"
+
+const DEMO_INTROS: Readonly<Record<DemoPrint, string>> = {
+  unattached:
+    "Nothing attached to this session draws the pane or alerts, so /prs prints the list here, led by what changed " +
+    "since you last looked. With example pull requests:",
+  unplaced: "This app places no panes, so /prs prints the list here, while the example alerts show:",
+  remote:
+    "Remote Control shows no pane, so /prs prints the list here, while the pane, its alerts and summary show on the " +
+    "computer. With example pull requests:"
+}
+
+export function demoText(now: number, where: DemoPrint = "unattached"): string {
   const snapshot = demoSnapshot(now)
-  const intro = isAlerting
-    ? "This app places no panes, so /prs prints the list here, while the example alerts show:"
-    : "Nothing attached to this session draws the pane or alerts, so /prs prints the list here, led by what changed " +
-      "since you last looked. With example pull requests:"
+  const intro = DEMO_INTROS[where]
 
   return snapshot
     ? [intro, "", listText(snapshot, { at: AWAY_SINCE, changes: [...DEMO_CHANGES] }, null, DEMO_BRANCH)].join("\n")

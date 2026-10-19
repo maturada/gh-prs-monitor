@@ -4,14 +4,22 @@ Each version of gh-prs-monitor, newest first. Versions follow [semantic versioni
 
 ## 1.1.0 (19.10.2026)
 
-- **VS Code**, and editors built on it such as Cursor: the Claude Code extension draws the pane, its alerts and the
-  status line from its version 2.1.299, and the pane now fits it. No blank line above a row's buttons or between their
-  rows; warnings (Changes Requested, Review Requested, a running check) in yellow and a merge in purple, from the
-  editor's own theme; alerts as toasts above the prompt box, not lines left in the conversation; and the status line
-  keeps the space between its counts.
+- **VS Code, and editors built on it such as Cursor**: the Claude Code extension draws the pane, its alerts and the
+  status line from its version 2.1.299, and the pane now fits it:
+  - buttons a little apart and off the edges of their frames, in the pane and its questions, with no blank lines;
+  - a long title wraps beside its number, in a narrow pane too;
+  - Changes Requested, Review Requested and running checks in yellow, a merge in purple, from the editor's theme;
+  - alerts as toasts above the prompt box, not lines left in the conversation;
+  - the status line keeps the space between its counts.
 - **New session from VS Code**: Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR offer a new session
-  there too, a tab of the editor with the command typed in. Where its link doesn't open, the skill runs in this session
-  instead.
+  there too, a new tab of the editor with the command typed in. Where its link doesn't open, the skill runs in this
+  session instead.
+- **`#` in the prompt** suggests the pull requests listed, yours first: type `#` and the start of a number, or of a
+  word in a title, and pick one to write its number, as `#142`. In the terminal for now: the desktop app and VS Code
+  don't ask plugins for suggestions yet.
+- **`/prs` from your phone or claude.ai**, over Remote Control: it prints the list in the conversation, as they draw
+  no pane yet, and opens the pane on the computer too. `/prs demo` prints the example list and shows the examples on
+  the computer.
 
 ## 1.0.1 (18.10.2026)
 

@@ -33,6 +33,7 @@ hooks/toasts.ts           the alerts on their way to the person: held while a tu
                           those another session showed lately left out
 hooks/summary.ts          the counts the status line, the band and the pane's header show
 hooks/list.ts             the list /prs prints where no pane shows, the words both lists use, and a panel's rows
+hooks/autocomplete.ts     the pull requests `#` offers in the prompt box, from the list held
 hooks/store.ts            every key the plugin keeps in the store, read and written: the last look at each
                           repository, the view, what cleanups left and the cleanup under way in each clone, the alerts
                           shown, the answers sessions share and the create-pr choices; what a failure of each costs,
@@ -160,15 +161,16 @@ changes one is where to look first.
   `ui.scroll` hook keeps where each of the person's moves over the list lands. The test kit carries out no plugin's
   scroll, so the mark drawn is tested in the pane, and the window's way to it (`goBack`) through a host of its own.
 - The VS Code extension (2.1.299 and later) lays a tree out in rows of text as the terminal does, a gap of 1 a blank
-  line, while it draws the desktop app's buttons and cards. It ignores `position` (so the mark above isn't drawn there,
-  and the window goes to the button pressed), `hover`, and a button's `plain` and `hotkey`. It draws the theme's
-  `warning` in its menus' text colour and knows no `merged`, while a named colour follows the editor theme's terminal
-  colours; it folds the status line's plain spaces into one; and it draws toasts, above its prompt box.
+  line and a fraction of one drawn as such (a quarter keeps framed buttons apart), while it draws the desktop app's
+  framed buttons and cards. A row Box wraps there unless it says `flexWrap="nowrap"`. It ignores `position` (so the mark
+  above isn't drawn there, and the window goes to the button pressed), `hover`, and a button's `plain` and `hotkey`. It
+  draws the theme's `warning` in its menus' text colour and knows no `merged`, while a named colour follows the editor
+  theme's terminal colours; it folds the status line's plain spaces into one; and it draws toasts, above its prompt box.
   `hooks/layout.ts` names each of these. Its new tab opens from `<scheme>://anthropic.claude-code/open?prompt=…`, the
   scheme the editor's `product.json` names (`urlProtocol`), which `VSCODE_NLS_CONFIG`'s messages file leads to
   (`editorScheme`): the extension tells the plugin neither. Where it isn't found, VS Code's own scheme is tried, and a
-  link that doesn't open runs the skill in this session (`runsHereWhenUnopened`); a scheme that opens another app, as
-  VS Code beside the editor pressed in, can't be told from one that opens the right one.
+  link that doesn't open runs the skill in this session (`runsHereWhenUnopened`); a scheme that opens another app, as VS
+  Code beside the editor pressed in, can't be told from one that opens the right one.
 - Sizes are in character cells on every surface, and an app's cells are wider than its text: a width that holds a
   text to its length in the terminal leaves a gap after it in an app. So such widths are the terminal's alone (a
   detail's, a column's), and in an app a text shrinks to its line and wraps, as a title does.
