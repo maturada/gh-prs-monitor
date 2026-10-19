@@ -21,7 +21,7 @@ width, its width over 830px.
 | Part | Rule |
 |---|---|
 | Card | `#0d1117`, a 1px `#30363d` border, corners of 11px, 25px of space at the sides and 27px at the foot |
-| Caption | 14px, weight 500, `#9198a1`, in the system font; 20px above it, 11px below |
+| Caption | 14.7px, weight 500, `#9198a1`, in the system font; 20px above it, 11px below |
 | Panel | the screenshot at its own width, a 1px `#30363d` frame, corners of 8px |
 | A panel cut short | fades into the card over its last 108px, its frame with it |
 
