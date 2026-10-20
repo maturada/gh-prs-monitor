@@ -1,6 +1,9 @@
 # Fix CI
 
-**Fix CI** shows on your own pull requests whose CI fails, drafts included. As it works on a local copy, it shows
+A red check on your pull request? **Fix CI** reads the failing checks' logs, tells a flaky failure from a real one,
+and fixes the ones you pick. It commits and pushes on your yes, which starts the checks again.
+
+It shows on your own pull requests whose CI fails, drafts included. As it works on a local copy, it shows
 whatever access you have to the repository; its push goes only to the pull request's own branch. Where **Re-Run CI**
 shows too, that is the main button, as a re-run is the first thing to try on a check that failed for no reason in the
 code; elsewhere Fix CI is. A draft's main button is Ready For Review, and a row with conflicts has Resolve Conflicts.

@@ -434,11 +434,24 @@ export function toastsFor(alerts: readonly string[], limit = 3): string[] {
   return [...shown, `${alerts.length - shown.length} more pull request changes, see /prs`]
 }
 
+// A showing of alerts as one system notification: its first alert, and how many came with it, which the toasts and the
+// pane tell.
+export function systemNotificationText(alerts: readonly string[]): string {
+  const [first = "", ...rest] = alerts
+
+  return rest.length === 0 ? first : `${first} (${rest.length} more)`
+}
+
 // Should a turn's end never be heard, held alerts still show after this long.
 const HOLD_LIMIT_MS = 15 * 60_000
 
-// Alerts waiting for the running turns to end, from when the first of them waited.
-export type HeldAlerts = { held: string[]; heldSince: number | null }
+// Alerts waiting for the running turns to end, from when the first of them waited, and which of them are pull request
+// changes: the only ones a system notification carries, not a session's first summary or a cleanup's note.
+export type HeldAlerts = { held: string[]; heldSince: number | null; changes: string[] }
+
+export function nothingHeld(): HeldAlerts {
+  return { held: [], heldSince: null, changes: [] }
+}
 
 // While a turn runs, alerts wait for it to finish, so they do not cover what is being read; then they show together.
 // Held this long, they show now, and holding starts over: a long turn holds what comes later too, a quarter of an hour
@@ -447,16 +460,25 @@ export function holdAlerts(
   waiting: HeldAlerts,
   lines: readonly string[],
   now: number,
-  isHolding: boolean
-): { shown: string[]; waiting: HeldAlerts } {
+  isHolding: boolean,
+  areChanges: boolean
+): { shown: string[]; changes: string[]; waiting: HeldAlerts } {
+  const changes = areChanges ? lines : []
   if (isHolding && now - (waiting.heldSince ?? now) < HOLD_LIMIT_MS) {
-    return {
-      shown: [],
-      waiting: lines.length > 0 ? { held: [...waiting.held, ...lines], heldSince: waiting.heldSince ?? now } : waiting
+    const held = {
+      held: [...waiting.held, ...lines],
+      heldSince: waiting.heldSince ?? now,
+      changes: [...waiting.changes, ...changes]
     }
+
+    return { shown: [], changes: [], waiting: lines.length > 0 ? held : waiting }
   }
 
-  return { shown: [...waiting.held, ...lines], waiting: { held: [], heldSince: null } }
+  return {
+    shown: [...waiting.held, ...lines],
+    changes: [...waiting.changes, ...changes],
+    waiting: nothingHeld()
+  }
 }
 
 // Who showed an alert line, and when.

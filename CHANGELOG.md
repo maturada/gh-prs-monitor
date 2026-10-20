@@ -2,6 +2,20 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.2.0 (20.10.2026)
+
+- **Alerts as system notifications**, a setting off by default: the alerts you turned on also go out as a system
+  notification, one each time they show, the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty, in
+  another terminal once you choose Claude Code's notification channel for it (Warp shows them with `iterm2`), or
+  through your own `Notification` hook. Pull request changes only, not the summary when a
+  session starts nor a cleanup's note. It needs Claude Code 2.1.295; the toasts show either way.
+- **Claude Code 2.1.292 or later**, a version earlier than before: the plugin is tested on it.
+- **The docs said the desktop app keeps the plugin's store apart; it shares it** with the terminal and VS Code. So
+  sessions in every app share their checks of GitHub, show each alert once, and offer the same Create PR choices. Only
+  the docs change.
+- **Docs that read better**: each page opens with what it does for you and goes on in the order a newcomer asks, and
+  the README's "What it runs and what it sends" starts with a short summary. Nothing was dropped.
+
 ## 1.1.0 (19.10.2026)
 
 - **VS Code, and editors built on it such as Cursor**: the Claude Code extension draws the pane, its alerts and the

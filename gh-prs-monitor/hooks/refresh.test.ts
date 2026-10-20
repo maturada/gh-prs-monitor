@@ -199,6 +199,8 @@ function hostWith(
     activity: [] as Activity[],
     notes: [] as { text: string; timeoutMs: number }[],
     toasts: [] as string[],
+    // The toasts the refresh said were pull request changes, which a system notification may carry.
+    changes: [] as string[],
     logs: [] as string[],
     status: undefined as string | undefined,
     timers: [] as { ms: number; tick: () => void; isCancelled: boolean }[],
@@ -350,9 +352,12 @@ function hostWith(
     notify: async (text, timeoutMs) => {
       state.notes.push({ text, timeoutMs })
     },
-    announce: async (_, lines) => {
+    announce: async (_, lines, areChanges) => {
       calls.push("announce")
       state.toasts.push(...lines)
+      if (areChanges) {
+        state.changes.push(...lines)
+      }
     },
     lookUpBranch: async (_, branch, head) => {
       state.branchLookups.push([branch, head])
@@ -560,6 +565,7 @@ describe("a load", () => {
     await refresh(host, session, false)
 
     expect(state.toasts).toEqual(["✗ #1 Legend — CI failed"])
+    expect(state.changes).toEqual(["✗ #1 Legend — CI failed"])
   })
 
   // A load that alerted, or came back to the list, told what it found its own way, so one that joins it late has
@@ -2085,6 +2091,7 @@ describe("sharing, where loads and timers cross", () => {
     await Promise.all([asked, ...fixture.state.work])
 
     expect(fixture.state.toasts).toEqual(["✗ #1 Pull request 1 — CI failed"])
+    expect(fixture.state.changes).toEqual(["✗ #1 Pull request 1 — CI failed"])
   })
 
   test("timers that fired with another session's, which claimed meanwhile, start over so they stop firing together", async () => {

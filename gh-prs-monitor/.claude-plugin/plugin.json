@@ -1,6 +1,6 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
   "author": {
     "name": "David Matura",
@@ -34,7 +34,7 @@
     "shareRefresh": {
       "type": "boolean",
       "title": "Share refreshes between sessions",
-      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval (the desktop app's sessions among themselves, the terminal's and VS Code's among theirs); opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
+      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval, in every app alike; opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
       "default": true
     },
     "notify": {
@@ -69,6 +69,12 @@
       "type": "boolean",
       "title": "Alert sound",
       "description": "Play a short sound with alerts; macOS only, as Linux and Windows terminals have no player",
+      "default": false
+    },
+    "systemNotification": {
+      "type": "boolean",
+      "title": "Alerts as system notifications",
+      "description": "Also send the alerts that Change alerts and the Alert rows turn on as a system notification, one each time they show, for pull request changes only (not the summary when a session starts, nor a cleanup's note), the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty; in another terminal once you choose Claude Code's notification channel for it (Warp shows them with iterm2); or through your own Notification hook. Nothing in the desktop app or VS Code otherwise. Needs Claude Code 2.1.295",
       "default": false
     },
     "alertReady": {

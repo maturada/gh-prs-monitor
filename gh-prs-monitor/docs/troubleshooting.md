@@ -1,5 +1,10 @@
 # When something is wrong
 
+Most problems show in the pane itself, with what to do about them. This page lists each message and its fix, then a
+few problems that come with no message.
+
+## Messages in the pane
+
 The pane shows the problem in a box framed in the warning colour, under the header and above the last list it read,
 if any, with when that list is from. While the checks run by themselves it says how often they try again, and
 **Retry** checks at once.
@@ -16,6 +21,8 @@ if any, with when that list is from. While the checks run by themselves it says 
 | GitHub refused the request (rate limit or permissions). / Could not reach GitHub. / GitHub took too long to answer, or had an error of its own. / GitHub sent a response that could not be read. / GitHub sent no data. / GitHub left part of the answer out, or GitHub's own message about a part it failed to work out. / The GitHub CLI did not finish (…). | Tried again by the next check (in on-demand mode, the next `/prs` or Refresh), or **Retry**. |
 
 After fixing a problem, press **Retry** (or **Refresh**) in the pane, or run `/prs`, to start again.
+
+## Problems without a message
 
 **The pane's buttons and its close mark do nothing**, while hovering still highlights them and the wheel still
 scrolls: Claude Code no longer passes the pane its clicks (seen in VS Code's terminal); clicking in the pane doesn't give
@@ -49,5 +56,7 @@ force push.
 you haven't committed. Move the file aside, or commit or stash the change, then run the command it gives. Meanwhile the
 merge waits in a temporary worktree, and nothing is pushed.
 
-**Something else?** `/prs report` prints a link to report it, with the versions of the plugin, Claude Code, the
-system, `gh` and git filled in.
+## Something else?
+
+For anything this page doesn't cover, `/prs report` prints a link to report it, with the versions of the plugin, Claude
+Code, the system, `gh` and git filled in.

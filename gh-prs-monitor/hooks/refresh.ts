@@ -71,7 +71,8 @@ export type RefreshHost = Host & {
   setStatus: (text: string | undefined) => Promise<void>
   clearStatus: () => Promise<void>
   notify: (text: string, timeoutMs: number) => Promise<void>
-  announce: (repo: RepoRef, lines: readonly string[]) => Promise<void>
+  // `areChanges`: pull request changes, which a system notification may carry; a session's first summary is not one.
+  announce: (repo: RepoRef, lines: readonly string[], areChanges: boolean) => Promise<void>
   // What a load sets off: the lookup Create PR waits on, and the cleanup of pull requests that left the lists, with
   // what the load found of how they ended (`known`), which it asks GitHub no more.
   lookUpBranch: (repo: RepoRef, branch: string | null, head: string | null) => Promise<unknown>
@@ -328,7 +329,7 @@ function startLoad(host: RefreshHost, session: Session, shared: SharedAnswer | n
 function endLoad(host: RefreshHost, session: Session): void {
   const held = session.checks.heldBack
   if (held && session.checks.isAlertWanted) {
-    host.background(host.announce(held.repo, held.lines))
+    host.background(host.announce(held.repo, held.lines, true))
   }
   session.checks.inFlight = null
   session.checks.isAlertWanted = false
@@ -510,7 +511,7 @@ async function present(
   const lines = session.settings.refresh === "on-demand" ? null : refreshAlerts(changes, before, snapshot, kind)
   session.checks.heldBack = kind.isAlerting || kind.isReturning ? null : { repo, lines: alertLines(changes) }
   if (lines) {
-    await host.announce(repo, lines)
+    await host.announce(repo, lines, !kind.isReturning)
   }
 }
 

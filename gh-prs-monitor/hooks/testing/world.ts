@@ -199,6 +199,13 @@ function fullBranchName(branch: string): string {
   return branch === "HEAD" ? "HEAD" : `refs/heads/${branch}`
 }
 
+// Whether the plugin tried a system notification. Nothing in the kit answers `ui.notify` beneath the plugin: an engine
+// that knows the call says there is no implementation, and one before 2.1.295 has no such call. Either way the try
+// lands in the plugin's debug log as its own line naming the call, and the toasts are as they were.
+export function triedToNotify(debug: readonly string[]): boolean {
+  return debug.some((line) => line.startsWith("gh-prs-monitor: ") && line.includes("ui.notify"))
+}
+
 // Stands for the machine and the person beneath the plugin: gh and git answer from `world`, and every toast,
 // status line and command the plugin raises is recorded.
 // `$` is the test's own engine, through which the person at the plugin's dialog reads it and answers.

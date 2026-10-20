@@ -1,5 +1,11 @@
 # Create PR
 
+**Create PR** opens a pull request for the branch you are on, the way your repository writes them. It runs the checks
+you pick, commits the changes you choose, drafts the title and body in the repository's own form, and shows you one
+preview before anything is pushed or opened. Next time in that repository it offers your choices again.
+
+## When the button shows
+
 **Create PR** shows in the title line of **Your Pull Requests** when this session's branch has no open pull request,
 that is, when:
 
@@ -19,9 +25,7 @@ The pane asks GitHub about these once per branch and commit, and again as the bu
 it the button comes a moment after the list; while GitHub can't be asked, it waits for the next refresh. With no pull
 requests open at all, both lists still show, for the button.
 
-Typed, it is `/gh-prs-monitor:create-pr [-- <instructions>]`, for the branch checked out. The pane adds
-`--branch "<name>"`, the branch it offered, and, where the new session may open in another folder (the desktop app at
-the repository's root, VS Code at the window's folder), `--worktree "<path>"`, the folder that branch is checked out in.
+## Where it runs
 
 **Create PR** asks where to create it, as [Review](review.md) does, naming the branch and the one it goes into:
 
@@ -36,6 +40,10 @@ The pull request goes into the repository's default branch, unless your instruct
 Instructions typed in the dialog's field go with either answer, or Enter sends them alone to this session: "as a draft",
 "ask ann to review", "skip the e2e tests", "say why the cache moved". Where the pane is drawn somewhere that can't open
 a new session, such as the phone app, it starts here without asking.
+
+Typed, Create PR is `/gh-prs-monitor:create-pr [-- <instructions>]`, for the branch checked out. The pane adds
+`--branch "<name>"`, the branch it offered, and, where the new session may open in another folder (the desktop app at
+the repository's root, VS Code at the window's folder), `--worktree "<path>"`, the folder that branch is checked out in.
 
 ## What the skill does
 
@@ -84,10 +92,10 @@ Once a pull request is open, the skill keeps three choices for the repository: d
 reviewers GitHub took. The next Create PR there marks those checks to run again (one no longer found is not offered) and
 offers the same draft choice and reviewers, each for you to change. Each pull request's choices replace the last.
 
-They are kept in the plugin's own store on this machine, per repository and server, never in the repository: Claude Code
-asks first before a command writes a file into a repository's `.git` folder, where hooks or config planted run on the
-next git command. The skill reads and keeps them through a tool the plugin adds, `create_pr_choices`, which the plugin
-answers itself, so it asks nothing.
+They are kept in the plugin's own store on this machine, shared by the terminal, VS Code and the desktop app, per
+repository and server, never in the repository: Claude Code asks first before a command writes a file into a
+repository's `.git` folder, where hooks or config planted run on the next git command. The skill reads and keeps them
+through a tool the plugin adds, `create_pr_choices`, which the plugin answers itself, so it asks nothing.
 
 ## While it runs
 
