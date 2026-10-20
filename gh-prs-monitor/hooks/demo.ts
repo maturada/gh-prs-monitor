@@ -8,7 +8,7 @@ import { CANCEL, isDecline } from "./question"
 import { reviewPlaceQuestion } from "./review-flow"
 import type { PaneView } from "./pane"
 import { readPulls } from "./pulls"
-import { activityOf, alertLines, awayLine } from "./alerts"
+import { activityOf, alertLines, awayLine, systemNotificationText } from "./alerts"
 import type { Alert, AlertKind } from "./alerts"
 import { listText } from "./list"
 import { summaryCounts } from "./summary"
@@ -87,6 +87,7 @@ export function demoAnswerNote(example: string, question: Question, answer: Answ
   return `${example} is an example: in your own list, ${picked} would go ahead. Nothing was sent to GitHub.`
 }
 
+// Where a repository's name would stand: the list's, and the title of the examples' system notification.
 const DEMO_NAME = "Example pull requests"
 // Where every example links: the person's own pull requests on GitHub, as no example exists there.
 const LINK = "https://github.com/pulls"
@@ -457,6 +458,11 @@ export const DEMO_ALERTS: readonly string[] = [
   ...alertLines(DEMO_CHANGES),
   awayLine(new Set(DEMO_CHANGES.map((change) => change.number)).size, AWAY_SINCE)
 ]
+
+// The examples' system notification, as a refresh would send for their changes; the summary after them is none.
+export function demoNotification(): { title: string; text: string } {
+  return { title: DEMO_NAME, text: systemNotificationText(alertLines(DEMO_CHANGES)) }
+}
 
 // Where nothing draws the pane, /prs prints the list instead, led by what changed since the last look: with nothing
 // attached; in an app that places no panes, which still shows the alerts; or sent over Remote Control, while the pane

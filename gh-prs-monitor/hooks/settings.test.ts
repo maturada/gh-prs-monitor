@@ -26,6 +26,7 @@ describe("readSettings", () => {
       isShowingStatus: true,
       includeOutdated: false,
       isPlayingSound: false,
+      isSendingSystemNotification: false,
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,
@@ -65,9 +66,16 @@ describe("readSettings", () => {
       "closed"
     ])
     expect(
-      readSettings({ alertSound: true, holdWhileWorking: false, cleanupWorktrees: false, hideDrafts: true })
+      readSettings({
+        alertSound: true,
+        systemNotification: true,
+        holdWhileWorking: false,
+        cleanupWorktrees: false,
+        hideDrafts: true
+      })
     ).toMatchObject({
       isPlayingSound: true,
+      isSendingSystemNotification: true,
       isHoldingWhileWorking: false,
       isCleaningUp: false,
       isHidingDrafts: true
@@ -88,6 +96,7 @@ describe("readSettings", () => {
       isShowingStatus: false,
       includeOutdated: true,
       isPlayingSound: false,
+      isSendingSystemNotification: false,
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,

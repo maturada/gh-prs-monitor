@@ -19,6 +19,9 @@ export type Settings = {
   isShowingStatus: boolean
   includeOutdated: boolean
   isPlayingSound: boolean
+  // The pull request changes among the alerts also go out as a system notification, one each time they show, through
+  // Claude Code's own channel.
+  isSendingSystemNotification: boolean
   // Alerts wait while a turn runs, and show when it is done.
   isHoldingWhileWorking: boolean
   // Worktrees /prs made go, with their branches, and the branches a switch here left, once their pull request is
@@ -60,6 +63,7 @@ export function readSettings(options: PluginOptions): Settings {
     isShowingStatus: options.statusLine !== false && mode === "background",
     includeOutdated: options.includeOutdated === true,
     isPlayingSound: options.alertSound === true,
+    isSendingSystemNotification: options.systemNotification === true,
     isHoldingWhileWorking: options.holdWhileWorking !== false,
     isCleaningUp: options.cleanupWorktrees !== false,
     isHidingDrafts: options.hideDrafts === true,

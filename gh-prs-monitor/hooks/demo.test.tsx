@@ -1,7 +1,7 @@
 // Author: David Matura
 
 import { describe, expect, test } from "claude-code/testing"
-import { DEMO_ALERTS, demoAnswerNote, demoQuestion, demoSnapshot, demoStartNote } from "./demo"
+import { DEMO_ALERTS, demoAnswerNote, demoNotification, demoQuestion, demoSnapshot, demoStartNote } from "./demo"
 import {
   clockOf,
   MINUTE,
@@ -16,7 +16,8 @@ import {
   settleUntil,
   pressDrawn,
   lines,
-  SURFACES
+  SURFACES,
+  triedToNotify
 } from "./testing/world"
 import type { On } from "claude-code"
 import type { Engine, MockClock } from "claude-code/testing"
@@ -105,6 +106,33 @@ describe("/prs demo", () => {
     expect(seen.statuses.at(-1)).toBe(
       "PRs ✅ 1 Ready\u00a0\u00a0❗ 6 Need You\u00a0\u00a0🔍 4 To Review\u00a0\u00a0(/prs)"
     )
+  })
+
+  test("demo's system notification carries the examples' changes, not the summary after them", () => {
+    expect(demoNotification()).toEqual({ title: "Example pull requests", text: `${DEMO_ALERTS[0]} (8 more)` })
+  })
+
+  test(
+    "demo tries a system notification where it is on, its failing leaving the examples' toasts",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      clockOf(on)
+      const seen = machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
+
+      await runPrs($, "demo")
+
+      expect(seen.toasts).toEqual([DEMO_ALERTS[0]])
+      expect(triedToNotify(seen.debug)).toBe(true)
+    }
+  )
+
+  test("demo tries no system notification by default", async ($, on) => {
+    clockOf(on)
+    const seen = machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
+
+    await runPrs($, "demo")
+
+    expect(triedToNotify(seen.debug)).toBe(false)
   })
 
   test("after the demo the real summary comes back", async ($, on) => {

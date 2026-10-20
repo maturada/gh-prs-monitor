@@ -1,6 +1,10 @@
 # Resolve Comments
 
-**Resolve Comments** shows on your own pull requests with unresolved review comments, or where changes were requested.
+Review comments piling up on your pull request? **Resolve Comments** works through them with you: it sorts each one
+as needs fix, debatable or already fixed, changes only what you approve, and commits, pushes and replies only on your
+yes.
+
+It shows on your own pull requests with unresolved review comments, or where changes were requested.
 It asks where to work first: see [Where the branch skills work](working-on-a-branch.md). While it runs, its row says so:
 see [While a skill is at work](actions.md#while-a-skill-is-at-work).
 

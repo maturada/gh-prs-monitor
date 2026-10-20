@@ -1,6 +1,10 @@
 # Resolve Conflicts
 
-**Resolve Conflicts** shows on your own pull requests that GitHub says conflict with their base, drafts included. As it
+Your pull request conflicts with its base? **Resolve Conflicts** merges the base in apart from your checkout, reads
+why each side changed, and proposes a resolution for each conflict, for you to approve. Nothing moves in your checkout,
+and nothing is pushed, until you say yes.
+
+It shows on your own pull requests that GitHub says conflict with their base, drafts included. As it
 works on a local copy, it shows whatever access you have to the repository; its push goes only to the pull request's
 own branch. It is the main button of a row with conflicts, except on a draft, whose main button is Ready For Review.
 The press first asks GitHub how the pull request stands: one that merges cleanly now, its conflicts resolved on GitHub

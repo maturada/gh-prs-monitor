@@ -4,6 +4,11 @@
 pull request's branch, and ask where to, also when this folder is on that branch already, as another session may be
 working in it.
 
+If you aren't sure, pick a worktree: the skill gets a folder of its own with the pull request checked out and, unless
+it comes from a fork, its dependencies installed, and your checkout, with its uncommitted changes, stays exactly as it
+is. Switching here is quickest when this folder has nothing in progress. Either way nothing is committed or pushed
+without your yes, and the worktree goes afterwards only when nothing in it would be lost.
+
 ## The choices
 
 - **Here, on this branch** — when this folder is on the pull request's branch already: the skill works in it as it
@@ -88,64 +93,6 @@ Instructions typed in the dialog's field, for example "only the naming comments"
 you then press has it work, or Enter sends them alone to a worktree in this session. Sent alone, a "cancel", "no
 thanks" or "never mind" cancels, while an instruction that merely starts with "no" is passed on.
 
-## Cleanup
-
-Once the pull request is merged or closed, its worktree goes, with its local branch, when nothing in it would be lost:
-
-- no files changed or added;
-- no files that git ignores, except what tools make again (installed dependencies, build output and caches, in the
-  usual folders of the common languages: `node_modules`, `.venv`, `vendor`, `Pods`, `target`, `dist`, `__pycache__`
-  and the like, Flutter's `.symlinks` and `ephemeral`, Yarn's Plug'n'Play files, an Android `local.properties` holding
-  only the SDK's and Flutter's own settings) and files the main checkout holds the same, as a copy `.worktreeinclude`
-  made (one changed in the worktree keeps it, even among what tools make again where the file names it);
-- its commit on GitHub.
-
-What goes and what stays:
-
-- Only a worktree holding the pull request's branch is removed. A worktree Claude Code itself made in the same folder,
-  or one on a branch another open pull request comes from, is left alone.
-- One that holds work is kept, and said so once: not again in later sessions in the same clone until why it stays
-  changes.
-- The one your session is working in stays until you leave it. A worktree another session works in can still go (only
-  when nothing in it would be lost); that session then loses its folder.
-- A `pr-<number>` branch that **Here, switch branch** left in your folder goes the same way, once no folder has it
-  checked out, it still tracks that pull request, and its commit is on GitHub. One with commits GitHub lacks is kept,
-  and said so once, as a worktree is.
-- A branch of that name that tracks the pull request is taken for /prs's, even one you made yourself. One that tracks
-  something else, or nothing, or that an open pull request comes from, is never touched, and no other branch of yours
-  is ever deleted.
-
-This is checked when a session starts and whenever a pull request leaves the lists, unless the **Clean up worktrees and
-branches** setting is off. One session of a clone checks at a time: one that finds another cleaning up leaves it to
-that one and looks again next time.
-
-## Your branches stay yours
-
-The pane never resets or rewrites a branch you work in.
-
-- The worktree's `pr-<number>` is made from GitHub's version. One left from an earlier run is brought to GitHub's
-  version only when nothing in it would be lost.
-- Switching here takes the branch of the head's name when you have none, or when yours is at, behind or ahead of
-  GitHub's, and then only moves it forward.
-- Otherwise it goes on `pr-<number>` too:
-  - always for a fork's pull request, whose head may share its name with a branch of yours;
-  - when your branch of that name is checked out in another folder, or has gone its own way from the pull request, as
-    after a rebase on GitHub;
-  - when a branch of yours differs from the head's name only in case (on a file system that ignores case, as macOS's
-    and Windows' do by default, git would take yours for it).
-
-The skills rebase it only on your yes: before they start, to bring the checkout up to date (in /prs's worktree; in your
-own folder they give you the command), and before a push, to bring in what GitHub has. The preview says so, and your
-unpushed commits then go out with new SHAs.
-
-A rebase runs in a temporary worktree, and the folder then moves once by the same refusing switch, as git's rebase
-writes over a file it doesn't track without a word: a conflict leaves the folder as it was. Resolve Conflicts makes its
-merge apart the same way, and moves the folder onto it once, on your yes.
-
-They push to the pull request's own branch, whatever the local one is called. For a fork, only when you may push to the
-fork (yours, or an organisation's you write to), or when it lets maintainers edit and you may push to the repository;
-otherwise they offer to commit only.
-
 ## Dependencies
 
 A new worktree gets its own dependencies, installed from each project's lockfile so they match the pull request exactly:
@@ -186,3 +133,61 @@ told its commands can run. `requirements.txt` is no lockfile, and gets nothing.
 - **An install still running after 10 minutes** is stopped, and the skill is told that what it filled may be
   incomplete.
 - **On Windows**, a package manager Claude Code can't start is tried once more through `cmd`.
+
+## Your branches stay yours
+
+The pane never resets or rewrites a branch you work in.
+
+- The worktree's `pr-<number>` is made from GitHub's version. One left from an earlier run is brought to GitHub's
+  version only when nothing in it would be lost.
+- Switching here takes the branch of the head's name when you have none, or when yours is at, behind or ahead of
+  GitHub's, and then only moves it forward.
+- Otherwise it goes on `pr-<number>` too:
+  - always for a fork's pull request, whose head may share its name with a branch of yours;
+  - when your branch of that name is checked out in another folder, or has gone its own way from the pull request, as
+    after a rebase on GitHub;
+  - when a branch of yours differs from the head's name only in case (on a file system that ignores case, as macOS's
+    and Windows' do by default, git would take yours for it).
+
+The skills rebase it only on your yes: before they start, to bring the checkout up to date (in /prs's worktree; in your
+own folder they give you the command), and before a push, to bring in what GitHub has. The preview says so, and your
+unpushed commits then go out with new SHAs.
+
+A rebase runs in a temporary worktree, and the folder then moves once by the same refusing switch, as git's rebase
+writes over a file it doesn't track without a word: a conflict leaves the folder as it was. Resolve Conflicts makes its
+merge apart the same way, and moves the folder onto it once, on your yes.
+
+They push to the pull request's own branch, whatever the local one is called. For a fork, only when you may push to the
+fork (yours, or an organisation's you write to), or when it lets maintainers edit and you may push to the repository;
+otherwise they offer to commit only.
+
+## Cleanup
+
+Once the pull request is merged or closed, its worktree goes, with its local branch, when nothing in it would be lost:
+
+- no files changed or added;
+- no files that git ignores, except what tools make again (installed dependencies, build output and caches, in the
+  usual folders of the common languages: `node_modules`, `.venv`, `vendor`, `Pods`, `target`, `dist`, `__pycache__`
+  and the like, Flutter's `.symlinks` and `ephemeral`, Yarn's Plug'n'Play files, an Android `local.properties` holding
+  only the SDK's and Flutter's own settings) and files the main checkout holds the same, as a copy `.worktreeinclude`
+  made (one changed in the worktree keeps it, even among what tools make again where the file names it);
+- its commit on GitHub.
+
+What goes and what stays:
+
+- Only a worktree holding the pull request's branch is removed. A worktree Claude Code itself made in the same folder,
+  or one on a branch another open pull request comes from, is left alone.
+- One that holds work is kept, and said so once: not again in later sessions in the same clone until why it stays
+  changes.
+- The one your session is working in stays until you leave it. A worktree another session works in can still go (only
+  when nothing in it would be lost); that session then loses its folder.
+- A `pr-<number>` branch that **Here, switch branch** left in your folder goes the same way, once no folder has it
+  checked out, it still tracks that pull request, and its commit is on GitHub. One with commits GitHub lacks is kept,
+  and said so once, as a worktree is.
+- A branch of that name that tracks the pull request is taken for /prs's, even one you made yourself. One that tracks
+  something else, or nothing, or that an open pull request comes from, is never touched, and no other branch of yours
+  is ever deleted.
+
+This is checked when a session starts and whenever a pull request leaves the lists, unless the **Clean up worktrees and
+branches** setting is off. One session of a clone checks at a time: one that finds another cleaning up leaves it to
+that one and looks again next time.

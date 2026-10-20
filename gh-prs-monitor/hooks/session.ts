@@ -3,6 +3,7 @@
 import type { Timer } from "claude-code"
 
 import type { Answer, BranchPulls, PullsSnapshot } from "../types"
+import { nothingHeld } from "./alerts"
 import type { HeldAlerts } from "./alerts"
 import type { CREATE_PR } from "./create-flow"
 import type { ClosedState } from "./ended"
@@ -196,7 +197,7 @@ export function createSession(settings: Settings): Session {
       awayBase: null,
       lookedUp: []
     },
-    alerts: { held: [], heldSince: null },
+    alerts: nothingHeld(),
     skills: { starting: [], turns: new Map(), startedAt: null, lastFollowAt: 0 },
     cleanup: { settledWorktrees: new Set(), settledBranches: new Set(), isRunning: false, isWanted: false, known: [] },
     demo: { toasts: [] },

@@ -10,7 +10,7 @@ import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOp
 
 import type { Activity, CheckoutAt, PullAction, PullRow, Question } from "../types"
 import { ACTION_LABELS } from "./actions"
-import { nextNoteExpiry, recentNotes } from "./alerts"
+import { nextNoteExpiry, nothingHeld, recentNotes } from "./alerts"
 import { pullSuggestions } from "./autocomplete"
 import { checkingAgain } from "./when"
 import { focusMoved, forgetWindow, windowMoved } from "./back-to-row"
@@ -25,6 +25,7 @@ import { CREATE_PR, createPlaceQuestion, pullToOpen } from "./create-flow"
 import {
   DEMO_ALERTS,
   demoAnswerNote,
+  demoNotification,
   DEMO_SEEN_NOTE,
   demoQuestion,
   demoSnapshot,
@@ -114,7 +115,7 @@ const mergedState = atom({ plugin: "gh-prs-monitor", key: "merged" } as const, [
 const compactState = atom({ plugin: "gh-prs-monitor", key: "isCompact" } as const, false)
 const paneAskedState = atom({ plugin: "gh-prs-monitor", key: "paneAskedAt" } as const, null)
 const turnsState = atom({ plugin: "gh-prs-monitor", key: "turns" } as const, [])
-const heldAlertsState = atom({ plugin: "gh-prs-monitor", key: "heldAlerts" } as const, { held: [], heldSince: null })
+const heldAlertsState = atom({ plugin: "gh-prs-monitor", key: "heldAlerts" } as const, nothingHeld())
 
 export const register: Register = (on, options) => {
   const session = createSession(readSettings(options))
@@ -139,7 +140,9 @@ export const register: Register = (on, options) => {
     // A reload during a turn: the turn goes on, and so do the alerts held for it.
     session.runningTurns = new Set(await read($, turnsState))
     session.fromBefore = new Set(session.runningTurns)
-    session.alerts = await read($, heldAlertsState)
+    // A module before 1.2.0 kept no `changes`: what it held shows, as none of it notifies.
+    const kept = await read($, heldAlertsState)
+    session.alerts = { ...kept, changes: kept.changes ?? [] }
     // A reload mid-demo puts the person's own summary back. Any reload leaves the status line as the module before
     // set it, as when a /config change turned the summary off: over a list kept, it is put as the settings now say.
     await endDemo($, session)
@@ -643,6 +646,10 @@ async function showDemo($: Engine, session: Session): Promise<boolean> {
   if (session.settings.isPlayingSound) {
     background($, $.audio.play({ asset: ALERT_SOUND }))
   }
+  if (session.settings.isSendingSystemNotification) {
+    const { title, text } = demoNotification()
+    background($, notifySystem($, title, text))
+  }
   // Set before the pane opens, so its first drawing is of the examples.
   await update($, demoState, () => true)
   const isPlaced = (await $.ui.open({ id: PANE, title: PANE_TITLE, closeOnEscape: true })).isPlaced
@@ -753,6 +760,7 @@ function toastHostOf($: Engine, session: Session): ToastHost {
       ),
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
     playSound: () => background($, $.audio.play({ asset: ALERT_SOUND })),
+    notifySystem: (title, text) => background($, notifySystem($, title, text)),
     notShownElsewhere: (repo, lines) =>
       notShownElsewhere(storeOf($), repo, lines, { by: session.id, pollMs: session.settings.pollMs })
   }
@@ -764,6 +772,14 @@ function keepTurns($: Engine, session: Session): void {
     $,
     update($, turnsState, () => [...session.runningTurns])
   )
+}
+
+// A system notification through the person's own channel, the one Claude Code's notifications take
+// (`preferredNotifChannel`): a banner in iTerm2, kitty or Ghostty, the bell in another terminal, and where no terminal
+// shows only their own `Notification` hooks. Engines before 2.1.295 have no such call, and a hook's refusal or a failed
+// write rejects it: async, so each of these reaches `background`'s log, as the toasts have said it already.
+async function notifySystem($: Engine, title: string, text: string): Promise<void> {
+  await $.ui.notify(text, { title })
 }
 
 // Where no surface draws toasts, a message becomes a dim notice in the conversation, which the model never sees; with
@@ -789,7 +805,8 @@ function cleanupHostOf($: Engine, session: Session): CleanupHost {
     ...hostOf($),
     log: (line) => logDebug($, line),
     storedList: () => read($, snapshotState),
-    announce: (repo, lines) => announce(toastHostOf($, session), session, repo, lines),
+    // A cleanup's notes are no pull request changes: they notify nothing.
+    announce: (repo, lines) => announce(toastHostOf($, session), session, repo, lines, false),
     now: () => $.clock.now(),
     recallKept: (repo, root) => recallKept(storeOf($), repo, root),
     keepKept: (repo, root, kept) => keepKept(storeOf($), repo, root, kept),
@@ -1132,7 +1149,7 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
       }
     },
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
-    announce: (repo, lines) => announce(toastHostOf($, session), session, repo, lines),
+    announce: (repo, lines, areChanges) => announce(toastHostOf($, session), session, repo, lines, areChanges),
     lookUpBranch: (repo, branch, head) => lookUpBranch(branchLookupHostOf($), session, repo, branch, head, false),
     cleanUp: (repo, known) => cleanUp(cleanupHostOf($, session), session, repo, known),
     recallShared: (repo, viewer) => recallShared(storeOf($), repo, viewer),

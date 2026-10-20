@@ -3,7 +3,7 @@
 import { describe, expect, test } from "claude-code/testing"
 
 import { snapshotOf } from "./testing/fixtures"
-import { clockOf, MINUTE, machine, settleAll, startSession, GITHUB } from "./testing/world"
+import { clockOf, MINUTE, machine, settleAll, startSession, GITHUB, triedToNotify } from "./testing/world"
 import type { World } from "./testing/world"
 
 // The last look an earlier session kept of the lists.
@@ -24,6 +24,23 @@ describe("cleaning up worktrees", () => {
     expect(seen.runs).toContain("git worktree remove /repo/.claude/worktrees/pr-9")
     expect(seen.runs).toContain("git branch -D -- fix/old")
     expect(seen.toasts).toContain("#9 merged: removed its worktree and the branch fix/old")
+  })
+
+  test("its note sends no system notification", { options: { systemNotification: true } }, async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: GITHUB,
+      branch: "main",
+      uncommitted: 0,
+      pullWorktrees: [{ number: 9, branch: "fix/old" }],
+      closed: [{ number: 9, state: "MERGED", by: "ann" }]
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    expect(seen.toasts).toContain("#9 merged: removed its worktree and the branch fix/old")
+    expect(triedToNotify(seen.debug)).toBe(false)
   })
 
   test("a worktree in the folder that does not hold the pull request's branch, or holds an open one's, stays", async ($, on) => {

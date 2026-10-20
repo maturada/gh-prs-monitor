@@ -1001,35 +1001,65 @@ describe("statusSummary", () => {
 })
 
 describe("holdAlerts", () => {
-  const NONE = { held: [], heldSince: null }
+  const NONE = { held: [], heldSince: null, changes: [] }
 
   test("while holding, lines wait from when the first did; with none, nothing changes", () => {
-    const first = holdAlerts(NONE, ["a"], 10 * MINUTE, true)
-    expect(first).toEqual({ shown: [], waiting: { held: ["a"], heldSince: 10 * MINUTE } })
+    const first = holdAlerts(NONE, ["a"], 10 * MINUTE, true, true)
+    expect(first).toEqual({ shown: [], changes: [], waiting: { held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] } })
 
-    const second = holdAlerts(first.waiting, ["b", "c"], 12 * MINUTE, true)
-    expect(second).toEqual({ shown: [], waiting: { held: ["a", "b", "c"], heldSince: 10 * MINUTE } })
+    const second = holdAlerts(first.waiting, ["b", "c"], 12 * MINUTE, true, true)
+    expect(second).toEqual({
+      shown: [],
+      changes: [],
+      waiting: { held: ["a", "b", "c"], heldSince: 10 * MINUTE, changes: ["a", "b", "c"] }
+    })
 
-    expect(holdAlerts(second.waiting, [], 13 * MINUTE, true)).toEqual({ shown: [], waiting: second.waiting })
-    expect(holdAlerts(NONE, [], 13 * MINUTE, true)).toEqual({ shown: [], waiting: NONE })
+    expect(holdAlerts(second.waiting, [], 13 * MINUTE, true, true)).toEqual({
+      shown: [],
+      changes: [],
+      waiting: second.waiting
+    })
+    expect(holdAlerts(NONE, [], 13 * MINUTE, true, true)).toEqual({ shown: [], changes: [], waiting: NONE })
   })
 
   test("not holding, everything waiting shows with the new lines, and holding starts over", () => {
-    expect(holdAlerts({ held: ["a"], heldSince: 10 * MINUTE }, ["b"], 11 * MINUTE, false)).toEqual({
+    expect(
+      holdAlerts({ held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] }, ["b"], 11 * MINUTE, false, true)
+    ).toEqual({
       shown: ["a", "b"],
+      changes: ["a", "b"],
       waiting: NONE
     })
-    expect(holdAlerts(NONE, [], 11 * MINUTE, false)).toEqual({ shown: [], waiting: NONE })
+    expect(holdAlerts(NONE, [], 11 * MINUTE, false, true)).toEqual({ shown: [], changes: [], waiting: NONE })
   })
 
   test("held a quarter of an hour, they show even while the turn still runs", () => {
-    const waiting = { held: ["a"], heldSince: 10 * MINUTE }
+    const waiting = { held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] }
 
-    expect(holdAlerts(waiting, ["b"], 24 * MINUTE, true)).toEqual({
+    expect(holdAlerts(waiting, ["b"], 24 * MINUTE, true, true)).toEqual({
       shown: [],
-      waiting: { held: ["a", "b"], heldSince: 10 * MINUTE }
+      changes: [],
+      waiting: { held: ["a", "b"], heldSince: 10 * MINUTE, changes: ["a", "b"] }
     })
-    expect(holdAlerts(waiting, ["b"], 25 * MINUTE, true)).toEqual({ shown: ["a", "b"], waiting: NONE })
+    expect(holdAlerts(waiting, ["b"], 25 * MINUTE, true, true)).toEqual({
+      shown: ["a", "b"],
+      changes: ["a", "b"],
+      waiting: NONE
+    })
+  })
+
+  test("a summary or a cleanup's note waits and shows with the rest, but is not a pull request change", () => {
+    const first = holdAlerts(NONE, ["summary"], 10 * MINUTE, true, false)
+    expect(first.waiting).toEqual({ held: ["summary"], heldSince: 10 * MINUTE, changes: [] })
+
+    const second = holdAlerts(first.waiting, ["#1 failed"], 11 * MINUTE, true, true)
+    expect(second.waiting.changes).toEqual(["#1 failed"])
+
+    expect(holdAlerts(second.waiting, ["note"], 12 * MINUTE, false, false)).toEqual({
+      shown: ["summary", "#1 failed", "note"],
+      changes: ["#1 failed"],
+      waiting: NONE
+    })
   })
 })
 

@@ -16,7 +16,8 @@ import {
   runPrs,
   GITHUB,
   keptOverReload,
-  PLUGIN
+  PLUGIN,
+  triedToNotify
 } from "./testing/world"
 import type { Drawn, World } from "./testing/world"
 
@@ -323,32 +324,37 @@ describe("what changed, noted on each row", () => {
     expect(seen.toasts).toEqual([])
   })
 
-  test("what changed while away shows from the first refresh, told in one toast", async ($, on) => {
-    const clock = clockOf(on)
-    const yesterday = new Date(2026, 9, 6, 17, 40).getTime()
-    const earlier = snapshotOf(GITHUB, { at: yesterday })
-    const world: World = {
-      github: COMMENTED,
-      branch: "main",
-      uncommitted: 0,
-      store: { "look:github.com/acme/app": earlier }
+  test(
+    "what changed while away shows from the first refresh, told in one toast",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const yesterday = new Date(2026, 9, 6, 17, 40).getTime()
+      const earlier = snapshotOf(GITHUB, { at: yesterday })
+      const world: World = {
+        github: COMMENTED,
+        branch: "main",
+        uncommitted: 0,
+        store: { "look:github.com/acme/app": earlier }
+      }
+      const seen = machine($, on, world)
+      await clock.set(new Date(2026, 9, 7, 9, 0).getTime())
+      await startSession($)
+      await clock.settle()
+
+      const ui = await mountPane($, "terminal")
+      expect(await ui.find({ type: "Text", text: "✎ new comment from ann" })).toBeDefined()
+      expect(await ui.find({ type: "Text", text: /^in the last 15h$/ })).toBeDefined()
+      expect(seen.toasts).toEqual(["Since yesterday 17:40, 1 pull request changed — see /prs"])
+      expect(triedToNotify(seen.debug)).toBe(false)
+
+      // Only the session's first refresh tells it; a Refresh later in the session shows changes in the pane.
+      world.github = { ...COMMENTED, mine: [{ ...COMMENTED.mine![0]!, ci: "FAILURE" }, COMMENTED.mine![1]!] }
+      await ui.press({ key: "refresh" })
+      await clock.settle()
+      expect(seen.toasts).toHaveLength(1)
     }
-    const seen = machine($, on, world)
-    await clock.set(new Date(2026, 9, 7, 9, 0).getTime())
-    await startSession($)
-    await clock.settle()
-
-    const ui = await mountPane($, "terminal")
-    expect(await ui.find({ type: "Text", text: "✎ new comment from ann" })).toBeDefined()
-    expect(await ui.find({ type: "Text", text: /^in the last 15h$/ })).toBeDefined()
-    expect(seen.toasts).toEqual(["Since yesterday 17:40, 1 pull request changed — see /prs"])
-
-    // Only the session's first refresh tells it; a Refresh later in the session shows changes in the pane.
-    world.github = { ...COMMENTED, mine: [{ ...COMMENTED.mine![0]!, ci: "FAILURE" }, COMMENTED.mine![1]!] }
-    await ui.press({ key: "refresh" })
-    await clock.settle()
-    expect(seen.toasts).toHaveLength(1)
-  })
+  )
 
   test("a kind turned off is not marked", { options: { alertComments: false } }, async ($, on) => {
     const clock = clockOf(on)
@@ -391,7 +397,10 @@ describe("alerts while a turn runs", () => {
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
     const seen = machine($, on, world)
     // t1 started before the reload, with an alert held for it; the reload replays the start.
-    keptOverReload(on, { turns: ["t1"], heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: 0 } })
+    keptOverReload(on, {
+      turns: ["t1"],
+      heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: 0, changes: ["✓ #9 Old work — approved"] }
+    })
     await startSession($)
     await clock.settle()
 
@@ -422,12 +431,57 @@ describe("alerts while a turn runs", () => {
     await clock.advance(3 * MINUTE)
     expect(kept).toEqual({
       turns: ["t1"],
-      heldAlerts: { held: ["✗ #1 Fix the menu — CI failed"], heldSince: expect.any(Number) }
+      heldAlerts: {
+        held: ["✗ #1 Fix the menu — CI failed"],
+        heldSince: expect.any(Number),
+        changes: ["✗ #1 Fix the menu — CI failed"]
+      }
     })
     await $.turn.complete(DONE)
     await clock.settle()
-    expect(kept).toEqual({ turns: [], heldAlerts: { held: [], heldSince: null } })
+    expect(kept).toEqual({ turns: [], heldAlerts: { held: [], heldSince: null, changes: [] } })
   })
+
+  // A module before 1.2.0 kept no `changes`: what it held still shows, with no system notification.
+  test(
+    "alerts an older module held over a reload show when the turn ends, and notify nothing",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+      const seen = machine($, on, world)
+      keptOverReload(on, { turns: ["t1"], heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: 0 } })
+      await startSession($)
+      await clock.settle()
+
+      await $.turn.complete(DONE)
+      await clock.settle()
+      expect(seen.toasts).toEqual(["✓ #9 Old work — approved"])
+      expect(triedToNotify(seen.debug)).toBe(false)
+    }
+  )
+
+  test(
+    "alerts this version held over a reload notify when the turn ends, as they would have",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+      const seen = machine($, on, world)
+      keptOverReload(on, {
+        turns: ["t1"],
+        heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: 0, changes: ["✓ #9 Old work — approved"] }
+      })
+      await startSession($)
+      await clock.settle()
+      expect(triedToNotify(seen.debug)).toBe(false)
+
+      await $.turn.complete(DONE)
+      await clock.settle()
+      expect(seen.toasts).toEqual(["✓ #9 Old work — approved"])
+      expect(triedToNotify(seen.debug)).toBe(true)
+    }
+  )
 
   test("a turn kept over a reload whose end went unseen is over once the next one starts", async ($, on) => {
     const clock = clockOf(on)
@@ -746,6 +800,42 @@ describe("the alert sound", () => {
 
     expect(seen.toasts).toHaveLength(1)
     expect(seen.sounds).toEqual([])
+  })
+})
+
+// Whether a system notification is tried (`triedToNotify`); what it sends is `toasts.test.ts`'s.
+describe("the system notification", () => {
+  test(
+    "is tried with alerts when turned on, and its failing leaves the toast as it was",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+      const seen = machine($, on, world)
+      await startSession($)
+      await clock.settle()
+      expect(triedToNotify(seen.debug)).toBe(false)
+
+      world.github = { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, ci: "FAILURE" }, GITHUB.mine![1]!] }
+      await clock.advance(3 * MINUTE)
+
+      expect(seen.toasts).toHaveLength(1)
+      expect(triedToNotify(seen.debug)).toBe(true)
+    }
+  )
+
+  test("stays off by default", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    world.github = { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, ci: "FAILURE" }, GITHUB.mine![1]!] }
+    await clock.advance(3 * MINUTE)
+
+    expect(seen.toasts).toHaveLength(1)
+    expect(triedToNotify(seen.debug)).toBe(false)
   })
 })
 

@@ -230,9 +230,10 @@ declare module "claude-code" {
       // The question the pane shows in place of the list, until it is answered or dismissed.
       dialog: Question | null
       // The main loop's turns under way, by id, and the alerts held for them to end: kept over a reload, as a turn
-      // that began before it ends after it, the module that saw it start gone.
+      // that began before it ends after it, the module that saw it start gone. Which held lines are pull request
+      // changes (`changes`) is missing where a module before 1.2.0 kept them.
       turns: string[]
-      heldAlerts: { held: string[]; heldSince: number | null }
+      heldAlerts: { held: string[]; heldSince: number | null; changes?: string[] }
     }
   }
 }
