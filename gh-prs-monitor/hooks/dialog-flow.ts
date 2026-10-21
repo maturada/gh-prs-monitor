@@ -84,8 +84,10 @@ export async function ask(
       if (isSettled) {
         return null
       }
-      if (isShown) {
-        await moveToQuestion(host)
+      // Claude Code's own dialog offers four answers at most: one with more waits in the pane where it is placed, though
+      // behind; with none placed, it goes there still, whose refusal is a Cancel.
+      if (isShown || (question.choices.length > ENGINE_ANSWERS && (await isPanePlaced(host)))) {
+        await moveToQuestion(host, question.field ? fieldKey : answerKey(0))
 
         return answered
       }
@@ -168,11 +170,11 @@ export async function isQuestionOpen(host: DialogHost, session: Session): Promis
   return open !== null && !(open.isInPane && !(await host.panes()).some((pane) => pane.id === host.pane))
 }
 
-// The question at the top of the pane, and the keyboard on its first answer where the pane holds it, as after a press
-// there; elsewhere the person goes on as they were.
-async function moveToQuestion(host: DialogHost): Promise<void> {
+// The question at the top of the pane, and the keyboard where the pane holds it on its first answer, as after a press
+// there, or in its field where it asks for a piece of text; elsewhere the person goes on as they were.
+async function moveToQuestion(host: DialogHost, key: string): Promise<void> {
   await host.scrollToTop().catch(() => undefined)
-  await host.focus(answerKey(0)).catch(() => undefined)
+  await host.focus(key).catch(() => undefined)
 }
 
 // The window back on the row kept, through the mark the list draws there (`goBack`), until the person moves it or a
@@ -202,13 +204,22 @@ async function backToRow(host: DialogHost, session: Session, pressed: string, ba
   )
 }
 
+const ENGINE_ANSWERS = 4
+
+async function isPanePlaced(host: DialogHost): Promise<boolean> {
+  return (await host.panes()).some((pane) => pane.id === host.pane && pane.isPlaced)
+}
+
 // The engine's dialog has a short header and one text, so the subject leads the text, as an alert names a pull
 // request, and the detail follows the question; instructions typed under Other are sent alone. It rejects when the
 // person dismisses it, which counts as Cancel.
 async function askInEngineDialog(host: DialogHost, question: Question): Promise<Answer | null> {
   const detail = question.detail === null ? "" : ` ${question.detail}`
-  const instructions =
-    question.instructions === null ? "" : ` Instructions typed under Other go ${question.instructions}.`
+  const instructions = question.field
+    ? ` ${question.field.otherHint}`
+    : question.instructions === null
+      ? ""
+      : ` Instructions typed under Other go ${question.instructions}.`
   const text = `${question.subject} — ${question.text}${detail}${instructions}`
   try {
     return readAnswer(

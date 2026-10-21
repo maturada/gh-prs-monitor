@@ -5,8 +5,9 @@ the engine lives in `hooks/register.tsx`, and everything else lives in the modul
 is tested on its own, the drawing through the hooks module's tests. A module whose steps need the engine takes what it
 needs as plain functions the hooks module hands in, its host: `RefreshHost` for a load, `CleanupHost`, `PressHost` for a
 press and the writes, `SkillHost` for a skill's run, `BranchLookupHost`, `DialogHost`, `BackHost` for the window going
-back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for the create-pr skill's choices, `ReportHost` for
-`/prs report`, and `Host` (`machine.ts`) for git and gh.
+back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for the create-pr skill's choices, `TicketsHost` for
+`/prs tickets`, `TicketToolHost` for the skills' ticket tool, `ReportHost` for `/prs report`, and `Host` (`machine.ts`)
+for git and gh.
 register.tsx builds each (`refreshHostOf($, session)`, `pressHostOf`, …). A member passes the call on, a few with a
 guard of their own (a load of the module a reload replaced shows no list, problem or loading mark; an end mark is
 waited for a moment at most), and a module is tested with a host of stand-ins.
@@ -61,6 +62,11 @@ hooks/args.ts             a skill's argument line: written with values quoted an
                           pull request it names read back
 hooks/create-choices.ts   the choices the create-pr skill keeps per repository, and the tool it reads and keeps
                           them through
+hooks/tickets.ts          ticket links: a pasted link read into a key's address, a pull request's ticket found by its
+                          key in its branch or title, the row's detail, and the links as the store keeps them
+hooks/tickets-flow.ts     /prs tickets: the questions that set ticket links up, show, add and remove them, and the
+                          text printed where no pane draws
+hooks/ticket-tool.ts      the skills' ticket tool: a pull request's ticket, a key's link, a pasted link kept
 hooks/new-session.ts      the links that open a new session, VS Code's editor's scheme for them, and the system's
                           opener
 hooks/report.ts           /prs report: where to report, and the versions a bug report asks for
@@ -190,6 +196,17 @@ changes one is where to look first.
   plugin's store, through a tool the plugin registers (`$.tool.register`; the model calls it
   `mcp__gh-prs-monitor__create_pr_choices`, behind ToolSearch by default). The plugin's `tool.call` hook answers it
   without calling `next`, where the permission check runs, so the call asks nothing.
+- A hook's reads of the session's state (`state.get`) show one moment until it answers: its own writes after it, and
+  no other hook's. A command that prints what a load another hook started will show (the session's first, still
+  running as a first prompt arrives) would read the list from before it, so the printed `/prs` and `/prs tickets` load
+  once more within the command after it (`refreshInTurn`), at the cost of one more GitHub request when a load is under
+  way. Work a command leaves running reads the state as it stands once the command has answered: `/prs tickets` in the
+  pane answers at once, and its questions read the list as they are asked (`listedRows`).
+- `$.ui.focus` moves the focus only within a pane that holds the keyboard, and a pane a typed command opens doesn't,
+  unless it asks for it (`ui.open`'s `focus`), which the prompt grants while its composer is empty: so `/prs tickets`
+  asks, for the link pasted next, and `/prs` leaves the keyboard at the prompt.
+- An Input draws its `label` before it, its `placeholder` dim while empty, and its `submitLabel` beside it while it has
+  focus (`↵Check`); the mobile app draws no Input, so a question that needs one says to answer on the computer there.
 - The terminal keeps what was typed in an Input under its key, drawing that in place of the hook's `value` until the
   hook draws a different `value` or the pane closes (Enter empties it): so each question's field for instructions has
   a key of its own, or text typed for one would show in the next while its buttons sent none of it.

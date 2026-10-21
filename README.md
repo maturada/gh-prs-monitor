@@ -30,7 +30,7 @@ opened, and the ones waiting on your review, right where you work: the moment CI
 request is ready to merge, you know. Merge it, fix it or review it from the same place, or hand the work to a skill,
 and nothing reaches GitHub without your yes.
 
-The screenshots show `/prs demo`, the plugin's example pull requests.
+The screenshots show `/prs demo`, the plugin's example pull requests, or made-up ones like them.
 
 ## What it does
 
@@ -41,6 +41,9 @@ The screenshots show `/prs demo`, the plugin's example pull requests.
 - **Act in one press.** Merge, update a branch, re-run CI or ask for a re-review, each confirmed before it writes.
 - **Hand off the work.** Skills resolve review comments, fix CI, resolve conflicts, review and create pull requests,
   and post only on your yes.
+- **Link your tickets.** Paste one ticket link with `/prs tickets`, and every pull request links its ticket in Linear,
+  Jira or whichever tracker you use, right on its row: no token, no integration to set up. Create PR and Review use it
+  too.
 - **Never lose your place.** Skills can work in a worktree of their own, dependencies installed, so your checkout and
   your uncommitted changes stay untouched; the worktree clears itself away once nothing in it would be lost.
 - **Spend tokens only on real work.** The pane, the checks, the alerts and the status line make no model requests; only
@@ -82,6 +85,18 @@ branch is on. [The pane](gh-prs-monitor/docs/pane.md)
 in a title, and pick one to write its number. In the terminal: the desktop app and VS Code don't ask plugins for
 these yet.
 
+### Ticket links
+
+Paste a link to any ticket with `/prs tickets`, once per repository, and every pull request whose branch or title names
+its key shows its ticket first in its details, `WEB-5785 ⧉`, a click away in Linear, Jira, YouTrack, Shortcut, Azure
+Boards or whichever tracker you use. There is no token to create and no integration to connect: the plugin reads that
+one link on your machine and never contacts your tracker. Create PR puts the ticket in the title, commit and body where
+your repository does, and Review, with your tracker's tool connected, weighs the change against what the ticket asks,
+for you alone. The skills are told to post a ticket's key and link at most, never what it says.
+[Ticket links](gh-prs-monitor/docs/tickets.md)
+
+![Setting up ticket links with /prs tickets, with example data: a ticket link pasted, the pull request it would link shown, saved, and the ticket on its row](gh-prs-monitor/assets/screenshots/tickets.gif)
+
 ### Alerts and the status line
 
 From the moment a session starts, it checks in the background every 3 minutes. An alert says when:
@@ -118,9 +133,10 @@ before it writes. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
 - **Resolve Conflicts** merges the base in apart from your checkout and proposes a resolution for each conflict, for
   you to approve. [More](gh-prs-monitor/docs/resolve-conflicts.md)
 - **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and
-  posts its inline comments only after you approve their wording. [More](gh-prs-monitor/docs/review.md)
-- **Create PR** runs the checks you pick, drafts the title and body in the repository's own format, and remembers
-  your choices for next time. [More](gh-prs-monitor/docs/create-pr.md)
+  posts its inline comments only after you approve their wording; with ticket links, it can weigh the change against
+  its ticket, for you alone. [More](gh-prs-monitor/docs/review.md)
+- **Create PR** runs the checks you pick, drafts the title and body in the repository's own format, with the ticket
+  where you link tickets, and remembers your choices for next time. [More](gh-prs-monitor/docs/create-pr.md)
 
 ### Your checkout stays yours
 
@@ -150,10 +166,11 @@ plugins add, as in an older extension, `/prs` prints the list instead, led by wh
 ### Light on tokens and rate limits
 
 The pane, the checks, the alerts and the status line make no model requests; a skill does once you start it. The skills
-stay out of the model's context until one runs; the plugin's one tool, `create_pr_choices`, adds its description, a few
-hundred tokens, or only its name where Claude Code defers tools. Each check is one GitHub request of 5 rate-limit
-points, which your sessions in a repository share, in the terminal, VS Code and the desktop app alike: every 3 minutes,
-that is 2% of the 5,000 points an hour your account gets, for each repository. [Cost](gh-prs-monitor/docs/settings.md#cost)
+stay out of the model's context until one runs; the plugin's two tools, `create_pr_choices` and `ticket_links`, add
+their descriptions, a few hundred tokens, or only their names where Claude Code defers tools. Each check is one GitHub
+request of 5 rate-limit points, which your sessions in a repository share, in the terminal, VS Code and the desktop app
+alike: every 3 minutes, that is 2% of the 5,000 points an hour your account gets, for each repository.
+[Cost](gh-prs-monitor/docs/settings.md#cost)
 
 ## Commands
 
@@ -163,6 +180,7 @@ that is 2% of the 5,000 points an hour your account gets, for each repository. [
 | `/prs demo` | Shows example pull requests, one of each status, with their alerts. Nothing is sent to GitHub. |
 | `/prs close` | Closes the pane, for when a click does nothing. |
 | `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
+| `/prs tickets` | Sets up [ticket links](gh-prs-monitor/docs/tickets.md) for this repository, from a link to any ticket you paste; once set up, shows, adds to or removes them. |
 | `/gh-prs-monitor:review <number or URL> [-- <instructions>]` | Reviews a pull request. |
 | `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]` | Resolves its review comments. |
 | `/gh-prs-monitor:fix-ci [<number or URL>] [-- <instructions>]` | Fixes its failing CI. |
@@ -250,7 +268,10 @@ It has no server, no token of its own and no telemetry, and reads no credential 
 - **The skills** (Resolve Comments, Fix CI, Resolve Conflicts, Review and Create PR) work in your Claude Code
   conversation. What they read from GitHub, the diff, the comments, the CI logs, becomes part of it like anything else
   you show Claude. They commit, push, reply and post only on your yes. Where no pane shows, the list `/prs` prints goes
-  into the conversation too, as does what `/prs report` prints.
+  into the conversation too, as does what `/prs report` prints. With ticket links, Review reads a pull request's
+  ticket only through a tool for your tracker that you connected to Claude Code, in one read-only call, and the skills
+  are told to post a ticket's key and link at most, never what the ticket says. A ticket link pasted in Create PR's
+  preview goes through the conversation, as anything typed there does.
 - **Slash commands.** A button that starts a skill in this session runs that skill's own command, as typing it would, at
   once or once the turn under way ends: `/gh-prs-monitor:resolve-comments`, `/gh-prs-monitor:fix-ci`,
   `/gh-prs-monitor:resolve-conflicts`, `/gh-prs-monitor:review` or `/gh-prs-monitor:create-pr`. It runs no other
@@ -266,7 +287,7 @@ It has no server, no token of its own and no telemetry, and reads no credential 
     turn's end can start a check of the list, at most every half minute; nothing of the turn goes into it;
   - the skills' commands above: to mark the row a skill works on.
 
-  Besides, it answers `/prs`, printing the list too where it came over Remote Control; answers its own tool; offers pull
+  Besides, it answers `/prs`, printing the list too where it came over Remote Control; answers its own tools; offers pull
   requests for a word in the prompt that starts with `#`, reading that word alone; draws its pane and, in the desktop
   app, the band above the prompt; follows the pane's scrolling and focus; and keeps the pane open when you close it
   while it asks a question, cancelling the question instead.
@@ -284,11 +305,13 @@ It has no server, no token of its own and no telemetry, and reads no credential 
   request changes also go to Claude Code's own notification channel, one notification each time they show: the first
   alert's line and how many came with it, under the repository's name. Claude Code passes it to your `Notification`
   hooks and writes it to your terminal as its own notifications go; the plugin sends it nowhere else.
-- **A tool for Create PR.** Each session gets one tool, `create_pr_choices`, which the Create PR skill calls to read and
-  keep your choices for a repository, in the plugin's store; it reads or writes nothing else.
+- **Tools for the skills.** Each session gets two tools, which the plugin answers itself: `create_pr_choices`, which
+  Create PR calls to read and keep your choices for a repository, and `ticket_links`, which Create PR and Review call
+  to find a pull request's ticket, or to keep a ticket link you paste. Both read and keep only these, in the plugin's
+  store, and neither opens a ticket's link.
 - **What it keeps**, in Claude Code's plugin store on this machine, never in a repository: the last list for each
   repository, what you have seen of it, the alerts shown, the answers your sessions share, the compact view, what
-  cleanups found in each clone, and Create PR's choices.
+  cleanups found in each clone, Create PR's choices, and the ticket links you set up.
 
 More in [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md) and
 [Security](https://github.com/maturada/gh-prs-monitor/blob/main/SECURITY.md).
@@ -304,6 +327,7 @@ More in [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.m
   worktree or a new session; branches, dependencies and cleanup
 - [Review](gh-prs-monitor/docs/review.md)
 - [Create PR](gh-prs-monitor/docs/create-pr.md): when it shows, what the skill does, and what it remembers
+- [Ticket links](gh-prs-monitor/docs/tickets.md): set up once per repository, where they show, and what the skills do with them
 - [Settings and cost](gh-prs-monitor/docs/settings.md)
 - [When something is wrong](gh-prs-monitor/docs/troubleshooting.md)
 - [Development](gh-prs-monitor/docs/development.md): the checks, the file map, and what the code relies on in Claude Code

@@ -6,6 +6,8 @@ import type { SinceLastLook } from "./alerts"
 import type { RepoRef } from "./gh"
 import { isOnBranch } from "./pulls"
 import { markOf, MARKS, summaryCounts, summaryMarks } from "./summary"
+import { detailsWithTicket } from "./tickets"
+import type { TicketLinks } from "./tickets"
 import { lookedAt } from "./when"
 
 // Where the printed list links to: the repository's pull requests, and a pull request by number (one that left the
@@ -58,7 +60,8 @@ export function listText(
   since: SinceLastLook | null = null,
   links: ListLinks | null = null,
   branch: string | null = null,
-  now: number = snapshot.fetchedAt
+  now: number = snapshot.fetchedAt,
+  tickets: TicketLinks | null = null
 ): string {
   const repo = escapeMarkdown(snapshot.repo)
   // As the pane's header: the repository, the counts the status line has, and when the list was read, with its day
@@ -77,14 +80,21 @@ export function listText(
     ...(isEmpty
       ? [`_${NOTHING_OPEN}_`]
       : [
-          ...listTable(snapshot, LIST_TITLES.mine, "mine", branch),
+          ...listTable(snapshot, LIST_TITLES.mine, "mine", branch, tickets),
           "",
-          ...listTable(snapshot, LIST_TITLES.review, "review", branch)
+          ...listTable(snapshot, LIST_TITLES.review, "review", branch, tickets)
         ])
   ].join("\n")
 }
 
-function listTable(snapshot: PullsSnapshot, title: string, list: "mine" | "review", branch: string | null): string[] {
+// A row's ticket leads its details, as in the pane, where the repository's links find one.
+function listTable(
+  snapshot: PullsSnapshot,
+  title: string,
+  list: "mine" | "review",
+  branch: string | null,
+  tickets: TicketLinks | null
+): string[] {
   const rows = snapshot[list]
   const heading = `**${title}** (${rows.length})`
   const hidden = list === "mine" ? hiddenDraftsNote(snapshot.hiddenDrafts) : null
@@ -110,7 +120,7 @@ function listTable(snapshot: PullsSnapshot, title: string, list: "mine" | "revie
       const pull = `${current}${pullLink(row.number, row.url)} ${escapeMarkdown(row.title)}`
       const mark = markOf(list, row.status.tone)
       const status = `${mark ? `${MARKS[mark]} ` : ""}${badgeLink(row.status)}`
-      const details = row.details.map(badgeLink).join(` ${DETAIL_SEPARATOR} `)
+      const details = detailsWithTicket(row, tickets).map(badgeLink).join(` ${DETAIL_SEPARATOR} `)
 
       return `| ${pull} | ${status} | ${details} |`
     }),
@@ -143,10 +153,11 @@ function sinceMarkdown(since: SinceLastLook, links: ListLinks | null): string[] 
 
 // A status or detail as a link to where it is dealt with, when it has one: markdown draws links, so even a
 // green check leads to its runs.
+// Parentheses in an address would end its link early, as a ticket tracker's may hold them.
 function badgeLink(badge: Badge): string {
   const text = escapeMarkdown(badge.text)
 
-  return badge.href ? `[${text}](${badge.href})` : text
+  return badge.href ? `[${text}](${badge.href.replaceAll("(", "%28").replaceAll(")", "%29")})` : text
 }
 
 function pullLink(number: number, url: string): string {

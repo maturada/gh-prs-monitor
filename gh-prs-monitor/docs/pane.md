@@ -33,7 +33,8 @@ rule, shows each as a card of its own.
 - **The details**, parted by dots, stay dim, except for a CI result's mark (✓ green, ● yellow while checks run, ✗ red)
   and good news in green: an approval, auto-merge on. They link to where each is dealt with: the CI result to the
   checks, unresolved comments to the changed files, conflicts to GitHub's page for resolving them; a green CI result
-  stays plain.
+  stays plain. With [ticket links](tickets.md), the pull request's ticket comes first, `WEB-5785 ⧉`, linked to the
+  ticket; the ⧉ marks the one link that leaves GitHub.
 - **The main button** is the one that moves the row on (table below), drawn apart from the others.
 - **A draft's title** is dimmed, and the pointer on a row lights its title. In a narrow pane a long title wraps in its
   own column, never cut short, as the details do, while the status keeps a line of its own.
@@ -252,5 +253,8 @@ for suggestions yet, and get them once they do, with no update of the plugin.
   git filled in, to suggest an idea, and to the issues already open; and the `gh issue create` command for the
   plugin's repository. Nothing else of yours goes in the link. The conversation sees the text too, so you can ask for
   help writing the report.
+- **`/prs tickets`** sets up [ticket links](tickets.md) for the repository, from a link to any ticket you paste in the
+  pane, and once they are set up shows them and what they find in your list, with **Add a link**, **Remove** and
+  **Done**. Where no pane shows, as over Remote Control, it prints what is set up.
 
 Any other word after `/prs` does nothing but say what it takes.

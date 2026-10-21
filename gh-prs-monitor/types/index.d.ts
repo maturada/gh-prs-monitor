@@ -193,7 +193,13 @@ export type Question = {
   choices: string[]
   main: string | null
   instructions: string | null
+  // A question that asks for a piece of text other than instructions, as a link to paste, names its field.
+  field?: QuestionField
 }
+
+// A field for a piece of text: its label and placeholder, what its Enter does in a word (drawn beside it, `↵Check`),
+// and what Claude Code's own dialog says of typing it under Other.
+export type QuestionField = { label: string; placeholder: string; submitLabel: string; otherHint: string }
 
 // An answer: the choice pressed, or null for instructions sent alone, with the instructions typed ("" for none).
 export type Answer = { choice: string | null; instructions: string }

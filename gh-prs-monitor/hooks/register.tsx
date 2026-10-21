@@ -40,7 +40,7 @@ import { dialogView } from "./dialog"
 import { ask, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { messageOf, SETUP_NOTE_MS } from "./gh"
-import type { GhProblem } from "./gh"
+import type { GhProblem, RepoRef } from "./gh"
 import { drawsToasts, isTerminal } from "./layout"
 import { linksOf, listText } from "./list"
 import { canOpenSession, editorScheme } from "./new-session"
@@ -58,7 +58,7 @@ import {
   isCheckingMode,
   lookBack,
   refresh,
-  refreshAfterWrite,
+  refreshInTurn,
   retry,
   retryMinutes
 } from "./refresh"
@@ -76,6 +76,7 @@ import {
   freeShared,
   keepChoices,
   keepKept,
+  keepTickets,
   keepView,
   notShownElsewhere,
   recallChoices,
@@ -84,12 +85,19 @@ import {
   recallKept,
   recallLook,
   recallShared,
+  recallTickets,
   recallView,
   rememberLook,
   shareAnswer
 } from "./store"
 import type { StoreHost } from "./store"
 import { hasAnything, statusSummary, summaryCounts, summaryText } from "./summary"
+import { answerTicketLinks, TICKET_TOOL } from "./ticket-tool"
+import type { TicketToolHost } from "./ticket-tool"
+import { ticketsKey } from "./tickets"
+import type { TicketLinks } from "./tickets"
+import { ticketsFlow, ticketsText } from "./tickets-flow"
+import type { TicketsHost } from "./tickets-flow"
 import { announce, release } from "./toasts"
 import type { ToastHost } from "./toasts"
 import { markReady, merge, rerequestReview, rerun, updateBranch } from "./writes"
@@ -130,12 +138,17 @@ export const register: Register = (on, options) => {
     )
   )
 
+  on("tool.call", { tool: new RegExp(`^${TICKET_TOOL_NAME}$`) }, async ($, e) =>
+    answerTicketLinks(ticketToolHostOf($, session), e as Parameters<typeof answerTicketLinks>[1])
+  )
+
   on("session.start", async ($, e, next) => {
     const started = await next(e)
     await update($, moduleState, () => ({ id: LOADED, isLoading: false }))
     // The command first, so nothing below can keep it from being there.
     await registerCommand($)
-    await registerChoicesTool($)
+    await registerTool($, CHOICES_TOOL)
+    await registerTool($, TICKET_TOOL)
     session.id = await sessionId($, session.id)
     // A reload during a turn: the turn goes on, and so do the alerts held for it.
     session.runningTurns = new Set(await read($, turnsState))
@@ -227,8 +240,8 @@ export const register: Register = (on, options) => {
   on("command.run", { command: "prs" }, async ($, e) => {
     const args = e.args.trim().toLowerCase()
     // Anything else, as a mistyped close, changes nothing.
-    if (!["", "close", "demo", "report"].includes(args)) {
-      return { text: `/prs takes nothing, demo, close or report, not "${e.args.trim()}".` }
+    if (!["", "close", "demo", "report", "tickets"].includes(args)) {
+      return { text: `/prs takes nothing, demo, close, report or tickets, not "${e.args.trim()}".` }
     }
     // Text for the person and the conversation alike, whatever the pane shows.
     if (args === "report") {
@@ -253,18 +266,23 @@ export const register: Register = (on, options) => {
     // comes as text there, and the pane opens on the computer too. An engine older than these types may stamp no
     // origin; its /prs only opens the pane.
     const isSentFromAfar = e.origin?.kind === "bridge" && !surfaces.includes("mobile")
+    // Its questions ask for a link to paste, where the mobile app draws no field, and the computer's pane may be out of
+    // reach: sent over Remote Control at all, what is set comes as text.
+    if (args === "tickets") {
+      return { text: await ticketsCommand($, session, isDrawn && e.origin?.kind !== "bridge") }
+    }
     if (args === "demo") {
       if (!isDrawn) {
-        return { text: demoText(await $.clock.now()) }
+        return { text: demoText(await $.clock.now(), "unattached", session.settings.isShowingTickets) }
       }
       // An app that places no panes still shows the alerts, and gets the list as text.
       const isPlaced = await showDemo($, session)
 
       return {
         text: !isPlaced
-          ? demoText(await $.clock.now(), "unplaced")
+          ? demoText(await $.clock.now(), "unplaced", session.settings.isShowingTickets)
           : isSentFromAfar
-            ? demoText(await $.clock.now(), "remote")
+            ? demoText(await $.clock.now(), "remote", session.settings.isShowingTickets)
             : "Showing example pull requests, their alerts and summary until you close the pane."
       }
     }
@@ -279,7 +297,7 @@ export const register: Register = (on, options) => {
     }
     const text = await printedList($, session)
     if (isDrawn && isSentFromAfar) {
-      await openPane($, session, true)
+      await openPane($, session, { isLoaded: true })
     }
 
     return { text }
@@ -457,7 +475,13 @@ function drawQuestion(
 async function drawDemo($: Engine, session: Session, e: RenderInput<"Pane">): Promise<RenderElement> {
   const { Box, Text, Button, Link } = $.ui.resolve(e)
   const isCompact = await read($, compactState)
-  const demo = demoView(await $.clock.now(), e.props.bodyColumns, e.surface, isCompact)
+  const demo = demoView(
+    await $.clock.now(),
+    e.props.bodyColumns,
+    e.surface,
+    isCompact,
+    session.settings.isShowingTickets
+  )
   const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:pane:demo`, Button), Link }
 
   return drawPane(
@@ -495,7 +519,8 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     merged: await read($, mergedState),
     isCompact: await read($, compactState),
     columns: e.props.bodyColumns,
-    surface: e.surface
+    surface: e.surface,
+    tickets: shownTickets(session)
   }
   const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:pane`, Button), Link }
 
@@ -515,8 +540,14 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
 
 // --- The pane, the band and the status line ---
 
-// `isLoaded`: the list was loaded just now, for the text a /prs printed, and draws as it is.
-async function openPane($: Engine, session: Session, isLoaded = false): Promise<UiOpenResult> {
+// `isLoaded`: the list was loaded just now, for the text a /prs printed, and draws as it is. `isTakingKeys`: the pane
+// asks for the keyboard, as `/prs tickets` does for the link pasted next, since only a pane holding it can move it to
+// its field; the prompt hands it over only while its composer is empty.
+async function openPane(
+  $: Engine,
+  session: Session,
+  { isLoaded = false, isTakingKeys = false }: { isLoaded?: boolean; isTakingKeys?: boolean } = {}
+): Promise<UiOpenResult> {
   await endDemo($, session)
   // The load under way, and its state written, before the pane draws, so its first drawing says it is checking rather
   // than to press Refresh; the timer after, as while-open mode polls only once the pane is open. The drawing reads
@@ -526,7 +557,12 @@ async function openPane($: Engine, session: Session, isLoaded = false): Promise<
     checkAgain(host, session)
     await session.checks.marking?.catch(() => undefined)
   }
-  const opened = await $.ui.open({ id: PANE, title: PANE_TITLE, closeOnEscape: true })
+  const opened = await $.ui.open({
+    id: PANE,
+    title: PANE_TITLE,
+    closeOnEscape: true,
+    ...(isTakingKeys ? { focus: true } : {})
+  })
   await ensurePolling(host, session)
 
   return opened
@@ -537,7 +573,7 @@ async function openPane($: Engine, session: Session, isLoaded = false): Promise<
 // `alertLines` send the person here.
 async function printedList($: Engine, session: Session): Promise<string> {
   const host = refreshHostOf($, session)
-  await refresh(host, session, false)
+  await refreshInTurn(host, session)
   const snapshot = await read($, snapshotState)
   const problem = await read($, problemState)
   if (problem || !snapshot) {
@@ -552,7 +588,7 @@ async function printedList($: Engine, session: Session): Promise<string> {
   const branch = (await read($, checkoutState))?.branch ?? null
   const links = session.repo ? linksOf(session.repo) : null
 
-  return listText(snapshot, since, links, branch, await $.clock.now())
+  return listText(snapshot, since, links, branch, await $.clock.now(), shownTickets(session))
 }
 
 // How long after a /prs that found no app attached the pane still opens when one attaches.
@@ -732,6 +768,111 @@ async function askCreateInDemo($: Engine, session: Session, surface: string): Pr
   }
 }
 
+// --- Ticket links ---
+
+// `/prs tickets`: its questions in the pane, where one draws for the person here, opened as /prs opens it, the list
+// loading in it; elsewhere, or where no pane is placed, what is set, as text. A session's first prompt can come before
+// its first load named the repository: that load is waited for, and where it named none, the command loads once more,
+// as its reads see no other's writes (`refreshInTurn`), to answer why.
+async function ticketsCommand($: Engine, session: Session, isAskedInPane: boolean): Promise<string> {
+  const isWaiting = !session.repo
+  if (isWaiting) {
+    await session.checks.inFlight?.done.catch(() => undefined)
+  }
+  // Still none: the command loads it itself, as its reads see its own load alone.
+  const isLoadedHere = !session.repo
+  if (isLoadedHere) {
+    await refreshInTurn(refreshHostOf($, session), session)
+  }
+  const repo = session.repo
+  if (!repo) {
+    return (await read($, problemState)) ?? "No repository loaded yet."
+  }
+  // The load waited for draws as it is, unless a problem stopped the checks, which the pane's opening lifts, as /prs's.
+  const isFresh = isWaiting && !session.checks.isStopped
+  if (isAskedInPane && (await openPane($, session, { isLoaded: isFresh, isTakingKeys: true })).isPlaced) {
+    background($, ticketsFlow(ticketsHostOf($, session), repo, session.settings.isShowingTickets))
+
+    return "Asking about ticket links in the pane."
+  }
+
+  return printedTickets($, session, repo, isLoadedHere)
+}
+
+// What is set, as text. What the links find is told from the list, which a session's first prompt can find still
+// loading, and which the command's own reads see only as it loaded it itself (`refreshInTurn`), unless it just did.
+async function printedTickets($: Engine, session: Session, repo: RepoRef, isLoaded: boolean): Promise<string> {
+  if (!isLoaded) {
+    await refreshInTurn(refreshHostOf($, session), session)
+  }
+  const view = { rows: await listedRows($, session), isShowingTickets: session.settings.isShowingTickets }
+  try {
+    return ticketsText(repo, await recallTickets(storeOf($), repo), view)
+  } catch (error) {
+    return `Couldn't read the ticket links: ${messageOf(error)}`
+  }
+}
+
+// The pull requests the pane lists, as a question about them is asked. With none listed yet, as at a session's first
+// prompt, the load under way is waited out: work a command leaves running reads the session's state as it stands once
+// the command has answered, the load's list by then.
+async function listedRows($: Engine, session: Session): Promise<readonly PullRow[]> {
+  let listed = storedSnapshot(await read($, snapshotState))
+  if (!listed) {
+    await session.checks.inFlight?.done.catch(() => undefined)
+    listed = storedSnapshot(await read($, snapshotState))
+  }
+
+  return listed ? [...listed.mine, ...listed.review] : []
+}
+
+// The links the rows show: the repository's, where Ticket links on rows is on.
+function shownTickets(session: Session): TicketLinks | null {
+  return session.settings.isShowingTickets ? session.ticketLinks : null
+}
+
+// The repository's links as the store holds them, for its rows; one that can't be read leaves those read before, and
+// says so in the debug log.
+async function refreshTicketLinks($: Engine, session: Session): Promise<void> {
+  if (!session.repo) {
+    return
+  }
+  try {
+    const kept = await recallTickets(storeOf($), session.repo)
+    session.ticketLinks = kept === "off" ? null : kept
+  } catch (error) {
+    logDebug($, `gh-prs-monitor: ticket links could not be read: ${messageOf(error)}`)
+  }
+}
+
+// Links kept for a repository, which the session's rows show at once where it is the session's.
+async function keepTicketLinks($: Engine, session: Session, repo: RepoRef, value: TicketLinks | "off"): Promise<void> {
+  await keepTickets(storeOf($), repo, value)
+  if (session.repo && ticketsKey(session.repo) === ticketsKey(repo)) {
+    session.ticketLinks = value === "off" ? null : value
+    $.ui.invalidate("ui.render")
+  }
+}
+
+// What the skills' ticket tool needs of the engine (`ticket-tool.ts`).
+function ticketToolHostOf($: Engine, session: Session): TicketToolHost {
+  return {
+    recall: (repo) => recallTickets(storeOf($), repo),
+    keep: (repo, value) => keepTicketLinks($, session, repo, value)
+  }
+}
+
+// What `/prs tickets` needs of the engine (`tickets-flow.ts`): the links as the tool reads and keeps them; its questions
+// go where a press's would, the list's refresh button taking the keyboard back.
+function ticketsHostOf($: Engine, session: Session): TicketsHost {
+  return {
+    ...ticketToolHostOf($, session),
+    ask: (question) => ask(dialogHostOf($), session, question, "refresh"),
+    listed: () => listedRows($, session),
+    notify: (text) => notify($, text, session.settings.alertMs)
+  }
+}
+
 // --- The plugin's store, as store.ts reads and writes it ---
 
 function storeOf($: Engine): StoreHost {
@@ -841,7 +982,7 @@ function pressHostOf($: Engine, session: Session): PressHost {
     ask: (question, pressed) => ask(dialogHostOf($), session, question, pressed),
     isQuestionOpen: () => isQuestionOpen(dialogHostOf($), session),
     refresh: (isAlerting) => refresh(refreshHostOf($, session), session, isAlerting),
-    refreshAfterWrite: () => refreshAfterWrite(refreshHostOf($, session), session),
+    refreshAfterWrite: () => refreshInTurn(refreshHostOf($, session), session),
     cleanUp: (repo, known) => cleanUp(cleanupHostOf($, session), session, repo, known)
   }
 }
@@ -1017,17 +1158,22 @@ async function clearLeftovers($: Engine): Promise<void> {
   await update($, dialogState, () => null)
 }
 
-// The create-pr skill's choices are the only thing that needs it, so a host that refuses it is only logged.
-async function registerChoicesTool($: Engine): Promise<void> {
+// The skills' tools: only the skills need them, and go on without them, so a host that refuses one is only logged.
+async function registerTool($: Engine, tool: Parameters<Engine["tool"]["register"]>[0]): Promise<void> {
   try {
-    await $.tool.register(CHOICES_TOOL)
+    await $.tool.register(tool)
   } catch (error) {
-    logDebug($, `${CHOICES_TOOL_NAME} could not be registered: ${messageOf(error)}`)
+    logDebug($, `${toolName(tool)} could not be registered: ${messageOf(error)}`)
   }
 }
 
-// The name the model calls the choices tool by, as the engine prefixes a plugin's tools.
-const CHOICES_TOOL_NAME = `mcp__gh-prs-monitor__${CHOICES_TOOL.name}`
+// The name the model calls a tool by, as the engine prefixes a plugin's tools.
+function toolName(tool: { name: string }): string {
+  return `mcp__gh-prs-monitor__${tool.name}`
+}
+
+const CHOICES_TOOL_NAME = toolName(CHOICES_TOOL)
+const TICKET_TOOL_NAME = toolName(TICKET_TOOL)
 
 // A host that refuses the command still gets the background checks, so the failure is only logged.
 async function registerCommand($: Engine): Promise<void> {
@@ -1035,7 +1181,7 @@ async function registerCommand($: Engine): Promise<void> {
     await $.command.register({
       name: "prs",
       description: "Your open pull requests and the ones waiting on your review",
-      argumentHint: "[demo|close|report]",
+      argumentHint: "[demo|close|report|tickets]",
       immediate: true
     })
   } catch (error) {
@@ -1104,6 +1250,8 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
       if (await isReplaced($)) {
         return null
       }
+      // Read before the list is written, which draws it: another session may have set them since.
+      await refreshTicketLinks($, session)
       await update($, snapshotState, () => snapshot)
       const kept = await keepCheckout($, checkout)
       await update($, problemState, () => null)

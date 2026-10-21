@@ -91,7 +91,7 @@ describe("/prs demo", () => {
     expect(seen.toasts).toEqual(DEMO_ALERTS)
     expect(DEMO_ALERTS).toEqual([
       "✓ #1242 Offline downloads — ready to merge, approved by a-teammate",
-      "✎ #1235 Fix the share sheet on iOS — new comment from a-teammate",
+      "✎ #1235 Link your tickets with /prs tickets — new comment from a-teammate",
       "± #1236 Cache the search results — changes requested by a-teammate",
       "✗ #1237 Move the map to the tiles API — CI failed",
       "⚠ #1238 Rename the settings fields — merge conflicts",
@@ -281,6 +281,41 @@ describe("the demo pane", () => {
       expect(writes(before)).toEqual([])
     })
   }
+
+  test("examples whose branches name a ticket show it, linked to how ticket links are set up; the rest none", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
+    await startSession($)
+    await clock.settle()
+
+    await runPrs($, "demo")
+    const ui = await mountPane($, "terminal")
+    const ticketOf = async (number: number) =>
+      drawnNodes(await ui.find({ key: `pr-${number}` })).find(
+        (node) => node.type === "Link" && /⧉$/.test(String(node.props?.label))
+      )
+
+    expect((await ticketOf(1237))?.props).toMatchObject({
+      label: "APP-412\u00a0⧉",
+      href: "https://github.com/maturada/gh-prs-monitor/blob/main/gh-prs-monitor/docs/tickets.md"
+    })
+    expect(await ticketOf(1238)).toBeUndefined()
+  })
+
+  test(
+    "with Ticket links on rows off, the examples show no tickets either",
+    { options: { showTickets: false } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
+      await startSession($)
+      await clock.settle()
+
+      await runPrs($, "demo")
+      const ui = await mountPane($, "terminal")
+      expect(drawnNodes(await ui.drawn()).some((node) => /⧉$/.test(String(node.props?.label)))).toBe(false)
+    }
+  )
 
   test("two open examples form stack #30, each saying where it sits", () => {
     const rows = demoSnapshot(0)!.mine

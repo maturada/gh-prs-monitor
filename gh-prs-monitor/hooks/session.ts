@@ -11,6 +11,7 @@ import type { GhProblem, RepoRef } from "./gh"
 import type { Settings } from "./settings"
 import type { AwaitedAnswer } from "./shared"
 import type { DrawnButtons } from "./stable-buttons"
+import type { TicketLinks } from "./tickets"
 
 // What a lookup of the pull requests from the checkout's branch came to (`branch-lookup.ts`): GitHub's answer, or what
 // kept gh from asking.
@@ -27,6 +28,9 @@ export type Session = {
   id: string
   // Resolved once; null until it is, or while it cannot be.
   repo: RepoRef | null
+  // The repository's ticket links, as the store held them when a list was last shown or `/prs tickets` kept them;
+  // null where none are set or they are off.
+  ticketLinks: TicketLinks | null
   // The main loop's turns under way, by id (a subagent's run is none of them), and the work waiting for none to be
   // (`whenIdle`). A reload's module takes those the module before saw start, as `fromBefore` too: the main loop runs
   // one turn at a time, so one starting shows those ended, whatever kept their end from being seen.
@@ -171,6 +175,7 @@ export function createSession(settings: Settings): Session {
     settings,
     id: randomId(),
     repo: null,
+    ticketLinks: null,
     runningTurns: new Set(),
     fromBefore: new Set(),
     isStateEmptied: false,

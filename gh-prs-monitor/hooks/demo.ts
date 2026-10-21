@@ -13,6 +13,7 @@ import type { Alert, AlertKind } from "./alerts"
 import { listText } from "./list"
 import { summaryCounts } from "./summary"
 import type { SummaryCounts } from "./summary"
+import type { TicketLinks } from "./tickets"
 
 // Everything `/prs demo` shows: example pull requests, one of each status, the alerts they would raise and what
 // changed on them lately. The examples are written as GitHub would answer and read by the same code as the real
@@ -119,15 +120,18 @@ type Example = {
   // Lines added and removed, and files changed.
   size?: [number, number, number]
   stack?: { number: number; position: number; size: number }
+  // The ticket its branch names, as a team's branches do (`example/APP-409`); some have none, as in a real list.
+  ticket?: number
 }
 
 // The viewer's own, one of each status, in the order the pane sorts them.
 const MINE: readonly Example[] = [
-  { number: 1237, title: "Move the map to the tiles API", ci: "FAILURE", requested: ["a-teammate"] },
+  { number: 1237, title: "Move the map to the tiles API", ci: "FAILURE", requested: ["a-teammate"], ticket: 412 },
   { number: 1238, title: "Rename the settings fields", isConflicting: true, requested: ["a-teammate"] },
   {
     number: 1236,
     title: "Cache the search results",
+    ticket: 409,
     reviewDecision: "CHANGES_REQUESTED",
     unresolvedThreads: 2,
     // Commits came after it, so it can be asked again.
@@ -135,7 +139,9 @@ const MINE: readonly Example[] = [
   },
   {
     number: 1235,
-    title: "Fix the share sheet on iOS",
+    // Its title says how ticket links are set up, and its ticket opens the page on it.
+    title: "Link your tickets with /prs tickets",
+    ticket: 398,
     unresolvedThreads: 3,
     reviews: [{ login: "a-teammate", state: "COMMENTED", hoursAgo: 3 }],
     requested: ["another-teammate"]
@@ -157,6 +163,7 @@ const MINE: readonly Example[] = [
   {
     number: 1242,
     title: "Offline downloads",
+    ticket: 371,
     // The lowest open one of stack #30, with #1248 above it; #1230 below it merged, and still counts, as on GitHub.
     stack: { number: 30, position: 2, size: 3 },
     reviewDecision: "APPROVED",
@@ -165,6 +172,7 @@ const MINE: readonly Example[] = [
   {
     number: 1246,
     title: "Retry failed uploads",
+    ticket: 420,
     reviewDecision: "CHANGES_REQUESTED",
     reviews: [{ login: "a-teammate", state: "CHANGES_REQUESTED", hoursAgo: 6 }],
     requested: ["a-teammate"]
@@ -195,6 +203,7 @@ const MINE: readonly Example[] = [
   {
     number: 1256,
     title: "Compress uploaded photos",
+    ticket: 405,
     reviewDecision: "APPROVED",
     isInMergeQueue: true,
     reviews: [{ login: "another-teammate", state: "APPROVED", hoursAgo: 1 }]
@@ -208,6 +217,7 @@ const REVIEW: readonly Example[] = [
   {
     number: 1240,
     title: "Activity cards on the home feed",
+    ticket: 423,
     author: "a-teammate",
     requested: [VIEWER],
     size: [120, 30, 8]
@@ -223,6 +233,7 @@ const REVIEW: readonly Example[] = [
   {
     number: 1241,
     title: "Shareable invite links",
+    ticket: 401,
     author: "another-teammate",
     reviews: [{ login: VIEWER, state: "COMMENTED", hoursAgo: 20, isBeforeHead: true }],
     size: [48, 12, 3]
@@ -244,14 +255,21 @@ const REVIEW: readonly Example[] = [
   {
     number: 1243,
     title: "Cache the map tiles offline",
+    ticket: 375,
     author: "a-teammate",
     reviews: [{ login: VIEWER, state: "COMMENTED", hoursAgo: 4 }],
     size: [210, 95, 11]
   }
 ]
 
-function branchOf(number: number): string {
-  return `example/${number}`
+function branchOf(example: Example): string {
+  return `example/${example.ticket ? `${DEMO_PREFIX}${example.ticket}` : example.number}`
+}
+
+// The examples' tickets link to the page on setting ticket links up (`/prs tickets`), as no example ticket exists.
+const DEMO_PREFIX = "APP-"
+const DEMO_TICKETS: TicketLinks = {
+  [DEMO_PREFIX]: "https://github.com/maturada/gh-prs-monitor/blob/main/gh-prs-monitor/docs/tickets.md"
 }
 
 // As GitHub answers the query: the viewer's own fragment (`pull`) or the review lists' (`reviewPull`).
@@ -297,7 +315,7 @@ function rawPull(example: Example, now: number, isOwn: boolean): unknown {
     title: example.title,
     url: LINK,
     isDraft: example.isDraft === true,
-    headRefName: branchOf(example.number),
+    headRefName: branchOf(example),
     headRefOid: head,
     baseRefName: "main",
     isCrossRepository: false,
@@ -384,7 +402,7 @@ function demoActivity(now: number): Activity[] {
 
 // The examples' session sits on the branch of the one with changes requested, as if working on them; Create PR's
 // example opens one from a branch of its own.
-const DEMO_BRANCH = branchOf(1236)
+const DEMO_BRANCH = branchOf(MINE.find((example) => example.number === 1236)!)
 
 export const DEMO_TO_OPEN: PullToOpen = { branch: "feature/export-csv", base: "main" }
 
@@ -405,7 +423,14 @@ function demoMerged(snapshot: PullsSnapshot | null, now: number): MergedPull[] {
 }
 
 // The pane as the examples fill it, at the width and on the surface it is drawn.
-export function demoView(now: number, columns: number, surface: string, isCompact: boolean): PaneView {
+// `isShowingTickets`: the examples' tickets show as real rows' do, where Ticket links on rows is on.
+export function demoView(
+  now: number,
+  columns: number,
+  surface: string,
+  isCompact: boolean,
+  isShowingTickets: boolean
+): PaneView {
   const snapshot = demoSnapshot(now)
 
   return {
@@ -421,7 +446,8 @@ export function demoView(now: number, columns: number, surface: string, isCompac
     merged: demoMerged(snapshot, now),
     isCompact,
     columns,
-    surface
+    surface,
+    tickets: isShowingTickets ? DEMO_TICKETS : null
   }
 }
 
@@ -441,7 +467,7 @@ function change(number: number, title: string, kind: AlertKind, symbol: string, 
 const DEMO_CHANGES: readonly Alert[] = [
   change(1242, "Offline downloads", "ready", "✓", "ready to merge"),
   change(1242, "Offline downloads", "reviews", "✓", "approved by a-teammate"),
-  change(1235, "Fix the share sheet on iOS", "comments", "✎", "new comment from a-teammate"),
+  change(1235, "Link your tickets with /prs tickets", "comments", "✎", "new comment from a-teammate"),
   change(1236, "Cache the search results", "reviews", "±", "changes requested by a-teammate"),
   change(1237, "Move the map to the tiles API", "ci", "✗", "CI failed"),
   change(1238, "Rename the settings fields", "conflicts", "⚠", "merge conflicts"),
@@ -479,11 +505,22 @@ const DEMO_INTROS: Readonly<Record<DemoPrint, string>> = {
     "computer. With example pull requests:"
 }
 
-export function demoText(now: number, where: DemoPrint = "unattached"): string {
+export function demoText(now: number, where: DemoPrint, isShowingTickets: boolean): string {
   const snapshot = demoSnapshot(now)
   const intro = DEMO_INTROS[where]
 
   return snapshot
-    ? [intro, "", listText(snapshot, { at: AWAY_SINCE, changes: [...DEMO_CHANGES] }, null, DEMO_BRANCH)].join("\n")
+    ? [
+        intro,
+        "",
+        listText(
+          snapshot,
+          { at: AWAY_SINCE, changes: [...DEMO_CHANGES] },
+          null,
+          DEMO_BRANCH,
+          now,
+          isShowingTickets ? DEMO_TICKETS : null
+        )
+      ].join("\n")
     : intro
 }

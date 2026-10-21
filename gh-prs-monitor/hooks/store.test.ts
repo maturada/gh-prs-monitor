@@ -12,6 +12,7 @@ import {
   freeShared,
   isSharingKey,
   keepKept,
+  keepTickets,
   keepView,
   keptKey,
   keptLooks,
@@ -22,6 +23,7 @@ import {
   recallKept,
   recallLook,
   recallShared,
+  recallTickets,
   recallView,
   rememberLook,
   shareAnswer,
@@ -531,5 +533,32 @@ describe("the pane's view", () => {
     expect(await recallView(host)).toBe(true)
     await keepView(host, false)
     expect(await recallView(host)).toBe(false)
+  })
+})
+
+describe("ticket links", () => {
+  const LINEAR = { "WEB-": "https://linear.app/acme/issue/{key}" }
+
+  test("kept for a repository, only it reads them", async () => {
+    const { world, host } = storeWith({})
+
+    await keepTickets(host, REPO, LINEAR)
+
+    expect(world.store?.["tickets:github.com/acme/app"]).toEqual(LINEAR)
+    expect(await recallTickets(host, REPO)).toEqual(LINEAR)
+    expect(await recallTickets(host, { host: "github.com", name: "acme/other" })).toBeNull()
+  })
+
+  test("off is kept as it is", async () => {
+    const { host } = storeWith({})
+
+    await keepTickets(host, REPO, "off")
+    expect(await recallTickets(host, REPO)).toBe("off")
+  })
+
+  test("what the store holds that isn't ticket links reads as none", async () => {
+    const { host } = storeWith({ "tickets:github.com/acme/app": { "WEB-": "javascript:{key}" } })
+
+    expect(await recallTickets(host, REPO)).toBeNull()
   })
 })

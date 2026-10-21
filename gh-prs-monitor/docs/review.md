@@ -30,3 +30,11 @@ the like cancel. Where the pane is drawn somewhere that can't open a new session
 starts here without asking. A review in a new session is followed by that session's own list.
 
 While it runs, its row says so: see [While a skill is at work](actions.md#while-a-skill-is-at-work).
+
+## With ticket links
+
+In a repository with [ticket links](tickets.md), the overview names the pull request's ticket. Where a tool for your
+tracker is already connected to Claude Code (Linear's or Atlassian's, say), Review reads the ticket once, read-only, and
+the draft it shows you adds **Against WEB-5785**: up to three questions on where the change seems to miss what the
+ticket asks, or go beyond it, minding that one ticket may span several pull requests. They are for you alone: none is
+posted, and it is told never to post what the ticket says. With no such tool, it reads nothing and asks nothing.

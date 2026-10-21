@@ -42,3 +42,17 @@ python3 maintenance/screenshots/clean.py maintenance/.work/screenshots/render.pn
 `clean.py` trims the rows under the card, drops text and ICC-profile chunks, and compresses the image again until no
 run of its bytes reads as a command the directory's scan flags (as `iex` and `irm` did in 1.0.1's `compact.png`). Keep
 each file under 5 MiB, the directory's limit for a file in the plugin folder.
+
+## The ticket links GIF
+
+`gh-prs-monitor/assets/screenshots/tickets.gif`, in `docs/tickets.md`, is drawn rather than shot: frames of the pane
+as `/prs tickets` draws it, with the plugin's own texts and the demo's made-up repository. When the dialog or a row
+changes, change its frames in `tickets-gif.py` to match, then, from the repository's root (on macOS, with Google Chrome
+and ffmpeg):
+
+```
+python3 maintenance/screenshots/tickets-gif.py
+```
+
+It encodes the GIF again with fewer colours until no run of its bytes spells a command the directory's scan flags
+(`iex`, `npx`, `curl` and the like), and only then writes it into the plugin.

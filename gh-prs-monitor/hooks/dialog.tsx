@@ -20,6 +20,10 @@ export type DialogKit = {
 // as a button pressed later sends them along.
 export type InstructionsField = { key: string; read: () => string; keep: (text: string) => void }
 
+// Where a question asks for a piece of text and the surface draws no field (the mobile app), the person answers where
+// one is drawn.
+const NO_FIELD = "This app has no text field: answer on the computer."
+
 // The plugin's dialog, drawn in the pane in place of the list and framed as one: what kind of question it is and what
 // it is about, the question with what its answers do under it, a field for instructions where the question takes them
 // and the surface can draw one, a button per answer, and, where Escape reaches the pane, how to leave without
@@ -33,6 +37,17 @@ export function dialogView(
   site: { surface: string; isEscapable: boolean }
 ): RenderElement {
   const { Box, Text, Button, Input } = kit
+  // A question's own field says what its Enter does beside it; the instructions' field says under it where they go.
+  const input = question.field
+    ? { ...question.field, hint: null }
+    : question.instructions !== null
+      ? {
+          label: "Instructions",
+          placeholder: "Optional",
+          submitLabel: null,
+          hint: `They go with the answer you press, or Enter sends them alone ${question.instructions}.`
+        }
+      : null
 
   return (
     <Box flexDirection="column" gap={1} borderStyle="round" paddingX={1} {...framePadding(site.surface)}>
@@ -54,12 +69,14 @@ export function dialogView(
           </Text>
         ) : null}
       </Box>
-      {question.instructions !== null && Input ? (
+      {input && Input ? (
         <Box flexDirection="column">
           <Input
             key={field.key}
-            label="Instructions"
-            placeholder="Optional"
+            {...(question.field ? { autoFocus: true as const } : {})}
+            label={input.label}
+            placeholder={input.placeholder}
+            {...(input.submitLabel ? { submitLabel: input.submitLabel } : {})}
             value={field.read()}
             onInput={field.keep}
             onSubmit={(text) => {
@@ -69,17 +86,23 @@ export function dialogView(
               }
             }}
           />
-          <Text dimColor wrap="wrap">
-            {`They go with the answer you press, or Enter sends them alone ${question.instructions}.`}
-          </Text>
+          {input.hint ? (
+            <Text dimColor wrap="wrap">
+              {input.hint}
+            </Text>
+          ) : null}
         </Box>
+      ) : question.field ? (
+        <Text dimColor wrap="wrap">
+          {NO_FIELD}
+        </Text>
       ) : null}
       <Box flexDirection="row" flexWrap="wrap" {...buttonGaps(site.surface)}>
         {question.choices.map((choice, index) => (
           <Button
             key={answerKey(index)}
             label={choice}
-            {...(index === 0 ? { autoFocus: true as const } : {})}
+            {...(index === 0 && !question.field ? { autoFocus: true as const } : {})}
             {...(choice === question.main ? { variant: "primary" as const } : {})}
             onPress={() => answer({ choice, instructions: field.read().trim() })}
           />

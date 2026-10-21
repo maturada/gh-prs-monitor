@@ -2,6 +2,29 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.3.0 (21.10.2026)
+
+- **Ticket links**: paste a link to any ticket with `/prs tickets`, once per repository, and each pull request whose
+  branch or title names its key shows its ticket first in its details, as `WEB-5785 ⧉`, linked to Linear, Jira,
+  YouTrack, Shortcut, Azure Boards or whichever tracker you use. The link is read on your machine; nothing is sent
+  anywhere. **Ticket links on rows** in `/config` takes them off the rows.
+  [Ticket links](gh-prs-monitor/docs/tickets.md)
+- **Create PR** writes the ticket where your repository writes one: the key in the title only where its titles carry
+  keys, `Ticket: WEB-5785` with its link in the body, the key alone where the repository isn't private, and never a
+  word that would close the ticket at merge. Where ticket links aren't set up and the branch names a key, the preview
+  asks once.
+- **Review** names the ticket in its overview and, with a tool for your tracker already connected to Claude Code,
+  reads it once to tell you, for you alone, where the change seems to miss or go beyond it. The skills are told to
+  post a ticket's key and link at most, never what it says.
+- **`/prs demo`** shows example tickets, and its #1235 says how to set them up.
+- **The dialog** puts the keyboard in its field where a question asks for a link, names what its Enter does beside it
+  (`↵Check`, as the Check the link button does), and in the mobile app, which draws no field, says to answer on the
+  computer.
+- **The Alerts as system notifications setting** says what it does in fewer words.
+- **`/prs` as a session's first prompt with nothing attached** (a `claude -p` run, or the desktop app before its window
+  joins) printed "No pull requests loaded yet." while the session's first list was still loading; it now waits for that
+  list and prints it.
+
 ## 1.2.0 (20.10.2026)
 
 - **Alerts as system notifications**, a setting off by default: the alerts you turned on also go out as a system

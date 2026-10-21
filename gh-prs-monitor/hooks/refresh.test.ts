@@ -7,16 +7,7 @@ import type { Activity, CheckoutAt, MergedPull, PullsSnapshot } from "../types"
 import { ALERT_KINDS, changesBetween } from "./alerts"
 import type { ClosedState } from "./ended"
 import { GH_MISSING } from "./gh"
-import {
-  checkShared,
-  ensurePolling,
-  lookBack,
-  refresh,
-  refreshAfterWrite,
-  retry,
-  retryMinutes,
-  takeKind
-} from "./refresh"
+import { checkShared, ensurePolling, lookBack, refresh, refreshInTurn, retry, retryMinutes, takeKind } from "./refresh"
 import { listAfter } from "./carry"
 import type { RefreshHost } from "./refresh"
 import { createSession } from "./session"
@@ -647,7 +638,7 @@ describe("a load", () => {
     const before = refresh(host, session, false)
     await isReached
 
-    const after = refreshAfterWrite(host, session)
+    const after = refreshInTurn(host, session)
     release()
     await Promise.all([before, after])
 
@@ -695,7 +686,7 @@ describe("a load", () => {
     await refresh(host, session, false)
     options.list = { mine: [{ number: 1, title: "Legend", ci: "FAILURE" }] }
 
-    await refreshAfterWrite(host, session)
+    await refreshInTurn(host, session)
     await Promise.all(state.work)
 
     expect(state.activity.map((each) => each.number)).toEqual([1])

@@ -1033,7 +1033,7 @@ describe("/prs close", () => {
     await clock.settle()
     const asked = seen.runs.length
 
-    expect((await runPrs($, " clsoe ")).text).toBe('/prs takes nothing, demo, close or report, not "clsoe".')
+    expect((await runPrs($, " clsoe ")).text).toBe('/prs takes nothing, demo, close, report or tickets, not "clsoe".')
     expect(world.isPaneOpen).toBe(undefined)
     expect(seen.runs.length).toBe(asked)
   })

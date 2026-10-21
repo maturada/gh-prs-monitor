@@ -344,8 +344,11 @@ async function tellAway(host: RefreshHost, session: Session): Promise<void> {
   }
 }
 
-// A load under way began before the write, and would bring the row back as it was; this waits it out first.
-export async function refreshAfterWrite(host: RefreshHost, session: Session): Promise<void> {
+// A load of the caller's own, in turn after any under way, which another may have started. After a write: the load under
+// way began before it, and would bring the row back as it was. For a command: its reads of the session's state show one
+// moment (`state.get`), its own writes and no other's after it, so the list, its problem and the checkout it prints come
+// from its own load.
+export async function refreshInTurn(host: RefreshHost, session: Session): Promise<void> {
   await session.checks.inFlight?.done.catch(() => undefined)
   await refresh(host, session, false)
 }
