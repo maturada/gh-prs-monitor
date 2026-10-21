@@ -1,7 +1,7 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.2.0",
-  "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
+  "version": "1.3.0",
+  "description": "Your GitHub pull requests inside Claude Code: what needs you first, each linked to its ticket, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
   "author": {
     "name": "David Matura",
     "url": "https://github.com/maturada"
@@ -9,7 +9,18 @@
   "homepage": "https://github.com/maturada/gh-prs-monitor",
   "repository": "https://github.com/maturada/gh-prs-monitor",
   "license": "MIT",
-  "keywords": ["github", "pull-requests", "code-review", "gh", "notifications", "status-line", "pane"],
+  "keywords": [
+    "github",
+    "pull-requests",
+    "code-review",
+    "gh",
+    "notifications",
+    "status-line",
+    "pane",
+    "tickets",
+    "linear",
+    "jira"
+  ],
   "icon": "./assets/icon.png",
   "documentationUrl": "https://github.com/maturada/gh-prs-monitor#documentation",
   "supportUrl": "https://github.com/maturada/gh-prs-monitor/issues",
@@ -74,7 +85,7 @@
     "systemNotification": {
       "type": "boolean",
       "title": "Alerts as system notifications",
-      "description": "Also send the alerts that Change alerts and the Alert rows turn on as a system notification, one each time they show, for pull request changes only (not the summary when a session starts, nor a cleanup's note), the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty; in another terminal once you choose Claude Code's notification channel for it (Warp shows them with iterm2); or through your own Notification hook. Nothing in the desktop app or VS Code otherwise. Needs Claude Code 2.1.295",
+      "description": "Also send your alerts about pull request changes as system notifications, the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty, or in another terminal once Claude Code's notification channel is set for it. Follows Change alerts and the Alert rows; terminal only; needs Claude Code 2.1.295",
       "default": false
     },
     "alertReady": {
@@ -148,6 +159,12 @@
       "title": "Hide drafts",
       "description": "Leave your own draft pull requests out of the pane, its counts and the list /prs prints; a line says how many are hidden. Drafts you are asked to review still show",
       "default": false
+    },
+    "showTickets": {
+      "type": "boolean",
+      "title": "Ticket links on rows",
+      "description": "Show each pull request's ticket on its row, as a link, in repositories with ticket links set up (/prs tickets); off, only the skills use them",
+      "default": true
     },
     "cleanupWorktrees": {
       "type": "boolean",

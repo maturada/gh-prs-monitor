@@ -182,6 +182,8 @@ export type Seen = {
   tools: string[]
   // The lines the plugin wrote to the debug log.
   debug: string[]
+  // The panes the plugin opened, each with whether it asked for the keyboard (`focus`).
+  opens: { id: string; isTakingKeys: boolean }[]
 }
 
 const GH_WRITE = /^gh (pr merge|pr update-branch|pr ready|run rerun|api --method (PUT|POST)) /
@@ -220,7 +222,8 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     statuses: [],
     commands: [],
     tools: [],
-    debug: []
+    debug: [],
+    opens: []
   }
 
   // Operations (gh and git runs, files, toasts, the status line, panes) answer with { value }.
@@ -330,6 +333,7 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     return { value: { tool } }
   })
   on("ui.open", async (_, e) => {
+    seen.opens.push({ id: e.id, isTakingKeys: e.focus === true })
     // Open either way; a surface that places no panes leaves it waiting undrawn.
     if (world.placesPanes === false) {
       world.isPaneOpen ||= e.id === PLUGIN

@@ -37,6 +37,8 @@ import {
 import type { ListEntry } from "./list"
 import { markedStatus, MARKS, markText, summaryCounts, summaryMarks, summaryParts } from "./summary"
 import type { SummaryCounts, SummaryMark } from "./summary"
+import { detailsWithTicket } from "./tickets"
+import type { TicketLinks } from "./tickets"
 
 // The elements every surface draws, so one tree serves them all.
 export type Kit = {
@@ -70,6 +72,8 @@ export type PaneView = {
   columns: number
   // What draws the pane: the terminal, or an app such as the desktop one.
   surface: string
+  // The repository's ticket links where rows show them: a row's ticket leads its facts; null where they don't.
+  tickets: TicketLinks | null
 }
 
 // A row's press names its pull request by number: a button drawn again unchanged keeps its first closure
@@ -592,7 +596,7 @@ function pullRow(
       <Box key="status" paddingLeft={indent}>
         {statusText(kit, group, row, view.surface)}
       </Box>
-      {factsLine(kit, view, frame, row.details)}
+      {factsLine(kit, view, frame, detailsWithTicket(row, view.tickets))}
       {actionsFor(kit, row, view, actions, frame)}
       {activity.length > 0 && view.snapshot
         ? recentChanges(kit, row, activity, { indent, now: view.snapshot.fetchedAt, surface: view.surface }, actions)

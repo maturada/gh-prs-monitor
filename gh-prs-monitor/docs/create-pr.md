@@ -76,10 +76,18 @@ the repository's root, VS Code at the window's folder), `--worktree "<path>"`, t
    files as one, with its count), with a message in the form of the repository's own.
 5. **Drafts the title and body** in the repository's form, filling in the template, ticking only what is true, and
    naming an issue only where the branch, the commits or your instructions do, in the words the repository uses.
-   Nothing in them credits an assistant or a tool.
+   Nothing in them credits an assistant or a tool. With [ticket links](tickets.md), the branch's ticket goes in: its
+   key in the title only where the repository's titles carry one, and `Ticket: WEB-5785` with its link in the body,
+   the key alone where the repository isn't private (reply `add the link` to put it in). Never a word that would close
+   the ticket at merge, such as `Closes WEB-5785`, unless your instructions ask for it.
 6. **Shows one preview:** the branch and the one it goes into, draft or ready for review, the commit with every file and
-   its whole message, the push, the reviewers, the checks run, and the title and body as they will be posted. `yes` goes
-   ahead; `draft` or `ready` switches; logins add or drop reviewers; anything else changes the draft and shows it again.
+   its whole message, the push, the reviewers, the checks run, the ticket, and the title and body as they will be
+   posted. `yes` goes ahead; `draft` or `ready` switches; logins add or drop reviewers; anything else changes the draft
+   and shows it again. In a repository without ticket links whose branch names something like a key
+   (`feature/WEB-5785-…`), the preview asks once: paste a link to a ticket whose address holds its key to set them up
+   there, and press **Save** in the dialog that shows what it would link (a tracker whose links hold a number alone is
+   set up with `/prs tickets`), or skip. A skip, any no, or a plain
+   yes turns the question off for that repository, and `/prs tickets` sets them up whenever you like.
 7. **On your yes,** commits, pushes the branch and opens the pull request. It never pushes by force or skips the
    repository's hooks; a branch that moved on GitHub meanwhile stops the push.
 
@@ -95,7 +103,8 @@ offers the same draft choice and reviewers, each for you to change. Each pull re
 They are kept in the plugin's own store on this machine, shared by the terminal, VS Code and the desktop app, per
 repository and server, never in the repository: Claude Code asks first before a command writes a file into a
 repository's `.git` folder, where hooks or config planted run on the next git command. The skill reads and keeps them
-through a tool the plugin adds, `create_pr_choices`, which the plugin answers itself, so it asks nothing.
+through a tool the plugin adds, `create_pr_choices`, which the plugin answers itself, so it asks nothing. The ticket
+comes the same way, from `ticket_links`, which reads the branch as the pane's rows do.
 
 ## While it runs
 

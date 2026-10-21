@@ -77,6 +77,8 @@ gh api repos/<OWNER>/<REPO>/pulls/<NUMBER> --hostname <HOST> --jq '{
   deletions: .deletions,
   head_sha: .head.sha,
   base_sha: .base.sha,
+  branch: .head.ref,
+  visibility: ((.base.repo.visibility // "unknown") | ascii_upcase),
   html_url: .html_url
 }'
 ```
@@ -127,6 +129,8 @@ If anyone has already raised an issue — another reviewer, a bot, or you, in an
 **State check:** If the PR is closed or merged, warn the user and ask whether to proceed.
 
 Store `HEAD_SHA`, which pins the review in Step 5, and `BASE_SHA`. Also keep the Step 1 `HEAD_SHA` as `REVIEWED_SHA`, the commit this review actually reads: Step 9 checks the PR's head against it before approving, and moves `HEAD_SHA` only to a commit the user agrees to approve. Note `AUTHOR` (`.author` from the metadata) and `ME` (from `gh api user --hostname <HOST>`), and `IS_OWN`: whether they are the same login, which Step 3 shows. If `gh api user` fails, `ME` is unknown: say so, and Step 9 says it too.
+
+**The ticket.** Call `mcp__gh-prs-monitor__ticket_links` with `repo` as `<HOST>/<OWNER>/<REPO>`, and the metadata's `branch` and `title` (where your tools list it as deferred, load it first, as with ToolSearch `select:mcp__gh-prs-monitor__ticket_links`). JSON `{"key", "url"}` is the ticket, `<TICKET_KEY>` and `<TICKET_URL>`: read `${CLAUDE_PLUGIN_ROOT}/skills/shared/ticket.md`, which holds what this run may do with it, the metadata's `visibility` being the repository's, and read the ticket as it says, once, before Step 4; what it asks is weighed against the change in Step 5, for the user alone. Anything else (`none`, `{"unset": …}`, a refusal, a tool or a file that can't be reached) means no ticket: say nothing of tickets.
 
 Anything you tell the user about this PR during the run — who opened it, whether they can approve it, its CI, its reviews — comes from what this run fetched, never from memory or from another PR in this session. If you haven't fetched it, fetch it or say you don't know.
 
@@ -193,6 +197,8 @@ Before looking for problems, print a short overview from Steps 1 and 2, then car
 **Worth a close look:** <the risky or noteworthy parts, e.g. a shared default changed, a migration, auth code, a removed guard, a large deletion; or "nothing stands out">
 
 **State:** Open / Draft / Closed / Merged · by @<AUTHOR><, yours when IS_OWN> · CI <n passed, n failed (names), n pending> · <approved by @a, changes requested by @b; or no reviews yet> · +<additions>/−<deletions> in <files> files
+
+**Ticket:** [<TICKET_KEY>](<TICKET_URL>) *(only with a ticket)*
 ```
 
 Group files by what they do, not one line per file, and collapse long runs (`14 test files`, `generated API types`). Report CI as fetched — name failing checks, don't diagnose them here. Keep the whole overview to one screen.
@@ -253,11 +259,13 @@ Review your draft comments and **remove** any that are:
 
 Compose a short summary covering what the PR does, what you checked, and the key issues found. This summary is shown to the user in Step 6's draft display and in the Step 8 report. **It is never posted to the PR.** Do not include a `body` field in the JSON payload — only inline comments get posted.
 
+**Against the ticket** (local only, with the ticket read): at most three questions on what the ticket asks that the change doesn't seem to do, or does beyond it ("The ticket asks for an export button; I don't see one: left for later?"), saying once that the ticket may cover more than this pull request. Nothing stands out: leave it out. A point only the ticket raised goes here, never into an inline comment; none of it goes into the JSON, nor into a summary body should one ever be posted.
+
 If project conventions were found, mention in the local summary: `Review checked against project conventions from <file(s) found>`. If none were found, do not mention conventions.
 
 ### Check the draft before showing it
 
-The draft Step 6 shows is the one that gets posted, so check it now, not after the user's yes: every comment's lines against the hunks of the diff Step 2 read at `HEAD_SHA`, by their headers as Step 7's **Pre-POST validation** describes (not a fresh fetch, which reads the PR as it is now), and every `body` against **Voice of posted comments**. Drop a comment that falls outside the diff, fix a body that breaks a rule, and only then build the JSON and show it.
+The draft Step 6 shows is the one that gets posted, so check it now, not after the user's yes: every comment's lines against the hunks of the diff Step 2 read at `HEAD_SHA`, by their headers as Step 7's **Pre-POST validation** describes (not a fresh fetch, which reads the PR as it is now), every `body` against **Voice of posted comments**, and, with a ticket read, every `body` against `ticket.md`'s **What GitHub shows**: nothing in it comes from the ticket. Drop a comment that falls outside the diff, fix a body that breaks a rule, and only then build the JSON and show it.
 
 ### Build the review JSON
 
@@ -306,6 +314,8 @@ Omit the `body` field — only inline comments are posted:
 ## Draft Review — <OWNER>/<REPO>#<NUMBER>
 
 Summary: <your review summary>
+
+Against <TICKET_KEY>: <the questions, one a line> *(only with any; never posted)*
 
 Inline comments (<N> total):
 

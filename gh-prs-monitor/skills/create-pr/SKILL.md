@@ -36,11 +36,11 @@ With `--branch`, it must be that branch; otherwise stop and say which branch the
 **The repository:**
 
 ```bash
-gh repo view --json nameWithOwner,url,defaultBranchRef,viewerPermission \
-  --jq '{repo: .nameWithOwner, url: .url, base: .defaultBranchRef.name, permission: .viewerPermission}'
+gh repo view --json nameWithOwner,url,defaultBranchRef,viewerPermission,visibility \
+  --jq '{repo: .nameWithOwner, url: .url, base: .defaultBranchRef.name, permission: .viewerPermission, visibility: .visibility}'
 ```
 
-Take `<HOST>`, `<OWNER>` and `<REPO>` from `.url` (`https://<HOST>/<OWNER>/<REPO>`): `gh api` sends to github.com unless told otherwise, so every `gh api` call carries `--hostname <HOST>`. `<BASE>` is `.base`, unless the instructions name another branch; one written with one of this checkout's remotes before it, as `origin/<name>`, or as `refs/heads/<name>`, is `<name>`. Stop when:
+Take `<HOST>`, `<OWNER>` and `<REPO>` from `.url` (`https://<HOST>/<OWNER>/<REPO>`): `gh api` sends to github.com unless told otherwise, so every `gh api` call carries `--hostname <HOST>`. `<VISIBILITY>` is `.visibility`. `<BASE>` is `.base`, unless the instructions name another branch; one written with one of this checkout's remotes before it, as `origin/<name>`, or as `refs/heads/<name>`, is `<name>`. Stop when:
 
 - `<BRANCH>` is `<BASE>`: a pull request needs a branch of its own; say so.
 - `.permission` is neither `ADMIN`, `MAINTAIN` nor `WRITE`: this skill pushes the branch to this repository, and opening one from a fork is not covered here; say so.
@@ -111,9 +111,15 @@ Read what exists of these, and go on without what doesn't:
 
 From them, note: how titles are formed (a ticket prefix, a type such as `fix:`), what the body holds (the template's sections), how issues are referenced and with which words, anything the guide asks of a pull request (open as a draft first, a checklist), and the commands a pull request is checked with.
 
+**The ticket.** Load this skill's two tools at once, with ToolSearch `select:mcp__gh-prs-monitor__create_pr_choices,mcp__gh-prs-monitor__ticket_links` where your tools list them as deferred. Call `mcp__gh-prs-monitor__ticket_links` with `repo` as `<HOST>/<OWNER>/<REPO>` and `branch` as `<BRANCH>` (no title: none is drafted yet); instructions that name a ticket: with `key` set to the words naming it, as written (`ticket WEB-12`), instead. Its answer:
+
+- JSON `{"key", "url"}`: the ticket, `<TICKET_KEY>` and `<TICKET_URL>`. Read `${CLAUDE_PLUGIN_ROOT}/skills/shared/ticket.md`, which holds what this run may do with it, `<VISIBILITY>` being the repository's; where it can't be read, go on without a ticket.
+- `{"unset": "<KEY>"}`: ticket links aren't set up in this repository, and the branch names something like a key; the preview asks about it once (Phase 6).
+- Anything else (`none`, a refusal, a tool that can't be called): no ticket, and nothing said of tickets. A key the instructions named still goes in as the repository writes references (Phase 5), without a link; and its `none` is followed by one more call, with `branch` alone, for an `unset`.
+
 ## Phase 3: The checks
 
-Read the choices kept from the last pull request this skill opened in this repository: call `mcp__gh-prs-monitor__create_pr_choices` with `repo` set to `<HOST>/<OWNER>/<REPO>` (where your tools list it as deferred, load it first, as with ToolSearch `select:mcp__gh-prs-monitor__create_pr_choices`). It answers `none`, or JSON: `isDraft`, `checks` (the commands run then) and `reviewers`. Where it can't be called, go on without it.
+Read the choices kept from the last pull request this skill opened in this repository: call `mcp__gh-prs-monitor__create_pr_choices` with `repo` set to `<HOST>/<OWNER>/<REPO>` (loaded in Phase 2). It answers `none`, or JSON: `isDraft`, `checks` (the commands run then) and `reviewers`. Where it can't be called, go on without it.
 
 Offer the checks Phase 2 found, numbered, each with where it comes from (`package.json`, the guide, CI). Those run last time that are still found are marked to run again; one no longer found is not offered. Fast checks that change nothing first (lint, type-check, a format **check**, unit tests); long suites (end-to-end, integration) after, said to be long. Never offer one that writes or publishes (a formatter that rewrites files, a build that deploys, a release) as a check. Then ask:
 
@@ -127,14 +133,15 @@ Run the ones picked in the folder that defines each, one at a time, each with a 
 
 When Phase 1's status command, run again, lists changes, now including any fixes from Phase 3, list them numbered, a file each, a rename as one with both its paths, and ask which go into a commit on this branch: `all`, their numbers, or `none`. A new folder of more than 20 files is one item instead, with its count (`vendor/`, 412 new files), as such a folder is more often made than written. A file added and then deleted (`AD`) has nothing to commit: say so, and leave it out. Instructions that say already answer it. What is not picked stays as it is, uncommitted. With no commits from Phase 1 and nothing picked, there is nothing to open a pull request for: say so and stop.
 
-**The message** follows the repository's recent commits, whose subjects and trailers `git log -10 --format='%s%n%(trailers:only,unfold)' <BASE_SHA>` shows: their form of subject, their ticket references where they use them, and only the trailers they carry. It says what changed, not how the work was done.
+**The message** follows the repository's recent commits, whose subjects and trailers `git log -10 --format='%s%n%(trailers:only,unfold)' <BASE_SHA>` shows: their form of subject, their ticket references where they use them (with a ticket, its key alone, only where they carry one, never with a closing word such as `Fixes` unless the instructions ask), and only the trailers they carry. It says what changed, not how the work was done.
 
 ## Phase 5: The title and the body
 
 Draft them from the commits (`git log --format='%s%n%n%b' '<BASE_SHA>..HEAD'`), the commit to make, what they change (`git diff --stat '<BASE_SHA>' HEAD` for the commits, `git diff --stat HEAD -- ':(top,literal)<file>'` for the files picked in Phase 4, read whole where git does not track them yet, and the diffs themselves where the summary needs them; never the changes left out), Phase 2's format and the instructions.
 
-- **The title** says what the pull request changes, short, in the form the repository's titles take.
+- **The title** says what the pull request changes, short, in the form the repository's titles take; with a ticket, its key only where those titles carry one, and not twice.
 - **The body** fills in the template's sections, keeping its checkboxes and ticking only what is true. Without a template: what changes and why, in a few lines, then how it was checked (the checks run, and how they went).
+- **The ticket**, with one, as `ticket.md` writes it, in the template's place for a ticket, else a line of its own after the summary.
 - **An issue** is referenced only where the branch name, the commits or the instructions name one, in the words the repository uses for it; never one you guess.
 - It says only what the changes show, and claims no check that did not run or did not pass.
 
@@ -152,6 +159,8 @@ Nothing in the title, the body or the commit message credits an assistant, a too
 - **Push:** `<n>` commits to `<BRANCH>` on GitHub, with `git push '<REMOTE>' 'HEAD:refs/heads/<BRANCH>'` *(or: already on GitHub)*
 - **Reviewers:** @<login>, @<login> *(only when any)*
 - **Checks:** `npm run lint` passed, `npm test` passed *(or: none run; and "with changes left out of this pull request present" when Phase 4 left any out)*
+- **Ticket:** [WEB-5785](<TICKET_URL>) *(only with a ticket; where the repository isn't private, `WEB-5785, its link left out: reply "add the link" to put it in`)*
+- **Ticket:** this branch names WEB-5785, and ticket links aren't set up here. Paste a link to any ticket from its tracker to link them, or reply `skip tickets`; a yes with neither turns them off here, and `/prs tickets` sets them up later. *(only with Phase 2's `unset`, in place of the line above)*
 
 **Commit message:** *(only when committing)*
 
@@ -169,6 +178,15 @@ Reply `yes` to commit, push and open it; `draft` or `ready` to switch; logins to
 ````
 
 Only a yes in any spelling (`y`, `Yes.`) with nothing added goes ahead. Anything else ("yes, but shorter") is not a yes: adjust, and show the preview again.
+
+Replies about the ticket, none of them a yes:
+
+- **A link** (an `http` address) while the preview asks about ticket links: call `mcp__gh-prs-monitor__ticket_links` with `repo`, `branch`, the drafted `title`, and `save` set to the address exactly as given: the tool shows the user, in Claude Code's own dialog, what the link would make, and keeps it only once they save it. Other changes asked in the same reply are made too. JSON with a `key` and a `url`: they are the ticket from now on; read `ticket.md` as Phase 2 says, and the title, body and preview take it as Phase 5 says. JSON without a `key`: the links are kept, and this branch names no ticket of theirs; drop the line. Either way the preview shows again. A refusal that starts `Not saved` (the user chose not to keep the link) or `Ticket links are saved for` (not this repository): drop the line and show the preview again. Any other refusal: give its reason in one sentence and show the preview again, still asking; after a second refusal, call the tool with `save` set to `off`, drop the line, say that `/prs tickets` sets ticket links up, and show the preview again.
+- **`skip tickets`, or any other no to ticket links** ("no tickets", "yes, skip tickets") while the preview asks about them: call the tool with `save` set to `off`, drop the line, and show the preview again.
+- **A ticket named** (`ticket WEB-12`): call the tool with `key` set to those words; JSON is the ticket, as above. `none` means no link for it (none set up, turned off, or not one of theirs): the key goes in as Phase 2 says, without a link. The preview shows again.
+- **`add the link`**: the body takes `<TICKET_URL>` too, and the preview shows again.
+
+A yes while the preview still asks about ticket links calls the tool with `save` set to `off` first, as the line says, then goes ahead.
 
 ## Phase 7: Commit, push and open
 

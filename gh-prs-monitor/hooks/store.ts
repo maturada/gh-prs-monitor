@@ -21,6 +21,8 @@ import type { RepoRef } from "./gh"
 import { storedSnapshot } from "./pulls"
 import { MAX_POLL_MINUTES } from "./settings"
 import { audienceId, CLAIM_MS, isAhead, isKeptOver, SHARED_MAX_CHARS, storedClaim, storedShared } from "./shared"
+import { readTicketLinks, ticketsKey } from "./tickets"
+import type { TicketLinks } from "./tickets"
 import type { FetchClaim, SharedAnswer } from "./shared"
 import { storeKey } from "./store-keys"
 
@@ -387,6 +389,18 @@ export function recallChoices(store: StoreHost, key: string): Promise<unknown> {
 
 export function keepChoices(store: StoreHost, key: string, choices: CreateChoices): Promise<void> {
   return keepValue(store, key, choices)
+}
+
+// --- Ticket links ---
+
+// The ticket links kept for a repository, or off. A failure is the caller's to say.
+export async function recallTickets(store: StoreHost, repo: RepoRef): Promise<TicketLinks | "off" | null> {
+  return readTicketLinks(await store.get(ticketsKey(repo)))
+}
+
+// Links, or off, kept for a repository.
+export function keepTickets(store: StoreHost, repo: RepoRef, value: TicketLinks | "off"): Promise<void> {
+  return keepValue(store, ticketsKey(repo), value)
 }
 
 // --- A full store ---

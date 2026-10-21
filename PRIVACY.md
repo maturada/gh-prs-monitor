@@ -10,13 +10,15 @@ gh-prs-monitor is a Claude Code plugin that runs on your machine. It has no serv
 - **Your projects' package registries**, when it installs a project's dependencies in a worktree it made for a skill,
   or after **Here, switch branch** changed a lockfile: the project's own package manager fetches them (npm, PyPI,
   CocoaPods and the like), as an install you ran would.
-- **Nobody else**: no telemetry, no analytics, no crash reports, nothing sent to the plugin's author.
+- **Nobody else**: no telemetry, no analytics, no crash reports, nothing sent to the plugin's author. Not your ticket
+  tracker either: the ticket links you set up are read on your machine, and the plugin never opens one.
 
 ## What it keeps
 
 In Claude Code's plugin store, on your machine: the last list of pull requests read for each repository, what you have
 seen of it, the alerts already shown, the answers your sessions in a repository share, whether the pane is compact,
-what a cleanup found in each clone, and the choices Create PR remembers for each repository.
+what a cleanup found in each clone, the choices Create PR remembers for each repository, and the ticket links you set
+up for each repository.
 
 In your repositories it writes what you approve, commits and pushes, and what its own work needs: the worktrees the
 skills work in, with the dependencies and ignored files installed or copied into them and a `.gh-prs-monitor-lock`
@@ -32,7 +34,10 @@ in them would be lost.
 Resolve Comments, Fix CI, Resolve Conflicts, Review and Create PR run in your Claude Code conversation when you start
 them. What they read from GitHub (diffs, comments, CI logs) becomes part of that conversation, and is handled under the
 terms of the account or provider you use Claude Code with. So does what `/prs` prints where no pane shows, and what
-`/prs report` prints. The pane, the alerts and the status line send nothing to a model.
+`/prs report` prints. With ticket links, Review may read a pull request's ticket through a tool for your tracker that
+you connected to Claude Code yourself, read-only, and what it reads joins the conversation too, as does a ticket link
+you paste in Create PR's preview; the skills are told to post a ticket's key and link at most, and post only on your
+yes. The pane, the alerts and the status line send nothing to a model.
 
 ## Questions
 

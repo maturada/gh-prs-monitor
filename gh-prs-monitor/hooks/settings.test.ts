@@ -30,9 +30,11 @@ describe("readSettings", () => {
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,
+      isShowingTickets: true,
       isSharingRefreshes: true
     })
     expect(readSettings({ shareRefresh: false }).isSharingRefreshes).toBe(false)
+    expect(readSettings({ showTickets: false }).isShowingTickets).toBe(false)
     expect(readSettings({ alertSeconds: 1 }).alertMs).toBe(2_000)
     expect(readSettings({ pollMinutes: 5_000 }).pollMs).toBe(1_440 * MINUTE)
     expect(readSettings({ pollMinutes: 0 }).pollMs).toBe(MINUTE)
@@ -100,6 +102,7 @@ describe("readSettings", () => {
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,
+      isShowingTickets: true,
       isSharingRefreshes: true
     })
   })

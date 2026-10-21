@@ -118,6 +118,39 @@ function answerOpen(session: Session, answer: Answer | null): void {
 }
 
 describe("asking in the pane", () => {
+  test("a question with more answers than Claude Code's own dialog takes stays in the pane, though it's behind", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false })
+    const remove: Question = { ...QUESTION, choices: ["Remove A-", "Remove B-", "Remove C-", "Remove D-", "Cancel"] }
+
+    const answered = ask(host, session, remove, "refresh")
+    await promisesRun(20)
+    expect(seen.engine).toEqual([])
+    answerOpen(session, { choice: "Remove D-", instructions: "" })
+    expect(await answered).toEqual({ choice: "Remove D-", instructions: "" })
+  })
+
+  test("one with more answers than Claude Code's own dialog takes goes there still where no pane is placed", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false, panes: [] })
+    const remove: Question = { ...QUESTION, choices: ["Remove A-", "Remove B-", "Remove C-", "Remove D-", "Cancel"] }
+
+    await settled(ask(host, session, remove, "refresh"))
+    expect(seen.engine).toHaveLength(1)
+  })
+
+  test("a question that asks for a piece of text puts the keyboard in its field", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf()
+    const field = { label: "Ticket link", placeholder: "https://…", submitLabel: "Check", otherHint: "Paste it." }
+
+    const answered = ask(host, session, { ...QUESTION, field }, "refresh")
+    await promisesRun(20)
+    expect(seen.focused).toEqual([(session.asking as OpenQuestion).fieldKey])
+    answerOpen(session, null)
+    expect(await answered).toBeNull()
+  })
+
   test("the question takes the list's place, the keyboard on its first answer, and the answer comes back", async () => {
     const session = sessionOf()
     const { host, seen } = hostOf()

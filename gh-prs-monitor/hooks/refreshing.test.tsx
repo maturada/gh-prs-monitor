@@ -1331,6 +1331,29 @@ describe("staying current", () => {
 describe("with nothing attached", () => {
   const NOTHING_ATTACHED: Partial<World> = { surfaces: [] }
 
+  // As a session's first prompt, a `-p` run's or the desktop app's before it attaches: the session's own first load is
+  // under way, and /prs waits for it. What that load showed is read from it, as /prs's reads of the session's state
+  // stay at their first moment, before the load wrote it.
+  test("/prs as the first prompt, while the session's first load runs, prints the list it loads", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, ...NOTHING_ATTACHED })
+    await startSession($)
+
+    const ran = runPrs($, "")
+    await clock.settle()
+    expect((await ran).text).toContain("**Your Pull Requests** (2)")
+  })
+
+  test("/prs as the first prompt, while a first load meets a problem, prints the problem", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, isSignedOut: true, ...NOTHING_ATTACHED })
+    await startSession($)
+
+    const ran = runPrs($, "")
+    await clock.settle()
+    expect((await ran).text).toContain("gh auth login")
+  })
+
   test("/prs prints the list and opens no pane nobody draws", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0, ...NOTHING_ATTACHED }
@@ -1425,7 +1448,7 @@ describe("with nothing attached", () => {
     expect(printed).toContain("| #1242 Offline downloads | ✓ ready to merge · approved by a-teammate |")
     expect(printed).toContain("**Your Pull Requests** (14)")
     expect(printed).toContain(
-      "| [#1242](https://github.com/pulls) Offline downloads | ✅ Ready To Merge | CI ✓ · stack #30 2/3 · approved: a-teammate 2h ago |"
+      "| [#1242](https://github.com/pulls) Offline downloads | ✅ Ready To Merge | [APP-371\u00a0⧉](https://github.com/maturada/gh-prs-monitor/blob/main/gh-prs-monitor/docs/tickets.md) · CI ✓ · stack #30 2/3 · approved: a-teammate 2h ago |"
     )
     expect(printed).toContain("**Waiting On Your Review** (6)")
     expect(printed.filter((line) => line.startsWith("| ● [#1236]"))).toHaveLength(1)

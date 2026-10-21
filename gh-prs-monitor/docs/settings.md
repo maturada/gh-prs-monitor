@@ -35,7 +35,7 @@ itself. The terminal's, VS Code's and the desktop app's sessions share alike.
 | Recent changes expire after (minutes) | `recentChangesExpiryMinutes` | 1 to 1440 | `30` | How long the note of what changed stays at the foot of a pull request in the pane, and its dot in the compact view, from when a refresh noticed it. Its ✕, one of its buttons or closing the pane clears it sooner. |
 | Hold alerts while working | `holdWhileWorking` | on / off | on | Keeps alerts back while a turn runs, and shows them when it finishes, or each quarter of an hour of a long one. |
 | Alert sound | `alertSound` | on / off | off | A short chime with alerts; macOS only. |
-| Alerts as system notifications | `systemNotification` | on / off | off | Also sends the alerts that **Change alerts** and the **Alert** rows turn on as a system notification, for pull request changes only, the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty; in another terminal once you choose Claude Code's notification channel for it; or your own `Notification` hook. Needs Claude Code 2.1.295. [More](alerts.md#sound-and-system-notifications) |
+| Alerts as system notifications | `systemNotification` | on / off | off | Also sends your alerts about pull request changes as system notifications, the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty, or in another terminal once Claude Code's notification channel is set for it. Follows **Change alerts** and the **Alert** rows; terminal only; needs Claude Code 2.1.295. [More](alerts.md#sound-and-system-notifications) |
 | Alert: ready to merge | `alertReady` | on / off | on | One of your pull requests can merge. |
 | Alert: comments | `alertComments` | on / off | on | New comments in your pull requests' conversations. |
 | Alert: reviews | `alertReviews` | on / off | on | Approvals, change requests and reviews on your pull requests. |
@@ -55,6 +55,7 @@ What each kind alerts, and when alerts show: [Alerts and the status line](alerts
 | Status line summary | `statusLine` | on / off | on | The summary in the status line, or the band in the desktop app; background refresh only. |
 | Count outdated comments | `includeOutdated` | on / off | off | Counts unresolved comments on changed code, and lets Resolve Comments work on them too. |
 | Hide drafts | `hideDrafts` | on / off | off | Leaves your own draft pull requests out of the pane, its counts and the list `/prs` prints; a line says how many are hidden. Drafts you are asked to review still show. |
+| Ticket links on rows | `showTickets` | on / off | on | Shows each pull request's ticket first in its details, as a link, in repositories with [ticket links](tickets.md) set up; off, only the skills use them. |
 
 ## Worktrees and branches
 
@@ -92,8 +93,9 @@ detail:
     point). A stacked merge checks its progress every 3 seconds for up to a minute.
   - **While a bundled skill is at work**, its finished turns refresh the list, at most twice a minute (not on demand).
 - **Model tokens:** the pane, refreshes, alerts and the status line use none. The bundled skills are hidden from the
-  model until a button (or their slash command) runs them; only then do they cost tokens. The plugin's one tool,
-  `create_pr_choices`, which Create PR uses for its kept choices, puts its description in each session's context, a
-  few hundred tokens, or only its name where Claude Code defers tools. Where no pane shows (a VS Code extension older
+  model until a button (or their slash command) runs them; only then do they cost tokens. The plugin's two tools,
+  `create_pr_choices`, which Create PR uses for its kept choices, and `ticket_links`, which Create PR and Review use for
+  a pull request's ticket, put their descriptions in each session's context, a few hundred tokens, or only their names
+  where Claude Code defers tools. Where no pane shows (a VS Code extension older
   than 2.1.299, an app that places no panes, or a `claude -p` run), the list `/prs` prints is the command's output,
   which goes into the conversation, so a long list adds to its context.

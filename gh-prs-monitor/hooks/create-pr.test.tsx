@@ -929,7 +929,7 @@ describe("the create-pr skill's choices", () => {
     const { seen, world } = await paneOn($, on, "feature/export")
     const choices = { isDraft: true, checks: ["npm run lint"], reviewers: ["ann"] }
 
-    expect(seen.tools).toEqual([TOOL])
+    expect(seen.tools).toEqual([TOOL, "mcp__gh-prs-monitor__ticket_links"])
     expect((await call($)).result).toBe("none")
     expect((await call($, { save: choices })).result).toBe("saved")
     expect(JSON.parse(String((await call($)).result))).toEqual(choices)

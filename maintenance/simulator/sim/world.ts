@@ -6,7 +6,8 @@
 
 import { holdAlerts } from "../C/hooks/alerts"
 import { storedSnapshot } from "../C/hooks/pulls"
-import { checkAgain, checkShared, ensurePolling, isCheckingMode, refresh, refreshAfterWrite, retry } from "../C/hooks/refresh"
+import { checkAgain, checkShared, ensurePolling, isCheckingMode, refresh, retry } from "../C/hooks/refresh"
+import * as refreshing from "../C/hooks/refresh"
 import type { RefreshHost } from "../C/hooks/refresh"
 import { createSession } from "../C/hooks/session"
 import type { Session } from "../C/hooks/session"
@@ -16,6 +17,10 @@ import { claimFetch, notShownElsewhere, recallClaim, recallLook, recallShared, r
 import type { StoreHost } from "../C/hooks/store"
 import { response } from "../C/hooks/testing/fixtures"
 import type { PullFixture, ResponseFixture } from "../C/hooks/testing/fixtures"
+
+// The load after a write, by its name in the version run: `refreshInTurn` from 1.3.0, `refreshAfterWrite` before it.
+const refreshInTurn = ((refreshing as Record<string, unknown>).refreshInTurn ??
+  (refreshing as Record<string, unknown>).refreshAfterWrite) as (host: RefreshHost, session: Session) => Promise<void>
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0
@@ -619,7 +624,7 @@ export class World {
       await this.clock.sleep(400 + 800 * this.r())
       const version = this.github.change(change)
       onApplied?.(version)
-      await refreshAfterWrite(host, session)
+      await refreshInTurn(host, session)
     }
     this.work.push(run().catch((e) => this.failed(sim, e)))
   }

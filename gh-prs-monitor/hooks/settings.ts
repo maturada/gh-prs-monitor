@@ -28,6 +28,8 @@ export type Settings = {
   // merged or closed.
   isCleaningUp: boolean
   isHidingDrafts: boolean
+  // A pull request's ticket shows on its row, where ticket links are set up; off, only the skills use it.
+  isShowingTickets: boolean
   // Sessions in the same repository share one request to GitHub per interval, and what it answers.
   isSharingRefreshes: boolean
 }
@@ -67,6 +69,7 @@ export function readSettings(options: PluginOptions): Settings {
     isHoldingWhileWorking: options.holdWhileWorking !== false,
     isCleaningUp: options.cleanupWorktrees !== false,
     isHidingDrafts: options.hideDrafts === true,
+    isShowingTickets: options.showTickets !== false,
     isSharingRefreshes: options.shareRefresh !== false
   }
 }
