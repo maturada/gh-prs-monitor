@@ -85,7 +85,8 @@ the repository's root, VS Code at the window's folder), `--worktree "<path>"`, t
    posted. `yes` goes ahead; `draft` or `ready` switches; logins add or drop reviewers; anything else changes the draft
    and shows it again. In a repository without ticket links whose branch names something like a key
    (`feature/WEB-5785-…`), the preview asks once: paste a link to a ticket whose address holds its key to set them up
-   there (a tracker whose links hold a number alone is set up with `/prs tickets`), or skip. A skip, any no, or a plain
+   there, and press **Save** in the dialog that shows what it would link (a tracker whose links hold a number alone is
+   set up with `/prs tickets`), or skip. A skip, any no, or a plain
    yes turns the question off for that repository, and `/prs tickets` sets them up whenever you like.
 7. **On your yes,** commits, pushes the branch and opens the pull request. It never pushes by force or skips the
    repository's hooks; a branch that moved on GitHub meanwhile stops the push.

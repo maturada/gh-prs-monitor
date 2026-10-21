@@ -307,8 +307,9 @@ It has no server, no token of its own and no telemetry, and reads no credential 
   hooks and writes it to your terminal as its own notifications go; the plugin sends it nowhere else.
 - **Tools for the skills.** Each session gets two tools, which the plugin answers itself: `create_pr_choices`, which
   Create PR calls to read and keep your choices for a repository, and `ticket_links`, which Create PR and Review call
-  to find a pull request's ticket, or to keep a ticket link you paste. Both read and keep only these, in the plugin's
-  store, and neither opens a ticket's link.
+  to find a pull request's ticket, or to keep a ticket link you paste, for the session's repository alone and only once
+  you press Save in the dialog it shows. Both read and keep only these, in the plugin's store, and neither opens a
+  ticket's link.
 - **What it keeps**, in Claude Code's plugin store on this machine, never in a repository: the last list for each
   repository, what you have seen of it, the alerts shown, the answers your sessions share, the compact view, what
   cleanups found in each clone, Create PR's choices, and the ticket links you set up.

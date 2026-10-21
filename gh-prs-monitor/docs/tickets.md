@@ -57,8 +57,9 @@ desktop app and VS Code all use them, and none of it goes into the repository.
   the key alone unless you reply `add the link`. In a repository without ticket links, a branch that names something
   like a key (`feature/WEB-5785-…`) gets one line in the preview, once: paste a link there to set them up, or skip. A
   skip, any no, or a plain yes turns the question off for that repository. Pasted there, the link goes through your
-  conversation, as anything you type does, and one whose address holds a number alone is left to `/prs tickets`,
-  which asks how its keys are written. [Create PR](create-pr.md)
+  conversation, as anything you type does, and is kept only once you press **Save** in Claude Code's dialog, which shows
+  what it would link and any address it would replace (a no holds for the rest of the session); one whose address holds a number alone is left to
+  `/prs tickets`, which asks how its keys are written. [Create PR](create-pr.md)
 - **Review** names the ticket in its overview. With a tool for your tracker already connected to Claude Code (Linear's
   or Atlassian's, say), it reads the ticket once, read-only, and tells you, for you alone, where the change seems to
   miss or go beyond it, as up to three questions. [Review](review.md)

@@ -69,6 +69,7 @@ describe("the skills' ticket tool", () => {
   test("a link saved joins the repository's links, shows on its rows at once, and gives the pull request's ticket", async ($, on) => {
     const jira = "https://acme.atlassian.net/browse/{key}"
     const { world, clock } = await sessionWith($, on, { "tickets:github.com/acme/app": { "OPS-": jira } })
+    world.answer = "Save"
 
     const saved = await call($, {
       branch: "feature/WEB-5761-menu",
@@ -88,6 +89,100 @@ describe("the skills' ticket tool", () => {
         (node) => node.type === "Link" && node.props?.href === "https://linear.app/acme/issue/WEB-5761"
       )
     ).toBe(true)
+  })
+
+  // The call may come from text the model read rather than from the person: Claude Code's own dialog, which the person
+  // alone answers, says a skill asks, shows what the link would make, and nothing is kept until they save it.
+  test("a link is saved only once the person saves it in Claude Code's dialog, which says a skill asks", async ($, on) => {
+    const { world } = await sessionWith($, on, {})
+    world.answer = "Cancel"
+
+    expect((await call($, { save: "https://linear.app/acme/issue/WEB-5761/fix-chat-scroll" })).deny).toBe(
+      "Not saved: the user didn't save the link in the dialog."
+    )
+    expect(world.question).toBe(
+      "acme/app — A skill asks to keep a ticket link. Tickets like WEB-5761 link to https://linear.app/acme/issue/WEB-5761. Save this for acme/app? #1 Fix the menu would link WEB-5761."
+    )
+    expect(world.choices).toEqual(["Save", "Cancel"])
+    expect(world.store?.["tickets:github.com/acme/app"]).toBeUndefined()
+  })
+
+  test("a dialog dismissed keeps nothing", async ($, on) => {
+    const { world } = await sessionWith($, on, {})
+
+    expect((await call($, { save: "https://linear.app/acme/issue/WEB-5761" })).deny).toBe(
+      "Not saved: the user didn't save the link in the dialog."
+    )
+    expect(world.store?.["tickets:github.com/acme/app"]).toBeUndefined()
+  })
+
+  // Text the model read could ask again and again: once the person says no, the session asks no more there.
+  test("once the person doesn't save one, the session asks about none again for the repository", async ($, on) => {
+    const { world } = await sessionWith($, on, {})
+    world.answer = "Cancel"
+    await call($, { save: "https://linear.app/acme/issue/WEB-5761" })
+    world.answer = "Save"
+
+    expect((await call($, { save: "https://tracker.example.com/issue/WEB-1" })).deny).toBe(
+      "Not saved: the user didn't save a ticket link here in this session; /prs tickets sets them up."
+    )
+    expect(world.asked).toBe(1)
+    expect(world.store?.["tickets:github.com/acme/app"]).toBeUndefined()
+  })
+
+  test("a link too long to be a ticket's is refused, and nothing is asked", async ($, on) => {
+    const { world } = await sessionWith($, on, {})
+    world.answer = "Save"
+
+    expect((await call($, { save: `https://linear.app/acme/issue/WEB-1/${"x".repeat(2100)}` })).deny).toBe(
+      "That link is too long to be a ticket's link."
+    )
+    expect(world.asked).toBeUndefined()
+  })
+
+  test("a link for keys set up already shows the address it would replace, which stays unless saved", async ($, on) => {
+    const { world } = await sessionWith($, on, LINKED)
+
+    expect((await call($, { save: "https://tracker.example.com/issue/WEB-1" })).deny).toBe(
+      "Not saved: the user didn't save the link in the dialog."
+    )
+    expect(world.question).toContain(
+      "Tickets like WEB-1 link to https://tracker.example.com/issue/WEB-1, in place of https://linear.app/acme/issue/WEB-1."
+    )
+    expect(world.store?.["tickets:github.com/acme/app"]).toEqual({ "WEB-": LINEAR })
+  })
+
+  // A tool's hook has its own time bounded, and a load isn't the engine's call to wait on: the list as it stands.
+  test("asked while the first list still loads, it asks at once", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: KEYED, branch: "main", uncommitted: 0, store: {}, slowGithubMs: 20_000 }
+    machine($, on, world, clock)
+    await startSession($)
+    // The repository named, its list still on the way.
+    await clock.settle()
+
+    let answer: string | undefined
+    const called = call($, { save: "https://linear.app/acme/issue/WEB-5761" }).then((result) => (answer = result.deny))
+    await clock.settle()
+
+    expect(answer).toBe("Not saved: the user didn't save the link in the dialog.")
+    expect(world.question).toContain("No pull request listed now names a WEB- ticket")
+    await clock.advance(30_000)
+    await called
+  })
+
+  test("another repository than the session's is refused, and nothing is asked", async ($, on) => {
+    const { world } = await sessionWith($, on, {})
+    world.answer = "Save"
+
+    expect((await call($, { repo: "github.com/acme/other", save: "https://linear.app/acme/issue/WEB-1" })).deny).toBe(
+      "Ticket links are saved for this session's repository alone, acme/app."
+    )
+    expect((await call($, { repo: "github.com/acme/other", save: "off" })).deny).toBe(
+      "Ticket links are saved for this session's repository alone, acme/app."
+    )
+    expect(world.asked).toBeUndefined()
+    expect(world.store?.["tickets:github.com/acme/other"]).toBeUndefined()
   })
 
   test("a link it can't use is refused with why, and keeps nothing", async ($, on) => {

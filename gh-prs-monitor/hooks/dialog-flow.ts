@@ -213,7 +213,7 @@ async function isPanePlaced(host: DialogHost): Promise<boolean> {
 // The engine's dialog has a short header and one text, so the subject leads the text, as an alert names a pull
 // request, and the detail follows the question; instructions typed under Other are sent alone. It rejects when the
 // person dismisses it, which counts as Cancel.
-async function askInEngineDialog(host: DialogHost, question: Question): Promise<Answer | null> {
+export async function askInEngineDialog(host: DialogHost, question: Question): Promise<Answer | null> {
   const detail = question.detail === null ? "" : ` ${question.detail}`
   const instructions = question.field
     ? ` ${question.field.otherHint}`

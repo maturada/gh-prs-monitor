@@ -99,8 +99,7 @@ async function addLink(host: TicketsHost, repo: RepoRef, isShowingTickets: boole
   if (!link) {
     return
   }
-  const view = { rows: await host.listed(), isShowingTickets }
-  const answer = await host.ask(saveQuestion(repo, link, linksIn(await host.recall(repo)), view))
+  const answer = await host.ask(saveQuestion(repo, link, linksIn(await host.recall(repo)), await host.listed()))
   if (answer?.choice !== SAVE) {
     return
   }
@@ -212,8 +211,9 @@ function keyQuestion(repo: RepoRef, number: string, reason: string | null): Ques
 }
 
 // What the link makes of its own ticket, and of one listed; where its keys have an address already, which it replaces.
-function saveQuestion(repo: RepoRef, link: FoundLink, links: TicketLinks, view: TicketsView): Question {
-  const example = view.rows
+// Asked by `/prs tickets`, and by the skills' tool before it keeps a link (`ticket-tool.ts`).
+export function saveQuestion(repo: RepoRef, link: FoundLink, links: TicketLinks, rows: readonly PullRow[]): Question {
+  const example = rows
     .map((row) => ({ row, ticket: ticketOf(rowText(row), { [link.prefix]: link.address }) }))
     .find(({ ticket }) => ticket !== null)
   const number = link.key.slice(link.prefix.length)

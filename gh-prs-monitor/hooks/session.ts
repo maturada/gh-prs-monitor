@@ -31,6 +31,9 @@ export type Session = {
   // The repository's ticket links, as the store held them when a list was last shown or `/prs tickets` kept them;
   // null where none are set or they are off.
   ticketLinks: TicketLinks | null
+  // The repositories (`ticketsKey`) whose ticket link, asked by a skill, the person didn't save: the skills' tool asks
+  // about none there again this session.
+  ticketSavesDeclined: Set<string>
   // The main loop's turns under way, by id (a subagent's run is none of them), and the work waiting for none to be
   // (`whenIdle`). A reload's module takes those the module before saw start, as `fromBefore` too: the main loop runs
   // one turn at a time, so one starting shows those ended, whatever kept their end from being seen.
@@ -176,6 +179,7 @@ export function createSession(settings: Settings): Session {
     id: randomId(),
     repo: null,
     ticketLinks: null,
+    ticketSavesDeclined: new Set(),
     runningTurns: new Set(),
     fromBefore: new Set(),
     isStateEmptied: false,

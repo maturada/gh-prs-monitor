@@ -12,7 +12,7 @@ Each version of gh-prs-monitor, newest first. Versions follow [semantic versioni
 - **Create PR** writes the ticket where your repository writes one: the key in the title only where its titles carry
   keys, `Ticket: WEB-5785` with its link in the body, the key alone where the repository isn't private, and never a
   word that would close the ticket at merge. Where ticket links aren't set up and the branch names a key, the preview
-  asks once.
+  asks once, and a link pasted there is kept only once you save it in a dialog that shows what it would link.
 - **Review** names the ticket in its overview and, with a tool for your tracker already connected to Claude Code,
   reads it once to tell you, for you alone, where the change seems to miss or go beyond it. The skills are told to
   post a ticket's key and link at most, never what it says.

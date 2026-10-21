@@ -37,7 +37,7 @@ import {
   DEMO_TO_OPEN
 } from "./demo"
 import { dialogView } from "./dialog"
-import { ask, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
+import { ask, askInEngineDialog, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { messageOf, SETUP_NOTE_MS } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
@@ -823,6 +823,10 @@ async function listedRows($: Engine, session: Session): Promise<readonly PullRow
     listed = storedSnapshot(await read($, snapshotState))
   }
 
+  return rowsOf(listed)
+}
+
+function rowsOf(listed: ReturnType<typeof storedSnapshot>): readonly PullRow[] {
   return listed ? [...listed.mine, ...listed.review] : []
 }
 
@@ -855,18 +859,25 @@ async function keepTicketLinks($: Engine, session: Session, repo: RepoRef, value
 }
 
 // What the skills' ticket tool needs of the engine (`ticket-tool.ts`).
+// Its question goes to Claude Code's own dialog, which a tool's call may wait on as long as the person takes: the
+// pane's would count against the hook's own time, as would a load; so the list is read as it stands.
 function ticketToolHostOf($: Engine, session: Session): TicketToolHost {
   return {
     recall: (repo) => recallTickets(storeOf($), repo),
-    keep: (repo, value) => keepTicketLinks($, session, repo, value)
+    keep: (repo, value) => keepTicketLinks($, session, repo, value),
+    ownRepo: () => session.repo,
+    ask: (question) => askInEngineDialog(dialogHostOf($), question),
+    listed: async () => rowsOf(storedSnapshot(await read($, snapshotState))),
+    declined: session.ticketSavesDeclined
   }
 }
 
-// What `/prs tickets` needs of the engine (`tickets-flow.ts`): the links as the tool reads and keeps them; its questions
-// go where a press's would, the list's refresh button taking the keyboard back.
+// What `/prs tickets` needs of the engine (`tickets-flow.ts`): its questions go where a press's would, the list's
+// refresh button taking the keyboard back.
 function ticketsHostOf($: Engine, session: Session): TicketsHost {
   return {
-    ...ticketToolHostOf($, session),
+    recall: (repo) => recallTickets(storeOf($), repo),
+    keep: (repo, value) => keepTicketLinks($, session, repo, value),
     ask: (question) => ask(dialogHostOf($), session, question, "refresh"),
     listed: () => listedRows($, session),
     notify: (text) => notify($, text, session.settings.alertMs)
