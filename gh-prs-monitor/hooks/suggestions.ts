@@ -1,19 +1,19 @@
 // Author: David Matura
 
-// The people GitHub suggests to review the viewer's own pull requests that wait on reviewers nobody asked, or need more
-// approvals, whom Request Review offers: asked after a load shows the list, in one small request for the rows that want
-// them, as asking in the list's own request would load it slower for everyone. GitHub suggests them from who changed or
-// reviewed the code a pull request touches before. Each answer is kept for its row's head commit and reviews
+// The people GitHub suggests to review the viewer's own pull requests that wait on reviewers nobody asked, at first or
+// for more approvals, whom Request Review offers: asked after a load shows the list, in one small request for the rows
+// that want them, as asking in the list's own request would load it slower for everyone. GitHub suggests them from who
+// changed or reviewed the code a pull request touches before. Each answer is kept for its row's head commit and reviews
 // (`suggestionBasis`), so it is asked again only when the head moves, someone reviews, a row newly wants them, or
-// someone was asked from the pane since; one that failed is asked again by the next load.
+// someone was asked since, from the pane or as a press found; one that failed is asked again by the next load.
 
 import type { PullRow, PullsSnapshot } from "../types"
-import { ENGINE_OPTIONS } from "./dialog-flow"
 import { firstLine, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { GhFailure, ghRun, graphqlArgv } from "./github"
 import type { Host } from "./machine"
 import { primaryOf } from "./pull-status"
+import { ENGINE_OPTIONS } from "./question"
 import type { Session, Suggested } from "./session"
 
 // What asking for the suggestions reaches beyond gh (`Host`): the debug log, and the pane, drawn again once they come.
@@ -56,9 +56,9 @@ export function withRequestReview(
   return { ...snapshot, mine }
 }
 
-// A row's suggestions forgotten once someone was asked to review it: one still wanting them, as a More Approvals row,
-// keeps its head and reviews, and those kept were filtered before that person was asked. The next load asks GitHub
-// afresh.
+// A row's suggestions forgotten once someone is asked to review it, from the pane or as a press found: they were read
+// before that, and the list drawn until the next load, or kept where that load fails, still shows nobody asked. The
+// next load asks GitHub afresh.
 export function forgetSuggestions(session: Session, repo: string, number: number): void {
   session.suggestedReviewers.delete(suggestionKey(repo, number))
 }

@@ -29,7 +29,6 @@ import {
   rerunArgv,
   rerunConfirm,
   rerunDone,
-  staleFor,
   staleNote,
   updateArgv,
   updateConfirm,
@@ -38,9 +37,9 @@ import {
 import type { Confirm, CurrentPull } from "./actions"
 import { messageOf } from "./gh"
 import type { RepoRef } from "./gh"
-import { currentPull, failedRuns, ghWrite, mergeOutcome, mergeStacked, stackOf, WriteRefused } from "./github"
+import { failedRuns, ghWrite, mergeOutcome, mergeStacked, stackOf, WriteRefused } from "./github"
 import { buttonKey } from "./keys"
-import { dropMerged, lookBeforeAsking, pressing, settleAfterWrite, stopStale } from "./press"
+import { dropMerged, lookAtPull, lookBeforeAsking, pressing, settleAfterWrite } from "./press"
 import type { PressHost } from "./press"
 import { rowOf } from "./pulls"
 import type { Session } from "./session"
@@ -175,8 +174,9 @@ async function askWhom(host: PressHost, row: PullRow, names: readonly string[]):
   return answer?.choice === REQUEST_REVIEW ? (answer.picks ?? []) : []
 }
 
-// Those picked still to ask, once GitHub is looked at again, as the question may have been open for minutes: none
-// (null) where the pull request moved on, which is said; all of them where the lookup fails, GitHub having the last word.
+// Those picked still to ask, once GitHub is looked at again (`lookAtPull`), as the question may have been open for
+// minutes: none (null) where the pull request moved on or gh signed out, which is said; all of them where the lookup
+// fails, GitHub having the last word.
 async function stillToAsk(
   host: PressHost,
   session: Session,
@@ -184,16 +184,9 @@ async function stillToAsk(
   row: PullRow,
   picks: readonly string[]
 ): Promise<string[] | null> {
-  const found = await currentPull(host, repo, row.number)
-  const current = "pull" in found ? found.pull : null
-  const stale = current ? staleFor("requestReview", row, current) : null
-  if (stale !== null) {
-    await stopStale(host, session, row, stale)
+  const look = await lookAtPull(host, session, "requestReview", row, repo)
 
-    return null
-  }
-
-  return unasked(picks, current)
+  return look.isGoing ? unasked(picks, look.current) : null
 }
 
 // Everyone Request Review would ask was asked on GitHub already: said so, and the list read again, the names kept for

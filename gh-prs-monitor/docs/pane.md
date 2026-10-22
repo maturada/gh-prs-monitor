@@ -49,7 +49,7 @@ rule, shows each as a card of its own.
 | CI Failing | **Re-Run CI**, or **Fix CI** where you can't re-run it |
 | Changes Requested | **Re-Request Review** once commits came after the change request, else **Resolve Comments** |
 | Comments To Address | **Resolve Comments** |
-| Waiting For Review, nobody asked yet (a bot aside) | **Request Review**, once GitHub suggests someone |
+| Waiting For Review, nobody asked and no review yet (a bot aside) | **Request Review**, once GitHub suggests someone |
 | Approved · More Approvals Needed | **Request Review** where no person is asked and GitHub suggests someone, else **Auto-Merge** |
 | Approved (checks running) | **Auto-Merge** |
 | Approved · Merge Blocked | **Resolve Comments** where it has open comments, else **Auto-Merge** |

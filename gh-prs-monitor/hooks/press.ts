@@ -1,8 +1,9 @@
 // Author: David Matura
 
 // A press on a pull request's row, around its write: before the question, whether the pull request still stands as
-// the list showed it (`lookBeforeAsking`); after the write, the refresh that follows it, or a merged row shown merged
-// where it was until GitHub's search catches up (`dropMerged`), across a reload too (`resumeMerged`).
+// the list showed it (`lookBeforeAsking`), a look a press may take again before it writes (`lookAtPull`); after the
+// write, the refresh that follows it, or a merged row shown merged where it was until GitHub's search catches up
+// (`dropMerged`), across a reload too (`resumeMerged`).
 
 import type { Timer } from "claude-code"
 
@@ -155,11 +156,9 @@ export async function resumeMerged(host: PressHost, session: Session): Promise<v
 // it then, null where that could not be read.
 export type Look = { isGoing: false } | { isGoing: true; repo: RepoRef; current: CurrentPull | null }
 
-// Before a question: none may be open already, and the pull request must still stand as the list, which can be
-// minutes old, showed it. One it moved past is said so and shown as it is now: one of your own merged turns ✓ Merged
-// where it was, anything else refreshes the list. A lookup that fails lets the press go on, GitHub having the last word
-// on any write, unless gh needs setting up, which no write gets past; nor one without its repository, which a press
-// before any load since a reload looks up here.
+// Before a question: none may be open already; the session's repository must be known, a press before any load since a
+// reload looking it up here, and be the list's; and the pull request must still stand as the list, which can be
+// minutes old, showed it (`lookAtPull`).
 export async function lookBeforeAsking(
   host: PressHost,
   session: Session,
@@ -189,7 +188,22 @@ export async function lookBeforeAsking(
 
     return { isGoing: false }
   }
-  const found = await currentPull(host, known.repo, row.number, { withBase: action === "updateBranch" })
+  const look = await lookAtPull(host, session, action, row, known.repo)
+
+  return look.isGoing ? { isGoing: true, repo: known.repo, current: look.current } : look
+}
+
+// The pull request as it stands on GitHub, looked at before a press asks or writes: what stops it, gh signed out or a
+// change `staleFor` names, is said, and it goes no further; a lookup that fails otherwise lets it go on knowing
+// nothing, GitHub having the last word.
+export async function lookAtPull(
+  host: PressHost,
+  session: Session,
+  action: PullAction,
+  row: PullRow,
+  repo: RepoRef
+): Promise<{ isGoing: false } | { isGoing: true; current: CurrentPull | null }> {
+  const found = await currentPull(host, repo, row.number, { withBase: action === "updateBranch" })
   if ("problem" in found && found.problem.needsSetup) {
     await host.notifyProblem(found.problem)
 
@@ -198,7 +212,7 @@ export async function lookBeforeAsking(
   const current = "pull" in found ? found.pull : null
   const stale = current ? staleFor(action, row, current) : null
   if (stale === null) {
-    return { isGoing: true, repo: known.repo, current }
+    return { isGoing: true, current }
   }
   await stopStale(host, session, row, stale)
 
@@ -207,7 +221,7 @@ export async function lookBeforeAsking(
 
 // A press stopped by what changed on GitHub (`staleFor`), said so: one of your own merged turns ✓ Merged where it was;
 // anything else refreshes the list.
-export async function stopStale(host: PressHost, session: Session, row: PullRow, stale: Stale): Promise<void> {
+async function stopStale(host: PressHost, session: Session, row: PullRow, stale: Stale): Promise<void> {
   const list = await host.storedList()
   const isOwn = list?.mine.some((each) => each.number === row.number) ?? false
   const isShownMerged = stale === "merged" && isOwn

@@ -489,10 +489,14 @@ async function answerDialog($: Engine, world: World, clock?: MockClock): Promise
   if (world.answer === undefined) {
     return
   }
-  // A button by its label and the kind its key names: a name to pick, or an answer.
+  // A button by its label, a name picked already drawn with its mark, and the kind its key names: a name to pick, or an
+  // answer.
   const keyOf = (label: string, kind: "pick" | "answer") =>
     nodes.find(
-      (node) => node.type === "Button" && node.props?.label === label && String(node.props?.key).startsWith(`${kind}-`)
+      (node) =>
+        node.type === "Button" &&
+        (node.props?.label === label || node.props?.label === `✓ ${label}`) &&
+        String(node.props?.key).startsWith(`${kind}-`)
     )?.props?.key
   for (const name of world.picks ?? []) {
     await pane.press({ key: String(keyOf(name, "pick")) })
@@ -606,7 +610,8 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
       numbers.map((number) => {
         const listed = world.github.mine?.find((pull) => pull.number === number)
         const requested = world.current?.[number]?.requested ?? listed?.requested ?? []
-        const approved = (listed?.reviews ?? []).filter((review) => review.state === "APPROVED")
+        // GitHub's latest verdicts, as the list fixture's own (`verdicts`, else those among `reviews`).
+        const approved = (listed?.verdicts ?? listed?.reviews ?? []).filter((review) => review.state === "APPROVED")
 
         return [
           `pull${number}`,

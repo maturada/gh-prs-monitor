@@ -25,7 +25,7 @@ import {
   reviewArgs,
   reviewDetail,
   reviewPlaceQuestion,
-  rereviewQuestion,
+  backToReviewQuestion,
   sinceLine,
   START_REVIEW
 } from "./review-flow"
@@ -566,7 +566,7 @@ describe("the review dialog", () => {
   })
 
   test("back to the viewer, Review asks what to cover, from their review at first, and where, the keyboard on This session", () => {
-    expect(rereviewQuestion(rowOf(9), false, NOW, true)).toEqual({
+    expect(backToReviewQuestion(rowOf(9), false, NOW, true)).toEqual({
       header: "Review PR",
       subject: "#9 Cache the tiles",
       text: "What should it cover, and where?",
@@ -597,7 +597,7 @@ describe("the review dialog", () => {
   })
 
   test("where no new session can open, it asks only what to cover, and Start Review starts it here", () => {
-    expect(rereviewQuestion(rowOf(9), true, NOW, false)).toMatchObject({
+    expect(backToReviewQuestion(rowOf(9), true, NOW, false)).toMatchObject({
       text: "What should it cover?",
       detail:
         "Your review was on a1b2c3d, 20h ago; new commits came in since. This session is busy, so here the review starts once its turn ends.",

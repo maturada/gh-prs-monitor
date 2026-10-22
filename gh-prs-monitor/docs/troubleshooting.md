@@ -24,9 +24,9 @@ After fixing a problem, press **Retry** (or **Refresh**) in the pane, or run `/p
 
 ## Problems without a message
 
-**The pane's buttons and its close mark do nothing**, while hovering still highlights them and the wheel still
-scrolls: Claude Code no longer passes the pane its clicks (seen in VS Code's terminal); clicking in the pane doesn't give
-it the keyboard either. `/prs close` closes it; restarting Claude Code brings the clicks back.
+**The pane's buttons and its close mark do nothing**, while hovering still highlights them and the wheel still scrolls:
+Claude Code no longer passes the pane its clicks (seen in VS Code's terminal); clicking in the pane doesn't give it the
+keyboard either. `/prs close` closes it; restarting Claude Code brings the clicks back.
 
 **In VS Code, `/prs` prints the list instead of opening the pane**: the Claude Code extension draws what plugins add
 from its version 2.1.299, in a session that

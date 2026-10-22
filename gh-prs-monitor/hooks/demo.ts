@@ -14,7 +14,7 @@ import {
 import { branchPlaceQuestion } from "./branch-flow"
 import type { PullToOpen } from "./create-flow"
 import { CANCEL, isDecline } from "./question"
-import { isBackToReview, rereviewQuestion, reviewPlaceQuestion } from "./review-flow"
+import { isBackToReview, backToReviewQuestion, reviewPlaceQuestion } from "./review-flow"
 import type { PaneView } from "./pane"
 import { readPulls } from "./pulls"
 import { activityOf, alertLines, awayLine, systemNotificationText } from "./alerts"
@@ -69,7 +69,7 @@ export function demoQuestion(
     rerun: () => confirmQuestion(rerunConfirm(row, [{ id: 0, name: "test" }])),
     review: () =>
       isBackToReview(row)
-        ? rereviewQuestion(row, false, snapshot.fetchedAt, canOpenSession)
+        ? backToReviewQuestion(row, false, snapshot.fetchedAt, canOpenSession)
         : canOpenSession
           ? reviewPlaceQuestion(row, false)
           : null,

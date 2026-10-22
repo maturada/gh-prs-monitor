@@ -42,7 +42,7 @@ import type { PressHost } from "./press"
 import { isOnBranch, pullOnBranch, storedSnapshot } from "./pulls"
 import { readSessionAnswer } from "./question"
 import type { SessionPlace } from "./question"
-import { isBackToReview, readReviewAnswer, rereviewQuestion, reviewArgs, reviewPlaceQuestion } from "./review-flow"
+import { isBackToReview, readReviewAnswer, backToReviewQuestion, reviewArgs, reviewPlaceQuestion } from "./review-flow"
 import type { ReviewStart } from "./review-flow"
 import type { Mark, Session, SkillMark, SkillStart } from "./session"
 
@@ -258,13 +258,13 @@ export async function review(host: SkillHost, session: Session, row: PullRow, su
 }
 
 // What Review asks before it starts: on a row back to the viewer, what to cover and where, or what alone where no new
-// session can open (`canOpenSession`); elsewhere where, or nothing where no new session can open, which starts the whole
-// review here.
+// session can open (`canOpenSession`); elsewhere where, or nothing where no new session can open, which starts the
+// whole review here.
 async function askReview(host: SkillHost, session: Session, row: PullRow, surface: string): Promise<ReviewStart> {
   const canOpen = canOpenSession(surface)
   const isWorking = session.runningTurns.size > 0
   const question = isBackToReview(row)
-    ? rereviewQuestion(row, isWorking, await host.now(), canOpen)
+    ? backToReviewQuestion(row, isWorking, await host.now(), canOpen)
     : canOpen
       ? reviewPlaceQuestion(row, isWorking)
       : null

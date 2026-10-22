@@ -99,6 +99,35 @@ describe("Request Review", () => {
     }
   })
 
+  test("someone whose verdict approved is not offered, whatever they wrote since", async ($, on) => {
+    const approvedThenCommented: ResponseFixture = {
+      mine: [
+        {
+          number: 13,
+          title: "Cache the tiles",
+          headRefOid: "h13",
+          reviewDecision: "REVIEW_REQUIRED",
+          mergeStateStatus: "BLOCKED",
+          reviews: [{ login: "ann", state: "COMMENTED", at: "2026-10-07T14:00:00Z" }],
+          verdicts: [{ login: "ann", state: "APPROVED", at: "2026-10-07T13:20:00Z" }]
+        }
+      ]
+    }
+    const world: World = {
+      github: approvedThenCommented,
+      branch: "main",
+      uncommitted: 0,
+      suggested: { 13: ["ann", "kim"] },
+      answer: "Cancel"
+    }
+    const { clock, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-13" })
+    await clock.settle()
+
+    expect(world.choices).toEqual(["kim", "Request Review", "Cancel"])
+  })
+
   test("no button where GitHub suggests nobody", async ($, on) => {
     const { ui } = await loaded($, on, { github: UNASKED, branch: "main", uncommitted: 0 })
 
@@ -115,6 +144,45 @@ describe("Request Review", () => {
 
     expect(world.asked).toBe(1)
     expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
+  })
+
+  test("once someone is asked, the row offers nobody, even where the list can't be read again", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      picks: ["kim"],
+      answer: "Request Review",
+      whileAsking: () => (world.graphqlFailure = { stdout: "", stderr: "error connecting to api.github.com" })
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-12" })
+    await clock.settle()
+
+    expect(seen.runs).toContain(`${REQUEST} -f reviewers[]=kim`)
+    // The list kept still shows nobody asked, but the names GitHub suggested were forgotten with the request.
+    expect(await ui.find({ key: "requestReview-12" })).toBeUndefined()
+  })
+
+  test("gh signed out while the question was open: it says so, and asks nobody", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      picks: ["kim"],
+      answer: "Request Review",
+      whileAsking: () => (world.isSignedOut = true)
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-12" })
+    await clock.settle()
+
+    expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
+    expect(seen.toasts.at(-1)).toBe("The GitHub CLI is not signed in. Run: gh auth login")
   })
 
   test("someone asked on GitHub while the question was open is left out", async ($, on) => {
@@ -144,7 +212,10 @@ describe("Request Review", () => {
       suggested: SUGGESTED,
       picks: ["kim"],
       answer: "Request Review",
-      whileAsking: () => (world.current = { 12: { requested: ["kim"] } })
+      whileAsking: () => {
+        world.current = { 12: { requested: ["kim"] } }
+        world.graphqlFailure = { stdout: "", stderr: "error connecting to api.github.com" }
+      }
     }
     const { clock, seen, ui } = await loaded($, on, world)
 
@@ -153,6 +224,8 @@ describe("Request Review", () => {
 
     expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
     expect(seen.toasts).toContain("#12: kim is asked to review it already; refreshing the list")
+    // The names kept are out of date, so they are offered no more, even where the list can't be read again.
+    expect(await ui.find({ key: "requestReview-12" })).toBeUndefined()
   })
 
   test("someone asked since GitHub suggested them is offered no more; with everyone, it asks nothing and says so", async ($, on) => {

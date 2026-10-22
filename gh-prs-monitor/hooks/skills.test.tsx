@@ -498,6 +498,26 @@ describe("Review", () => {
     expect(seen.commands).toEqual([`${REVIEW_9} since`])
   })
 
+  test("back to the viewer, pressing the kind picked at first keeps it", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: BACK,
+      branch: "main",
+      uncommitted: 0,
+      picks: ["Since Your Review"],
+      answer: "This session"
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+
+    expect(seen.commands).toEqual([`${REVIEW_9} since`])
+  })
+
   test("Full Review sends no since, and instructions go along", async ($, on) => {
     const clock = clockOf(on)
     const world: World = {

@@ -4,32 +4,35 @@ Each version of gh-prs-monitor, newest first. Versions follow [semantic versioni
 
 ## 1.4.0 (22.10.2026)
 
-- **Request Review**: on your own pull requests nobody was asked to review (a bot such as Copilot aside), or that need
-  more approvals with no person asked, the pane offers the people GitHub suggests from who changed or reviewed that code
-  before. They come a moment after the list loads, from one small request to GitHub, asked again after a new commit or a
-  review. Pick them in its dialog, each a button, with Select All and Clear, and Request Review asks them on GitHub
-  after one more look at the pull request as it stands now. It is the row's main button while the pull request waits for
-  review or for more approvals.
+- **Request Review**, a new button on your own pull requests that no person is asked to review (a bot such as Copilot
+  aside), before the first review or when they need more approvals. It offers the people GitHub suggests, those who
+  earlier changed or reviewed that code, and asks the ones you pick on GitHub, after one more look at the pull request.
+  It is the row's main button there; on Approved · More Approvals Needed, it takes that place from Auto-Merge. The
+  suggestions come a moment after the list, from one small request to GitHub after a refresh, asked again after a new
+  commit or a review.
   [Request Review](gh-prs-monitor/docs/actions.md#request-review)
-- **Review since your review**: on a pull request back to you, Re-Review Requested or Updated Since Your Review, Review
-  asks whether to start from your last review (**Since Your Review**, picked at first) or review it all again (**Full
-  Review**), under a line on that review's commit, how long ago, and what brought the pull request back. From your
-  review, it reads only what the commits since changed in the pull request, leaving out a merge of the base, comments
-  only on lines changed since, and tells you, for you alone, what came of your earlier comments: addressed, claimed
-  fixed, still open or unclear. Where the commit you reviewed left the pull request, or most of it is new, it reviews
-  it all, saying why. Typed, `/gh-prs-monitor:review 142 since`.
+- **Review since your review**: on Re-Review Requested and Updated Since Your Review, Review now asks what to cover as
+  well as where: **Since Your Review**, already picked, or **Full Review**. So Enter, or **This session**, now reviews
+  only what changed since your last review; pick Full Review for the whole pull request, as before. From your review, it
+  reads only what the commits since changed, leaving out merges of the base, posts new comments only on lines they
+  changed, and tells you, for you alone, what came of your earlier comments: addressed, claimed fixed, still open or
+  unclear. Where the commit you reviewed is no longer in the pull request, or most of it is new, it reviews it all and
+  says why. Where no new session can open, as on the phone, it now asks what to cover. Typed:
+  `/gh-prs-monitor:review 142 since`.
   [Since your review](gh-prs-monitor/docs/review.md#since-your-review)
-- **Create PR** asks, when nobody is named as a reviewer, whether to request a review from up to three people who last
-  changed the files, or someone else.
-- **`/prs demo`** shows Request Review on #1239, a pull request just opened that nobody was asked to review, and
-  Review's choice on #1252 and #1241, back to you.
-- **Create PR on a branch behind its base** summed up what the base changed since as if the pull request changed it
-  (594 files where the branch changed 16, three commits behind); it now reads the branch's own changes, from where it
-  left its base.
-- **A review draft no longer hides your last review**: on someone else's pull request whose author pushed after your
-  change request, the row read Waiting On Author while you had a review draft open there; your last change request now
-  stands in for the draft, so it reads Updated Since Your Review. A comment-only review, or one by someone who can't
-  push to the repository, has no change request to stand in.
+- **Create PR**'s preview, with no reviewers from your instructions or from last time, offers up to three people who
+  last changed the files, or someone else. Nobody is asked until you reply with logins; a plain yes still opens it
+  without reviewers.
+  [Create PR](gh-prs-monitor/docs/create-pr.md#what-the-skill-does)
+- **`/prs demo`** shows both: Request Review on #1239, just opened with nobody asked to review it, and the Since Your
+  Review choice on #1252 and #1241.
+- **Create PR on a branch behind its base** summed up the base's newer changes as if the pull request made them (594
+  files where the branch changed 16, three commits behind); it now reads only the branch's own changes since it left its
+  base.
+- **A pending review no longer hides your last one**: while you had a review started on GitHub and not yet submitted,
+  someone else's pull request whose author pushed after your change request read Waiting On Author; it now reads Updated
+  Since Your Review, going by that change request. A comment-only review, or one by someone who can't push to the
+  repository, has no change request to go by.
 
 ## 1.3.0 (21.10.2026)
 

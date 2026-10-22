@@ -34,7 +34,7 @@ const MINE_NEXT_STEPS: Readonly<Record<MineStage, readonly PullAction[]>> = {
   changesRequested: ["rerequest", "resolve"],
   comments: ["resolve"],
   rereview: [],
-  // Asking someone GitHub suggests, where nobody is asked yet or more approvals are wanted, comes before waiting.
+  // With no person asked for the approvals still wanted, asking someone GitHub suggests comes before Auto-Merge.
   moreApprovals: ["requestReview", "autoMerge"],
   approvedCiRunning: ["autoMerge"],
   behind: ["updateBranch"],
@@ -42,6 +42,7 @@ const MINE_NEXT_STEPS: Readonly<Record<MineStage, readonly PullAction[]>> = {
   blocked: ["resolve", "autoMerge"],
   checking: [],
   ready: ["merge"],
+  // With nobody asked yet, asking someone GitHub suggests.
   waiting: ["requestReview"]
 }
 

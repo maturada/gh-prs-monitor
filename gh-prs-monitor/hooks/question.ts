@@ -28,6 +28,9 @@ export function isDecline(said: string): boolean {
 // The answer that does nothing, offered last in every question.
 export const CANCEL = "Cancel"
 
+// What Claude Code's own dialog offers at each step: four options at most, the answers or the names to pick.
+export const ENGINE_OPTIONS = 4
+
 // Where a skill the pane starts runs: in this conversation, or in a new session opened with its command typed in, for
 // the person to send.
 export const SESSION_CHOICES = {

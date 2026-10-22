@@ -13,7 +13,7 @@ import { goBack } from "./back-to-row"
 import { BACK_MARK, firstFocusKey } from "./keys"
 import { placesOutOfFlow } from "./layout"
 import { pickedNames } from "./picking"
-import { CANCEL, readAnswer } from "./question"
+import { CANCEL, ENGINE_OPTIONS, readAnswer } from "./question"
 import type { GoingBack, OpenQuestion, Session } from "./session"
 
 // What the plugin's dialog reaches through the engine, handed in by the hooks module.
@@ -214,9 +214,6 @@ async function backToRow(host: DialogHost, session: Session, pressed: string, ba
   )
 }
 
-// What Claude Code's own dialog offers at each step: four options at most, the answers or the names to pick.
-export const ENGINE_OPTIONS = 4
-
 function fitsEngineDialog(question: Question): boolean {
   return question.choices.length <= ENGINE_OPTIONS && (question.picking?.names.length ?? 0) <= ENGINE_OPTIONS
 }
@@ -227,8 +224,8 @@ async function isPanePlaced(host: DialogHost): Promise<boolean> {
 
 // The engine's dialog has a short header and one text, so the subject leads the text, as an alert names a pull
 // request, and the detail follows the question. A question that offers names asks for them first, in a step of their
-// own (`askPicks`), then for its answer where it has more than one besides Cancel. It rejects when the person
-// dismisses it, which counts as Cancel.
+// own (`askPicks`), then for its answer where it has more than one besides Cancel, each step in its own words where
+// the question gives them (`Picking.steps`). It rejects when the person dismisses it, which counts as Cancel.
 export async function askInEngineDialog(host: DialogHost, question: Question): Promise<Answer | null> {
   try {
     const picking = question.picking

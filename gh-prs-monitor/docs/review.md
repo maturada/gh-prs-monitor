@@ -28,38 +28,51 @@ asks you.
 Instructions typed in the dialog's field, such as "focus on the migration", go with **This session** or **New
 session**, whichever you then press, or Enter sends them alone to a review here. Sent alone, "Cancel", "no thanks" and
 the like cancel. Where the pane is drawn somewhere that can't open a new session, such as the phone app, the review
-starts here without asking. A review in a new session is followed by that session's own list.
+starts here without asking where (on a pull request back to you, it asks what to cover: see below). A review in a new
+session is followed by that session's own list.
 
 While it runs, its row says so: see [While a skill is at work](actions.md#while-a-skill-is-at-work).
 
 ## Since your review
 
-On a pull request back to you, **Re-Review Requested** or **Updated Since Your Review**, Review asks what to cover as
-well as where, under a line on your last review: its commit and how long ago, where the list knows them, and whether new
-commits came in since or you were asked again, with or without them.
+Review can read only what changed since your last review of a pull request, and tell you what came of your comments.
 
-- **Since Your Review**, picked at first, so Enter starts it here: what the commits since your last review changed,
-  and what came of your comments.
+On **Re-Review Requested** and **Updated Since Your Review**, Review asks what to cover as well as where. One line above
+the choice recalls your last review, its commit and how long ago where the list knows them, and what brought the pull
+request back: new commits, a new request for your review, or both.
+
+- **Since Your Review**, already picked when the question opens, so Enter starts it here: what the commits since your
+  last review changed, and what came of your comments.
 - **Full Review**: the whole pull request again, as the first time.
 
-Where no new session can open, such as the phone app, it asks what to cover alone, with **Start Review**. Where the pane
-doesn't show, Claude Code's own dialog asks instead: what to cover, then where.
+Where no new session can open, such as the phone app, it asks only what to cover, and **Start Review** starts it here.
+Where the pane doesn't show, Claude Code's own dialog asks instead: what to cover, then where.
 
-From your last review (an approval, a change request, comments or a dismissed one), it reads what the commits since
-changed in the pull request's files, leaving out what a merge of the base brought in. New comments go only on lines
-changed since, and a problem the new commits cause elsewhere is in the summary it shows you. The offer to approve says
-it read only what changed since.
+Your last review is the latest you left, dismissed or not: an approval, a change request or comments. From it, Review
+reads what the commits since changed in the pull request's files, leaving out what a merge of the base brought in. New
+comments go only on lines changed since, and a problem the new commits cause elsewhere is in the summary it shows you.
+The offer to approve says it read only what changed since.
 
-Its overview adds **Since your review**: that review and its commit, the commits since, and what came of your
-comments, each addressed, claimed fixed (a reply says so, and the code doesn't plainly show it), still open or unclear,
-with a link to each one not addressed. The tally is for you alone: your open points aren't posted again, and it
-replies to no thread.
+Its overview adds **Since your review**: that review and its commit, the commits since, and where each of your
+comments stands:
 
-It reviews the whole pull request instead, saying why, where you haven't reviewed it before, where the commit you
-reviewed is no longer part of it (after a force-push or a rebase), where more than half of it is new since, or where
-the changes since reach what GitHub lists at once (300 files). Where none of its files changed since, it says so,
-naming any commits that came in all the same, and stops; asked to review again, it tells you what came of your
-comments, then offers to approve.
+- addressed;
+- claimed fixed: a reply says so, but the code doesn't plainly show it;
+- still open;
+- unclear.
+
+Each one not addressed comes with its link. This is for you alone: your open points aren't posted again, and it replies
+to no thread.
+
+It reviews the whole pull request instead, and says why, where:
+
+- you haven't reviewed it before, or it can't tell which reviews are yours;
+- the commit you reviewed is no longer part of it, after a force-push or a rebase, or your review names none;
+- more than half of it is new since your review;
+- the changes since reach 300 files, the most GitHub lists at once.
+
+Where no file of the pull request changed since, it says so, names any commits that came in anyway, and stops. If you
+are asked to review it again, it tells you what came of your comments instead, then offers to approve.
 
 ## With ticket links
 

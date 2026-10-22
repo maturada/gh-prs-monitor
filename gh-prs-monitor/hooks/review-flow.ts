@@ -21,8 +21,9 @@ function hereDetail(isWorking: boolean): string {
 // Where instructions sent alone go (`readSessionAnswer`).
 const REVIEW_INSTRUCTIONS = "to a review in this session"
 
-// Review's question of where, alone or after what to cover.
+// Review's questions: where, alone or after what to cover, and what to cover, on a row back to the viewer.
 const WHERE = "Where should it be reviewed?"
+const COVER = "What should it cover?"
 
 // The dialog's question for Review: here or in a new session, with room for instructions.
 export function reviewPlaceQuestion(pull: { number: number; title: string }, isWorking: boolean): Question {
@@ -38,7 +39,7 @@ export function reviewPlaceQuestion(pull: { number: number; title: string }, isW
 }
 
 // A pull request back to the viewer since their review: asked to review it again, or new commits came since. Review
-// offers there to start from their review (`rereviewQuestion`).
+// offers there to start from their review (`backToReviewQuestion`).
 export function isBackToReview(row: PullRow): boolean {
   return row.reviewStage === "rerequested" || row.reviewStage === "updated"
 }
@@ -61,6 +62,7 @@ export function sinceLine(row: PullRow, now: number): string {
   return `${reviewed}; ${backLine(row)}.`
 }
 
+// What brought the pull request back, as the line says it.
 function backLine(row: PullRow): string {
   if (row.reviewStage !== "rerequested") {
     return "new commits came in since"
@@ -77,14 +79,13 @@ function backLine(row: PullRow): string {
 // Review's question on a row back to the viewer: what to cover, from their review at first, and where. The keyboard
 // starts on This session, so Enter starts it here, from their review. Where no new session can open, it asks what to
 // cover alone, with Start Review. Claude Code's own dialog asks what to cover, then where, each in its own words.
-export function rereviewQuestion(row: PullRow, isWorking: boolean, now: number, canOpen: boolean): PickingQuestion {
+export function backToReviewQuestion(row: PullRow, isWorking: boolean, now: number, canOpen: boolean): PickingQuestion {
   const since = sinceLine(row, now)
-  const cover = "What should it cover?"
 
   return {
     header: "Review PR",
     subject: pullSubject(row),
-    text: canOpen ? "What should it cover, and where?" : cover,
+    text: canOpen ? "What should it cover, and where?" : COVER,
     detail: `${since} ${canOpen ? reviewDetail(isWorking) : hereDetail(isWorking)}`,
     choices: canOpen ? Object.values(SESSION_CHOICES) : [START_REVIEW, CANCEL],
     main: canOpen ? null : START_REVIEW,
@@ -98,7 +99,7 @@ export function rereviewQuestion(row: PullRow, isWorking: boolean, now: number, 
       ...(canOpen
         ? {
             steps: {
-              names: { text: cover, detail: since },
+              names: { text: COVER, detail: since },
               answers: { text: WHERE, detail: reviewDetail(isWorking) }
             }
           }
