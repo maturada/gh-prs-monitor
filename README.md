@@ -121,9 +121,9 @@ With background refresh (the default), the terminal's status line keeps the coun
 
 **Merge** (stacked pull requests too, with the methods the repository allows, your usual one first), **Auto-Merge**,
 **Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review**, **Request Review** for the
-people GitHub suggests where nobody was asked yet or more approvals are needed, and **Re-Request Review**.
-Each first looks at the pull request as it stands on GitHub at the press, not as the list last read it, then asks
-before it writes. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
+people GitHub suggests where nobody is asked to review, at first or for more approvals, and **Re-Request Review**. Each
+first looks at the pull request as it stands on GitHub at the press, not as the list last read it, then asks before it
+writes. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
 
 ### Skills that do the work
 
@@ -134,8 +134,9 @@ before it writes. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
 - **Resolve Conflicts** merges the base in apart from your checkout and proposes a resolution for each conflict, for
   you to approve. [More](gh-prs-monitor/docs/resolve-conflicts.md)
 - **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and
-  posts its inline comments only after you approve their wording; with ticket links, it can weigh the change against
-  its ticket, for you alone. [More](gh-prs-monitor/docs/review.md)
+  posts its inline comments only after you approve their wording. On a pull request back to you, it can start from
+  your last review: what changed since, and what came of your comments. With ticket links, it can weigh the change
+  against its ticket, for you alone. [More](gh-prs-monitor/docs/review.md)
 - **Create PR** runs the checks you pick, drafts the title and body in the repository's own format, with the ticket
   where you link tickets, and remembers your choices for next time. [More](gh-prs-monitor/docs/create-pr.md)
 
@@ -182,7 +183,7 @@ alike: every 3 minutes, that is 2% of the 5,000 points an hour your account gets
 | `/prs close` | Closes the pane, for when a click does nothing. |
 | `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
 | `/prs tickets` | Sets up [ticket links](gh-prs-monitor/docs/tickets.md) for this repository, from a link to any ticket you paste; once set up, shows, adds to or removes them. |
-| `/gh-prs-monitor:review <number or URL> [-- <instructions>]` | Reviews a pull request. |
+| `/gh-prs-monitor:review <number or URL> [since] [-- <instructions>]` | Reviews a pull request; with `since`, from your last review of it. |
 | `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]` | Resolves its review comments. |
 | `/gh-prs-monitor:fix-ci [<number or URL>] [-- <instructions>]` | Fixes its failing CI. |
 | `/gh-prs-monitor:resolve-conflicts [<number or URL>] [-- <instructions>]` | Resolves its conflicts with its base. |

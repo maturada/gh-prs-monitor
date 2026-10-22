@@ -49,8 +49,8 @@ rule, shows each as a card of its own.
 | CI Failing | **Re-Run CI**, or **Fix CI** where you can't re-run it |
 | Changes Requested | **Re-Request Review** once commits came after the change request, else **Resolve Comments** |
 | Comments To Address | **Resolve Comments** |
-| Waiting For Review, nobody asked yet | **Request Review**, once GitHub suggests someone |
-| Approved · More Approvals Needed | **Request Review** where GitHub suggests someone, else **Auto-Merge** |
+| Waiting For Review, nobody asked yet (a bot aside) | **Request Review**, once GitHub suggests someone |
+| Approved · More Approvals Needed | **Request Review** where no person is asked and GitHub suggests someone, else **Auto-Merge** |
 | Approved (checks running) | **Auto-Merge** |
 | Approved · Merge Blocked | **Resolve Comments** where it has open comments, else **Auto-Merge** |
 | Approved · Behind Base | **Update Branch** |
@@ -166,7 +166,9 @@ review left it.
 Under it: the author, how much the pull request changes (`+120 −30, 8 files`, to pick what to review first), "draft" for
 a draft, the CI result, the stack it is in (`stack #30 2/4`), who approved, and the count of unresolved review comments.
 
-**Review** runs the bundled review skill for that pull request, here or in a new session: see [Review](review.md).
+**Review** runs the bundled review skill for that pull request, here or in a new session: see [Review](review.md). On
+Re-Review Requested and Updated Since Your Review, it also asks whether to review only what changed since your review
+or the whole pull request again: see [Since your review](review.md#since-your-review).
 
 ## Where each part shows
 

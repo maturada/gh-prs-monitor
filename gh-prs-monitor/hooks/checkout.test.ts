@@ -25,6 +25,8 @@ const ROW: PullRow = {
   isDraft: false,
   stack: null,
   stage: "changesRequested",
+  reviewStage: null,
+  myReview: null,
   status: { text: "Changes Requested", tone: "warning" },
   details: [],
   actions: ["resolve"],

@@ -64,7 +64,7 @@ export type Session = {
   branchLookup: { key: string; done: Promise<BranchLook> } | null
   // The people GitHub suggests to review the viewer's own pull requests that want them (`suggestions.ts`), by
   // repository and number.
-  suggestions: Map<string, Suggested>
+  suggestedReviewers: Map<string, Suggested>
   // The question the plugin's dialog asks, one at a time, or null while none is open, and how many it has asked.
   asking: OpenQuestion | null
   questionCount: number
@@ -83,10 +83,10 @@ export type GoingBack = {
   offset: number
 }
 
-// A question open: the question asked, which a press reads as it lands (`stableButtons`); what gives it its answer (null
-// when dismissed), whether it has one already, which its press has yet to put away, whether it is in the pane, where
-// the pane's close cancels it, or in Claude Code's own dialog, and its field for instructions in the pane: the key it is
-// drawn under and what was typed in it so far.
+// A question open: the question asked, which a press reads as it lands (`stableButtons`); what gives it its answer
+// (null when dismissed), whether it has one already, which its press has yet to put away, whether it is in the pane,
+// where the pane's close cancels it, or in Claude Code's own dialog, and its field for instructions in the pane: the
+// key it is drawn under and what was typed in it so far.
 export type OpenQuestion = {
   question: Question
   answer: (answer: Answer | null) => void
@@ -98,9 +98,9 @@ export type OpenQuestion = {
   picks: number[]
 }
 
-// GitHub's suggested reviewers for a pull request: kept for the head commit asked about, or null names while they are
-// asked for.
-export type Suggested = { head: string; names: string[] | null }
+// GitHub's suggested reviewers for a pull request: kept for the head commit and reviews asked about
+// (`suggestionBasis`), or null names while they are asked for.
+export type Suggested = { basis: string; names: string[] | null }
 
 // The loads, and the timer that runs them.
 export type Checks = {
@@ -224,7 +224,7 @@ export function createSession(settings: Settings): Session {
     stacklessHosts: new Set(),
     switchingFor: null,
     branchLookup: null,
-    suggestions: new Map(),
+    suggestedReviewers: new Map(),
     asking: null,
     questionCount: 0,
     listOffset: 0,

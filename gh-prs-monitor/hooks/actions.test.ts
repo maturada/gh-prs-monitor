@@ -52,6 +52,8 @@ const ROW: PullRow = {
   isDraft: false,
   stack: null,
   stage: "ready",
+  reviewStage: null,
+  myReview: null,
   status: { text: "Ready To Merge", tone: "success" },
   details: [],
   actions: ["merge"],
@@ -484,11 +486,11 @@ describe("request review", () => {
       header: "Request",
       subject: "#7 Fix the menu",
       text: "Who should review it?",
-      detail: "GitHub suggests the people who last changed this code.",
+      detail: "GitHub suggests them from who changed or reviewed this code before.",
       choices: ["Request Review", "Cancel"],
       main: "Request Review",
       instructions: null,
-      picking: { names: ["kim", "lou"], isSingle: false, first: [], needsPick: true, startsOn: "names" }
+      picking: { names: ["kim", "lou"], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
     })
   })
 

@@ -18,7 +18,18 @@ import {
   runsHereWhenUnopened,
   sessionAppFor
 } from "./new-session"
-import { reviewArgs, reviewDetail, reviewPlaceQuestion } from "./review-flow"
+import {
+  isBackToReview,
+  readReviewAnswer,
+  REVIEW_KINDS,
+  reviewArgs,
+  reviewDetail,
+  reviewPlaceQuestion,
+  rereviewQuestion,
+  sinceLine,
+  START_REVIEW
+} from "./review-flow"
+import { snapshotOf } from "./testing/fixtures"
 import { stableButtons } from "./stable-buttons"
 import { answerChoices, choicesKey, readChoices } from "./create-choices"
 import type { KeptChoices } from "./create-choices"
@@ -490,7 +501,137 @@ describe("the review dialog", () => {
     expect(readSessionAnswer({ choice: SESSION_CHOICES.cancel, instructions: "just bugs" })).toEqual({ kind: "cancel" })
   })
 
-  test("instructions follow the pull request after --, on one line", () => {
+  // Rows back to the viewer and not: new commits since their review, asked again with none, asked for the first time.
+  const AT = "2026-10-07T12:00:00Z"
+  const NOW = Date.parse("2026-10-08T08:00:00Z")
+  const ROWS = snapshotOf({
+    reviewed: [
+      {
+        number: 9,
+        title: "Cache the tiles",
+        author: "ann",
+        headRefOid: "new-head",
+        reviews: [{ login: "me", state: "COMMENTED", at: AT, commit: "a1b2c3d4e5f6" }]
+      }
+    ],
+    requested: [
+      {
+        number: 10,
+        title: "Search filters",
+        author: "bob",
+        requested: ["me"],
+        reviews: [{ login: "me", state: "COMMENTED", at: AT }]
+      },
+      { number: 11, title: "Usage chart", author: "cid" }
+    ]
+  }).review
+  const rowOf = (number: number) => ROWS.find((row) => row.number === number)!
+
+  test("a row is back to the viewer where they are asked again, or new commits came since their review", () => {
+    expect(rowOf(9).reviewStage).toBe("updated")
+    expect(rowOf(10).reviewStage).toBe("rerequested")
+    expect([9, 10, 11].map((number) => isBackToReview(rowOf(number)))).toEqual([true, true, false])
+    for (const stage of ["dismissed", "waitingOnAuthor", "commented", null] as const) {
+      expect(isBackToReview({ ...rowOf(9), reviewStage: stage as never })).toBe(false)
+    }
+  })
+
+  test("the line says when the viewer's review was and what brought the pull request back, from what the row knows", () => {
+    expect(sinceLine(rowOf(9), NOW)).toBe("Your review was on a1b2c3d, 20h ago; new commits came in since.")
+    expect(sinceLine(rowOf(10), NOW)).toBe(
+      "Your review was on head-10, 20h ago; you're asked again, with no new commits since."
+    )
+    // A review that names no commit says nothing of commits since.
+    expect(sinceLine({ ...rowOf(10), myReview: { commit: null, at: AT } }, NOW)).toBe(
+      "Your review was 20h ago; you're asked again."
+    )
+    // Who asked isn't known: anyone who can push may ask.
+    expect(sinceLine({ ...rowOf(10), signals: { ...rowOf(10).signals, hasCommitsSinceMyReview: true } }, NOW)).toBe(
+      "Your review was on head-10, 20h ago; you're asked again, and new commits came in since."
+    )
+    expect(sinceLine({ ...rowOf(9), myReview: { commit: null, at: "" } }, NOW)).toBe(
+      "You reviewed it before; new commits came in since."
+    )
+    expect(sinceLine({ ...rowOf(9), myReview: null }, NOW)).toBe("You reviewed it before; new commits came in since.")
+    expect(sinceLine({ ...rowOf(9), myReview: { commit: "a1b2c3d4e5f6", at: "" } }, NOW)).toBe(
+      "Your review was on a1b2c3d; new commits came in since."
+    )
+    expect(sinceLine({ ...rowOf(9), myReview: { commit: null, at: AT } }, NOW)).toBe(
+      "Your review was 20h ago; new commits came in since."
+    )
+    // A time ahead of the clock, as on a machine whose clock is behind, names no age.
+    expect(sinceLine({ ...rowOf(9), myReview: { commit: null, at: "2026-10-09T08:00:00Z" } }, NOW)).toBe(
+      "You reviewed it before; new commits came in since."
+    )
+  })
+
+  test("back to the viewer, Review asks what to cover, from their review at first, and where, the keyboard on This session", () => {
+    expect(rereviewQuestion(rowOf(9), false, NOW, true)).toEqual({
+      header: "Review PR",
+      subject: "#9 Cache the tiles",
+      text: "What should it cover, and where?",
+      detail:
+        "Your review was on a1b2c3d, 20h ago; new commits came in since. Here it runs in this conversation. A new session opens with the review typed in, for you to send.",
+      choices: ["This session", "New session", "Cancel"],
+      main: null,
+      instructions: "to a review in this session",
+      picking: {
+        names: ["Since Your Review", "Full Review"],
+        isSingle: true,
+        initial: [0],
+        needsPick: false,
+        startsOn: "answers",
+        // Claude Code's own dialog asks what to cover, then where, each in its own words.
+        steps: {
+          names: {
+            text: "What should it cover?",
+            detail: "Your review was on a1b2c3d, 20h ago; new commits came in since."
+          },
+          answers: {
+            text: "Where should it be reviewed?",
+            detail: "Here it runs in this conversation. A new session opens with the review typed in, for you to send."
+          }
+        }
+      }
+    })
+  })
+
+  test("where no new session can open, it asks only what to cover, and Start Review starts it here", () => {
+    expect(rereviewQuestion(rowOf(9), true, NOW, false)).toMatchObject({
+      text: "What should it cover?",
+      detail:
+        "Your review was on a1b2c3d, 20h ago; new commits came in since. This session is busy, so here the review starts once its turn ends.",
+      choices: [START_REVIEW, "Cancel"],
+      main: START_REVIEW
+    })
+  })
+
+  test("its answer: where, and whether from the viewer's review; instructions go along, sent alone review here", () => {
+    const since = [REVIEW_KINDS.since]
+    const full = [REVIEW_KINDS.full]
+
+    expect(readReviewAnswer({ choice: SESSION_CHOICES.new, instructions: "", picks: since })).toEqual({
+      place: { kind: "new" },
+      isSince: true
+    })
+    expect(readReviewAnswer({ choice: SESSION_CHOICES.here, instructions: "just bugs", picks: full })).toEqual({
+      place: { kind: "here", note: "just bugs" },
+      isSince: false
+    })
+    expect(readReviewAnswer({ choice: START_REVIEW, instructions: "", picks: since })).toEqual({
+      place: { kind: "here" },
+      isSince: true
+    })
+    expect(readReviewAnswer({ choice: null, instructions: "just bugs", picks: since })).toEqual({
+      place: { kind: "here", note: "just bugs" },
+      isSince: true
+    })
+    expect(readReviewAnswer({ choice: "Cancel", instructions: "", picks: since }).place).toEqual({ kind: "cancel" })
+  })
+
+  test("instructions follow the pull request after --, on one line, after since where the review starts from the viewer's", () => {
+    expect(reviewArgs("7", "just bugs", true)).toBe("7 since -- just bugs")
+    expect(reviewArgs("7", undefined, true)).toBe("7 since")
     expect(reviewArgs("7")).toBe("7")
     expect(reviewArgs("https://github.com/acme/app/pull/7", "focus on\n  the migration ")).toBe(
       "https://github.com/acme/app/pull/7 -- focus on the migration"
@@ -742,6 +883,9 @@ describe("the pull request a skill's arguments name", () => {
   test("the first word past the options the pane adds, before any instructions", () => {
     expect(pullRefIn("7")).toBe("7")
     expect(pullRefIn("  #7 -- focus on the API")).toBe("#7")
+    expect(pullRefIn("https://github.com/acme/app/pull/7 since -- only the tests")).toBe(
+      "https://github.com/acme/app/pull/7"
+    )
     expect(
       pullRefIn('--include-outdated --worktree "/Users/me/My Repos/pr-7" --deps "npm ci failed: \\"x\\"" 7 -- note')
     ).toBe("7")

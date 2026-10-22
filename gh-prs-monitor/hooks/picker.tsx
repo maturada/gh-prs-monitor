@@ -12,7 +12,7 @@ import { buttonGaps } from "./layout"
 import { isAllPicked, isPickReady, pickAllOrClear, togglePick } from "./picking"
 import type { PickingQuestion } from "./picking"
 import { answerRow, questionField, questionFrame } from "./question-frame"
-import type { InstructionsField, QuestionKit, QuestionSite } from "./question-frame"
+import type { InstructionsField, MainLook, QuestionKit, QuestionSite } from "./question-frame"
 import type { OpenQuestion, Session } from "./session"
 
 // What the picker's presses do: a name picked or taken off, Select All or Clear, and an answer, pressed or sent with
@@ -27,8 +27,8 @@ export type PickerActions = {
 const PICKED = "✓"
 
 // The picker as drawn: the names, a picked one checked, and Select All (Clear once every one is picked) where any
-// number may be picked; the field where the question has one; the answers, the main one dim, not yet the primary,
-// while it waits for a pick.
+// number of several may be picked; the field where the question has one; the answers, the main one dim, not yet the
+// primary, while it waits for a pick.
 export function pickerView(
   kit: QuestionKit,
   question: PickingQuestion,
@@ -50,7 +50,7 @@ export function pickerView(
           onPress={() => actions.pick(index)}
         />
       ))}
-      {picking.isSingle ? null : (
+      {picking.isSingle || picking.names.length < 2 ? null : (
         <Button
           key={PICK_ALL_KEY}
           label={isAllPicked(picks, picking.names.length) ? "Clear" : "Select All"}
@@ -60,7 +60,7 @@ export function pickerView(
       )}
     </Box>
   )
-  const main = isPickReady(picking, picks) ? { variant: "primary" as const } : { dimColor: true }
+  const main: MainLook = isPickReady(picking, picks) ? { variant: "primary" } : { dimColor: true }
 
   return questionFrame(kit, question, site, [
     names,

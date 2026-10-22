@@ -1,5 +1,8 @@
 // Author: David Matura
 
+// What every question the pane asks is drawn with, in place of the list: its frame, its field and its answers' row,
+// which the plugin's dialog (`dialog.tsx`) and the picker (`picker.tsx`) fill.
+
 import type {
   BoxProps,
   ButtonProps,

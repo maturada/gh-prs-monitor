@@ -87,9 +87,10 @@ detail:
   - **A branch with no pull request in the lists:** one request of 1 point per branch and commit, and one per press of
     **Create PR**, asks GitHub whether one was open or ended there. For one closed at a commit this clone lacks, one
     REST request compares the two on GitHub.
-  - **GitHub's suggested reviewers:** where your own pull requests wait on reviewers nobody asked, or need more
-    approvals, one request of 1 point asks for them after each refresh, whether or not the pane is open, in each
-    session: once per pull request and commit, and again after someone was asked or the request failed.
+  - **GitHub's suggested reviewers:** where your own pull requests wait on reviewers nobody asked (a bot such as Copilot
+    aside), or need more approvals with no person asked, one request of 1 point asks for them after each refresh,
+    whether or not the pane is open, in each session: once per pull request and commit, and again after a review, after
+    someone was asked, or after the request failed.
   - **Each button** first asks how the pull request stands now, with one REST request (REST has its own 5,000 an hour).
     **Update Branch** makes a second, which compares the branch with its base, and **Request Review** one more once you
     picked whom to ask, as the question may have been open for minutes. **Re-Run CI** also looks up its failed runs (1

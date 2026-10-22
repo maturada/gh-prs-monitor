@@ -77,7 +77,7 @@ export async function ask(
       isInPane: true,
       fieldKey,
       draft: "",
-      picks: [...(question.picking?.first ?? [])]
+      picks: [...(question.picking?.initial ?? [])]
     }
   })
   session.asking = open
@@ -239,11 +239,13 @@ export async function askInEngineDialog(host: DialogHost, question: Question): P
     if (picks === null) {
       return null
     }
-    // With one answer besides Cancel, the names were the whole question: that answer, with no instructions, as none
-    // were asked for.
+    // With one answer besides Cancel, the names were the whole question: that answer, without asking again for it, so
+    // with no instructions.
     const [only, ...more] = question.choices.filter((choice) => choice !== CANCEL)
     const answer =
-      only !== undefined && more.length === 0 ? { choice: only, instructions: "" } : await askAnswer(host, question)
+      only !== undefined && more.length === 0
+        ? { choice: only, instructions: "" }
+        : await askAnswer(host, { ...question, ...picking.steps?.answers })
 
     return { ...answer, picks: pickedNames(picking, picks) }
   } catch {
@@ -271,7 +273,7 @@ async function askAnswer(host: DialogHost, question: Question): Promise<Answer> 
 // Cancel or text typed under Other, is no answer, so a decline typed there never starts anything.
 async function askPicks(host: DialogHost, question: Question, picking: Picking): Promise<number[] | null> {
   const isLone = picking.names.length === 1
-  const said = await host.askInEngine(engineText(question, ""), {
+  const said = await host.askInEngine(engineText({ ...question, ...picking.steps?.names }, ""), {
     header: question.header,
     options: isLone ? [...picking.names, CANCEL] : picking.names,
     ...(picking.isSingle || isLone ? {} : { multiSelect: true as const })
@@ -283,7 +285,7 @@ async function askPicks(host: DialogHost, question: Question, picking: Picking):
 }
 
 // The question as the engine's dialog shows it, with `hint` saying where instructions typed under Other go.
-function engineText(question: Question, hint: string): string {
+function engineText(question: Pick<Question, "subject" | "text" | "detail">, hint: string): string {
   const detail = question.detail === null ? "" : ` ${question.detail}`
 
   return `${question.subject} — ${question.text}${detail}${hint}`

@@ -2,8 +2,9 @@
 
 **Review** shows on the pull requests waiting on your review. It gives a short overview of the pull request first, then
 verified findings, posted as inline comments only after you approve the exact wording, then a separate offer to approve
-it. Typed, it is `/gh-prs-monitor:review <number or URL> [-- <instructions>]`; instructions after `--` narrow what it
-looks at, never what it asks you.
+it. Typed, it is `/gh-prs-monitor:review <number or URL> [since] [-- <instructions>]`; `since` starts from your last
+review ([Since your review](#since-your-review)), and instructions after `--` narrow what it looks at, never what it
+asks you.
 
 **Review** asks where to review:
 
@@ -30,6 +31,35 @@ the like cancel. Where the pane is drawn somewhere that can't open a new session
 starts here without asking. A review in a new session is followed by that session's own list.
 
 While it runs, its row says so: see [While a skill is at work](actions.md#while-a-skill-is-at-work).
+
+## Since your review
+
+On a pull request back to you, **Re-Review Requested** or **Updated Since Your Review**, Review asks what to cover as
+well as where, under a line on your last review: its commit and how long ago, where the list knows them, and whether new
+commits came in since or you were asked again, with or without them.
+
+- **Since Your Review**, picked at first, so Enter starts it here: what the commits since your last review changed,
+  and what came of your comments.
+- **Full Review**: the whole pull request again, as the first time.
+
+Where no new session can open, such as the phone app, it asks what to cover alone, with **Start Review**. Where the pane
+doesn't show, Claude Code's own dialog asks instead: what to cover, then where.
+
+From your last review (an approval, a change request, comments or a dismissed one), it reads what the commits since
+changed in the pull request's files, leaving out what a merge of the base brought in. New comments go only on lines
+changed since, and a problem the new commits cause elsewhere is in the summary it shows you. The offer to approve says
+it read only what changed since.
+
+Its overview adds **Since your review**: that review and its commit, the commits since, and what came of your
+comments, each addressed, claimed fixed (a reply says so, and the code doesn't plainly show it), still open or unclear,
+with a link to each one not addressed. The tally is for you alone: your open points aren't posted again, and it
+replies to no thread.
+
+It reviews the whole pull request instead, saying why, where you haven't reviewed it before, where the commit you
+reviewed is no longer part of it (after a force-push or a rebase), where more than half of it is new since, or where
+the changes since reach what GitHub lists at once (300 files). Where none of its files changed since, it says so,
+naming any commits that came in all the same, and stops; asked to review again, it tells you what came of your
+comments, then offers to approve.
 
 ## With ticket links
 

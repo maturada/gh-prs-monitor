@@ -2,17 +2,18 @@
 
 // The people GitHub suggests to review the viewer's own pull requests that wait on reviewers nobody asked, or need more
 // approvals, whom Request Review offers: asked after a load shows the list, in one small request for the rows that want
-// them, as asking in the list's own request would load it slower for everyone. GitHub suggests those who last changed
-// the lines a pull request touches. Each answer is kept for its row's head commit, so it is asked again only when the
-// head moves, a row newly wants them, or someone was asked since; one that failed is asked again by the next load.
+// them, as asking in the list's own request would load it slower for everyone. GitHub suggests them from who changed or
+// reviewed the code a pull request touches before. Each answer is kept for its row's head commit and reviews
+// (`suggestionBasis`), so it is asked again only when the head moves, someone reviews, a row newly wants them, or
+// someone was asked from the pane since; one that failed is asked again by the next load.
 
 import type { PullRow, PullsSnapshot } from "../types"
 import { ENGINE_OPTIONS } from "./dialog-flow"
-import type { Host } from "./machine"
-import { primaryOf } from "./pull-status"
 import { firstLine, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { GhFailure, ghRun, graphqlArgv } from "./github"
+import type { Host } from "./machine"
+import { primaryOf } from "./pull-status"
 import type { Session, Suggested } from "./session"
 
 // What asking for the suggestions reaches beyond gh (`Host`): the debug log, and the pane, drawn again once they come.
@@ -22,27 +23,23 @@ export type SuggestionsHost = Host & {
 }
 
 // Whether Request Review may offer GitHub's suggestions on a row, once there are any: the viewer's own, up for review
-// and not in the merge queue, which merges it anyway, in a repository where they may request reviews, with nobody asked
-// to review it and nobody's feedback yet (`isReviewerUnrequested`), or more approvals needed.
+// and not in the merge queue, which merges it anyway, in a repository where they may request reviews, with no person
+// asked to review it, at first or for more approvals (`isReviewerUnrequested`).
 export function wantsSuggestions(snapshot: PullsSnapshot, row: PullRow): boolean {
-  return (
-    snapshot.merging.canRequestReviews &&
-    !row.isDraft &&
-    row.stage !== "queued" &&
-    (row.isReviewerUnrequested || row.stage === "moreApprovals")
-  )
+  return snapshot.merging.canRequestReviews && !row.isDraft && row.stage !== "queued" && row.isReviewerUnrequested
 }
 
-// The people GitHub suggests for a row, as kept for its head commit; none where it wants none, or none came yet.
+// The people GitHub suggests for a row, as kept for its head commit and reviews; none where it wants none, or none came
+// for the row as it stands yet.
 export function suggestionsFor(session: Session, snapshot: PullsSnapshot, row: PullRow): string[] {
-  const kept = session.suggestions.get(suggestionKey(snapshot.repo, row.number))
+  const kept = session.suggestedReviewers.get(suggestionKey(snapshot.repo, row.number))
 
-  return wantsSuggestions(snapshot, row) && kept?.head === row.headOid ? (kept.names ?? []) : []
+  return wantsSuggestions(snapshot, row) && kept?.basis === suggestionBasis(row) ? (kept.names ?? []) : []
 }
 
-// The list as the pane draws it and a press reads it: Request Review on each of the viewer's rows GitHub suggests someone
-// for (`suggested`), after the row's own buttons, the main one where its stage puts it first. The list kept holds no
-// suggestions, as they come after it.
+// The list as the pane draws it and a press reads it: Request Review on each of the viewer's rows GitHub suggests
+// someone for (`suggested`), after the row's own buttons, the main one where its stage puts it first. The list kept
+// holds no suggestions, as they come after it.
 export function withRequestReview(
   snapshot: PullsSnapshot,
   suggested: (row: PullRow) => readonly string[]
@@ -60,13 +57,15 @@ export function withRequestReview(
 }
 
 // A row's suggestions forgotten once someone was asked to review it: one still wanting them, as a More Approvals row,
-// keeps its head, and those kept were filtered before that person was asked. The next load asks GitHub afresh.
-export function forgetSuggestions(session: Session, snapshot: PullsSnapshot, row: PullRow): void {
-  session.suggestions.delete(suggestionKey(snapshot.repo, row.number))
+// keeps its head and reviews, and those kept were filtered before that person was asked. The next load asks GitHub
+// afresh.
+export function forgetSuggestions(session: Session, repo: string, number: number): void {
+  session.suggestedReviewers.delete(suggestionKey(repo, number))
 }
 
-// The suggestions a load asks for once it shows the list: for the rows that want them and have none kept at their head
-// nor asked for now, in one request. What is kept for rows that want them no more, or whose head moved, is forgotten.
+// The suggestions a load asks for once it shows the list: for the rows that want them and have none kept for them as
+// they stand nor asked for now, in one request. What is kept for rows that want them no more, or whose head moved or
+// that someone reviewed since, is forgotten.
 export async function askSuggestions(
   host: SuggestionsHost,
   session: Session,
@@ -78,20 +77,22 @@ export async function askSuggestions(
       .filter((row) => wantsSuggestions(snapshot, row))
       .map((row) => [suggestionKey(snapshot.repo, row.number), row])
   )
-  for (const [key, kept] of session.suggestions) {
-    if (wanted.get(key)?.headOid !== kept.head) {
-      session.suggestions.delete(key)
+  for (const [key, kept] of session.suggestedReviewers) {
+    const row = wanted.get(key)
+    if (!row || suggestionBasis(row) !== kept.basis) {
+      session.suggestedReviewers.delete(key)
     }
   }
-  const asked = [...wanted].filter(([key]) => !session.suggestions.has(key))
+  const asked = [...wanted].filter(([key]) => !session.suggestedReviewers.has(key))
   if (asked.length === 0) {
     return
   }
   // Each row asked about gets a place of its own while it is asked; its answer, or the request's failure, goes only to
-  // that place, which a later load may have forgotten meanwhile, as the row's head moved, or set aside anew.
+  // that place, which a later load may have forgotten meanwhile, as the row's head moved or someone reviewed it, or set
+  // aside anew.
   const asking = asked.map(([key, row]) => {
-    const place: Suggested = { head: row.headOid, names: null }
-    session.suggestions.set(key, place)
+    const place: Suggested = { basis: suggestionBasis(row), names: null }
+    session.suggestedReviewers.set(key, place)
 
     return { key, row, place }
   })
@@ -103,13 +104,13 @@ export async function askSuggestions(
     return null
   })
   for (const { key, row, place } of asking) {
-    if (session.suggestions.get(key) !== place) {
+    if (session.suggestedReviewers.get(key) !== place) {
       continue
     }
     if (answered === null) {
-      session.suggestions.delete(key)
+      session.suggestedReviewers.delete(key)
     } else {
-      session.suggestions.set(key, { head: row.headOid, names: answered.get(row.number) ?? [] })
+      session.suggestedReviewers.set(key, { basis: place.basis, names: answered.get(row.number) ?? [] })
     }
   }
   if (answered !== null) {
@@ -123,8 +124,19 @@ function suggestionKey(repo: string, number: number): string {
   return `${repo}#${number}`
 }
 
-// Each pull request asked about under its own name in one request (`pull<number>`), with whom GitHub suggests, who is
-// requested, and whose latest verdict approved.
+// What a row's suggestions are kept for: its head commit and its reviews, as GitHub's answer leaves out anyone who
+// approved, so a new commit or a review since asks GitHub again.
+function suggestionBasis(row: PullRow): string {
+  const reviews = Object.entries(row.signals.reviews)
+    .map(([login, mark]) => `${login} ${mark.state} ${mark.at}`)
+    .sort()
+
+  return [row.headOid, ...reviews].join("\n")
+}
+
+// Each pull request asked about under its own name in one request (`pull<number>`), with its author, whom GitHub
+// suggests, who is requested, and whose latest verdict approved. GitHub's `isAuthor` on a suggestion says it comes from
+// past commits, as nearly all do, not that it names the pull request's author.
 export function suggestionsQuery(numbers: readonly number[]): string {
   const pulls = numbers.map((number) => `    pull${number}: pullRequest(number: ${number}) { ...suggestions }`)
 
@@ -134,7 +146,8 @@ ${pulls.join("\n")}
   }
 }
 fragment suggestions on PullRequest {
-  suggestedReviewers { isAuthor reviewer { login } }
+  author { login }
+  suggestedReviewers { reviewer { login } }
   reviewRequests(first: 100) { nodes { requestedReviewer { ... on User { login } } } }
   latestOpinionatedReviews(first: 100) { nodes { state author { login } } }
 }`
@@ -142,10 +155,12 @@ fragment suggestions on PullRequest {
 
 // GitHub's suggestions for each pull request asked about, in its order: the author, anyone requested now and anyone
 // whose latest verdict approved left out, at most as many as Claude Code's own dialog offers names (`ENGINE_OPTIONS`),
-// so Request Review can ask there too where the pane doesn't show; none for one it didn't find. Null where it can't be read.
+// so Request Review can ask there too where the pane doesn't show; none for one it didn't find. Null where it can't be
+// read.
 export function readSuggestions(json: string, numbers: readonly number[]): Map<number, string[]> | null {
   type Logins = { nodes?: unknown } | null | undefined
   type Pull = {
+    author?: { login?: unknown } | null
     suggestedReviewers?: unknown
     reviewRequests?: Logins
     latestOpinionatedReviews?: Logins
@@ -164,15 +179,16 @@ export function readSuggestions(json: string, numbers: readonly number[]): Map<n
   return new Map(
     numbers.map((number) => {
       const pull = repository[`pull${number}`]
-      const requested = loginsOf(pull?.reviewRequests, (node) => node?.requestedReviewer?.login)
-      const approved = loginsOf(pull?.latestOpinionatedReviews, (node) =>
+      const requested = loginsOf<RequestNode>(pull?.reviewRequests, (node) => node?.requestedReviewer?.login)
+      const approved = loginsOf<VerdictNode>(pull?.latestOpinionatedReviews, (node) =>
         node?.state === "APPROVED" ? node.author?.login : undefined
       )
+      const author = pull?.author?.login
       const suggested = Array.isArray(pull?.suggestedReviewers)
         ? (pull.suggestedReviewers as SuggestedNode[]).flatMap((each) => {
             const login = each?.reviewer?.login
 
-            return typeof login === "string" && each?.isAuthor !== true ? [login] : []
+            return typeof login === "string" && login !== author ? [login] : []
           })
         : []
 
@@ -184,19 +200,19 @@ export function readSuggestions(json: string, numbers: readonly number[]): Map<n
   )
 }
 
-type SuggestedNode = { isAuthor?: unknown; reviewer?: { login?: unknown } | null } | null
-type LoginNode = {
-  state?: unknown
-  author?: { login?: unknown } | null
-  requestedReviewer?: { login?: unknown } | null
-} | null
+type SuggestedNode = { reviewer?: { login?: unknown } | null } | null
+type RequestNode = { requestedReviewer?: { login?: unknown } | null } | null
+type VerdictNode = { state?: unknown; author?: { login?: unknown } | null } | null
 
 // The logins a connection's nodes name, as `loginOf` reads each.
-function loginsOf(connection: { nodes?: unknown } | null | undefined, loginOf: (node: LoginNode) => unknown): string[] {
+function loginsOf<Node>(
+  connection: { nodes?: unknown } | null | undefined,
+  loginOf: (node: Node) => unknown
+): string[] {
   const nodes = connection?.nodes
 
   return Array.isArray(nodes)
-    ? (nodes as LoginNode[]).flatMap((node) => {
+    ? (nodes as Node[]).flatMap((node) => {
         const login = loginOf(node)
 
         return typeof login === "string" ? [login] : []

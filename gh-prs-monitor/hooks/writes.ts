@@ -5,7 +5,7 @@
 // the failed runs re-run. What each asks and says is `actions.ts`'s; the look before the question and the refresh after
 // it are `press.ts`'s.
 
-import type { PullAction, PullRow, PullsSnapshot } from "../types"
+import type { PullAction, PullRow } from "../types"
 import {
   asyncMergeDone,
   confirmQuestion,
@@ -35,7 +35,7 @@ import {
   updateConfirm,
   updateDone
 } from "./actions"
-import type { Confirm } from "./actions"
+import type { Confirm, CurrentPull } from "./actions"
 import { messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { currentPull, failedRuns, ghWrite, mergeOutcome, mergeStacked, stackOf, WriteRefused } from "./github"
@@ -115,8 +115,7 @@ export async function markReady(host: PressHost, session: Session, row: PullRow)
 }
 
 // Request Review: those of the people GitHub suggests (`suggestionsFor`) the person picks are asked, once GitHub is
-// looked at again, as the question may have been open for minutes: a pull request that moved on asks nobody, and
-// anyone asked meanwhile is left out. A lookup that fails lets it go on, GitHub having the last word.
+// looked at again (`stillToAsk`): a pull request that moved on asks nobody, and anyone asked meanwhile is left out.
 export async function requestReview(host: PressHost, session: Session, row: PullRow): Promise<void> {
   const snapshot = await host.storedList()
   if (!snapshot) {
@@ -133,29 +132,22 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
     if (!look.isGoing) {
       return
     }
-    // Anyone asked since GitHub suggested them is offered no more; with everyone, the names kept are out of date.
-    const names = suggested.filter((login) => !look.current?.requested.includes(login))
+    const names = unasked(suggested, look.current)
     if (names.length === 0) {
-      await askedAlready(host, session, snapshot, row, suggested)
+      await askedAlready(host, session, snapshot.repo, row, suggested)
 
       return
     }
-    const answer = await host.ask(requestQuestion(row, names), buttonKey("requestReview", row.number))
-    const picks = answer?.choice === REQUEST_REVIEW ? (answer.picks ?? []) : []
+    const picks = await askWhom(host, row, names)
     if (picks.length === 0) {
       return
     }
-    const found = await currentPull(host, look.repo, row.number)
-    const current = "pull" in found ? found.pull : null
-    const stale = current ? staleFor("requestReview", row, current) : null
-    if (stale !== null) {
-      await stopStale(host, session, row, stale)
-
+    const asking = await stillToAsk(host, session, look.repo, row, picks)
+    if (asking === null) {
       return
     }
-    const asking = picks.filter((login) => !current?.requested.includes(login))
     if (asking.length === 0) {
-      await askedAlready(host, session, snapshot, row, picks)
+      await askedAlready(host, session, snapshot.repo, row, picks)
 
       return
     }
@@ -165,10 +157,43 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
     } catch (error) {
       throw error instanceof WriteRefused ? new WriteRefused(requestRefused(error.message)) : error
     }
-    forgetSuggestions(session, snapshot, row)
+    forgetSuggestions(session, snapshot.repo, row.number)
     await host.notify(requestDone(row, asking), session.settings.alertMs)
     await settleAfterWrite(host)
   })
+}
+
+// Those of `logins` the pull request as it stands asks nobody of yet; all of them where it couldn't be looked up.
+function unasked(logins: readonly string[], current: CurrentPull | null): string[] {
+  return logins.filter((login) => !current?.requested.includes(login))
+}
+
+// Whom the person picks among `names`; nobody on Cancel, or with the question dismissed.
+async function askWhom(host: PressHost, row: PullRow, names: readonly string[]): Promise<string[]> {
+  const answer = await host.ask(requestQuestion(row, names), buttonKey("requestReview", row.number))
+
+  return answer?.choice === REQUEST_REVIEW ? (answer.picks ?? []) : []
+}
+
+// Those picked still to ask, once GitHub is looked at again, as the question may have been open for minutes: none
+// (null) where the pull request moved on, which is said; all of them where the lookup fails, GitHub having the last word.
+async function stillToAsk(
+  host: PressHost,
+  session: Session,
+  repo: RepoRef,
+  row: PullRow,
+  picks: readonly string[]
+): Promise<string[] | null> {
+  const found = await currentPull(host, repo, row.number)
+  const current = "pull" in found ? found.pull : null
+  const stale = current ? staleFor("requestReview", row, current) : null
+  if (stale !== null) {
+    await stopStale(host, session, row, stale)
+
+    return null
+  }
+
+  return unasked(picks, current)
 }
 
 // Everyone Request Review would ask was asked on GitHub already: said so, and the list read again, the names kept for
@@ -176,11 +201,11 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
 async function askedAlready(
   host: PressHost,
   session: Session,
-  snapshot: PullsSnapshot,
+  repo: string,
   row: PullRow,
   logins: readonly string[]
 ): Promise<void> {
-  forgetSuggestions(session, snapshot, row)
+  forgetSuggestions(session, repo, row.number)
   await host.notify(requestedAlready(row, logins), session.settings.alertMs)
   await settleAfterWrite(host)
 }

@@ -20,29 +20,29 @@ import type { Drawn } from "./testing/world"
 
 // Request Review's: any number of the people GitHub suggests, none at first, and the request only once one is.
 const PEOPLE: PickingQuestion = {
-  header: "Request Review",
+  header: "Request",
   subject: "#41 Sort the reading list",
   text: "Who should review it?",
-  detail: "GitHub suggests the people who last changed this code.",
+  detail: "GitHub suggests them from who changed or reviewed this code before.",
   choices: ["Request Review", "Cancel"],
   main: "Request Review",
   instructions: null,
-  picking: { names: ["kim", "lou"], isSingle: false, first: [], needsPick: true, startsOn: "names" }
+  picking: { names: ["kim", "lou"], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
 }
 
 // Re-Review's: one kind of review of two, what changed at first, with a place to start it and room for instructions.
 const KIND: PickingQuestion = {
-  header: "Re-Review",
+  header: "Review PR",
   subject: "#1241 Shareable invite links",
   text: "What should it cover, and where?",
   detail: "Your review was on a1b2c3d, 20h ago; new commits came in since.",
-  choices: ["This Session", "New Session", "Cancel"],
+  choices: ["This session", "New session", "Cancel"],
   main: null,
-  instructions: "to the review in this session",
+  instructions: "to a review in this session",
   picking: {
     names: ["Since Your Review", "Full Review"],
     isSingle: true,
-    first: [0],
+    initial: [0],
     needsPick: false,
     startsOn: "answers"
   }
@@ -186,10 +186,17 @@ describe("the picker as drawn", () => {
     expect(labels(nodes)).toEqual(["✓ kim", "✓ lou", "Clear", "Request Review", "Cancel"])
   })
 
+  test("a lone name has no Select All, which would only repeat it", async ($, on) => {
+    const lone = { ...PEOPLE, picking: { ...PEOPLE.picking, names: ["lou"] } }
+    const { nodes } = await drawer($, on)(lone, [])
+
+    expect(labels(nodes)).toEqual(["lou", "Request Review", "Cancel"])
+  })
+
   test("one of two: the one picked checked, and no Select All", async ($, on) => {
     const { nodes } = await drawer($, on)(KIND, [0])
 
-    expect(labels(nodes)).toEqual(["✓ Since Your Review", "Full Review", "This Session", "New Session", "Cancel"])
+    expect(labels(nodes)).toEqual(["✓ Since Your Review", "Full Review", "This session", "New session", "Cancel"])
   })
 
   test("the names, Select All and the answers keep keys of their own, so the keyboard and a press name them", async ($, on) => {
@@ -237,7 +244,7 @@ describe("the picker as drawn", () => {
     enter("only the tests")
     enter("  ")
     expect(answers).toEqual([
-      { choice: "New Session", instructions: "" },
+      { choice: "New session", instructions: "" },
       { choice: null, instructions: "only the tests" }
     ])
   })
@@ -272,7 +279,7 @@ describe("the picker's presses", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
-      picks: [...question.picking.first]
+      picks: [...question.picking.initial]
     }
     const actions: PickerActions = { ...pickerActions(session, () => redraws++), answer: answerOpen(session) }
 
@@ -330,10 +337,10 @@ describe("the picker's presses", () => {
     const { answers, actions } = opened(KIND)
 
     actions.pick(1)
-    actions.answer({ choice: "This Session", instructions: "look closer at error handling" })
+    actions.answer({ choice: "This session", instructions: "look closer at error handling" })
     actions.answer({ choice: null, instructions: "only the tests" })
     expect(answers).toEqual([
-      { choice: "This Session", instructions: "look closer at error handling", picks: ["Full Review"] },
+      { choice: "This session", instructions: "look closer at error handling", picks: ["Full Review"] },
       { choice: null, instructions: "only the tests", picks: ["Full Review"] }
     ])
   })
@@ -378,7 +385,7 @@ describe("the open question in the pane", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
-      picks: [...(question.picking?.first ?? [])]
+      picks: [...(question.picking?.initial ?? [])]
     }
   }
 
@@ -428,7 +435,7 @@ describe("the open question in the pane", () => {
 
     openOn(session, KIND, answers)
     drawnStably(session).press(answerKey(0))
-    expect(answers).toEqual([{ choice: "This Session", instructions: "", picks: ["Since Your Review"] }])
+    expect(answers).toEqual([{ choice: "This session", instructions: "", picks: ["Since Your Review"] }])
   })
 
   test("one that offers names is drawn by the picker with the picks the open question keeps; any other by the dialog", () => {
@@ -450,6 +457,17 @@ describe("the open question in the pane", () => {
     expect(pane.answers).toEqual([{ choice: "Request Review", instructions: "", picks: ["lou"] }])
   })
 
+  test("instructions typed before a pick are kept through its drawing again, and go with the answer", () => {
+    const pane = paneOf(KIND)
+
+    pane.draw().type("look closer at error handling")
+    pane.draw().press(pickKey(1))
+    pane.draw().press(answerKey(0))
+    expect(pane.answers).toEqual([
+      { choice: "This session", instructions: "look closer at error handling", picks: ["Full Review"] }
+    ])
+  })
+
   test("a button kept from an earlier drawing acts on the question open at its press", () => {
     const pane = paneOf(PEOPLE)
     const earlier = pane.draw()
@@ -469,7 +487,7 @@ describe("the open question in the pane", () => {
     expect(pane.session.asking?.draft).toBe("look closer at error handling")
     pane.draw().press(answerKey(0))
     expect(pane.answers).toEqual([
-      { choice: "This Session", instructions: "look closer at error handling", picks: ["Since Your Review"] }
+      { choice: "This session", instructions: "look closer at error handling", picks: ["Since Your Review"] }
     ])
   })
 })

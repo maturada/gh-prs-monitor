@@ -29,15 +29,16 @@ const MORE_APPROVALS: PullFixture = {
   headRefOid: "head-13",
   reviewDecision: "REVIEW_REQUIRED",
   mergeStateStatus: "BLOCKED",
-  reviews: [{ login: "ann", state: "APPROVED", at: "2026-10-01T12:00:00Z" }],
-  requested: ["bob"]
+  reviews: [{ login: "ann", state: "APPROVED", at: "2026-10-01T12:00:00Z" }]
 }
+const MORE_APPROVALS_ASKED: PullFixture = { ...MORE_APPROVALS, number: 18, requested: ["bob"] }
 const REQUESTED: PullFixture = { number: 14, requested: ["ann"] }
 const DRAFT: PullFixture = { number: 15, isDraft: true }
 const QUEUED: PullFixture = { number: 17, isInMergeQueue: true }
 
-// GitHub's answer for each pull request asked about, by number: whom it suggests, the author among them, who is
-// requested, and whose latest verdict approved, or requested changes.
+// GitHub's answer for each pull request asked about, by number: whom it suggests, its author, who is requested, and
+// whose latest verdict approved, or requested changes. GitHub marks a suggestion from past commits `isAuthor`, as
+// nearly all are.
 type Asked = { suggested?: string[]; author?: string; requested?: string[]; approved?: string[]; changesBy?: string[] }
 
 function answerOf(pulls: Record<number, Asked | null>): string {
@@ -45,10 +46,12 @@ function answerOf(pulls: Record<number, Asked | null>): string {
     Object.entries(pulls).map(([number, pull]) => [
       `pull${number}`,
       pull && {
-        suggestedReviewers: [
-          ...(pull.author ? [{ isAuthor: true, reviewer: { login: pull.author } }] : []),
-          ...(pull.suggested ?? []).map((login) => ({ isAuthor: false, reviewer: { login } }))
-        ],
+        author: pull.author ? { login: pull.author } : null,
+        suggestedReviewers: (pull.suggested ?? []).map((login, index) => ({
+          isAuthor: index % 2 === 0,
+          isCommenter: index % 2 === 1,
+          reviewer: { login }
+        })),
         reviewRequests: { nodes: (pull.requested ?? []).map((login) => ({ requestedReviewer: { login } })) },
         latestOpinionatedReviews: {
           nodes: [
@@ -94,17 +97,18 @@ function rowOf(snapshot: PullsSnapshot, number: number) {
 }
 
 describe("which rows want GitHub's suggestions", () => {
-  test("the viewer's own, up for review, nobody asked yet or more approvals needed, where they may request reviews", () => {
+  test("the viewer's own, up for review, with nobody asked, yet or for more approvals, where they may request reviews", () => {
     const snapshot = snapshotOf({
-      mine: [UNASKED, MORE_APPROVALS, REQUESTED, DRAFT, QUEUED],
+      mine: [UNASKED, MORE_APPROVALS, REQUESTED, DRAFT, QUEUED, MORE_APPROVALS_ASKED],
       requested: [{ number: 16, author: "ann" }]
     })
 
-    // One in the merge queue is on its way to merge: asking for a review there is noise.
+    // One in the merge queue is on its way to merge: asking for a review there is noise. Needing more approvals with
+    // someone asked, the next approval is theirs to give.
     expect(rowOf(snapshot, 17).isReviewerUnrequested).toBe(true)
-    expect([12, 13, 14, 15, 16, 17].filter((number) => wantsSuggestions(snapshot, rowOf(snapshot, number)))).toEqual([
-      12, 13
-    ])
+    expect(
+      [12, 13, 14, 15, 16, 17, 18].filter((number) => wantsSuggestions(snapshot, rowOf(snapshot, number)))
+    ).toEqual([12, 13])
     const readOnly = snapshotOf({ mine: [UNASKED], merging: { permission: "READ" } })
     expect(wantsSuggestions(readOnly, rowOf(readOnly, 12))).toBe(false)
   })
@@ -121,7 +125,7 @@ describe("GitHub's suggestions", () => {
 
   test("its answer: the people suggested, in GitHub's order, but the author, anyone requested and anyone who approved, four at most", () => {
     const answer = answerOf({
-      12: { suggested: ["kim", "lou"], author: "me" },
+      12: { suggested: ["kim", "me", "lou"], author: "me" },
       13: {
         suggested: ["ann", "bob", "cy", "dee", "eve", "fay", "gus"],
         requested: ["bob"],
@@ -140,13 +144,14 @@ describe("GitHub's suggestions", () => {
     )
   })
 
-  test("a team requested names no one", () => {
+  test("a team asked hides no one GitHub suggests; a hidden request, a missing suggestion or a deleted author name none", () => {
     const answer = JSON.stringify({
       data: {
         repository: {
           pull12: {
-            suggestedReviewers: [{ isAuthor: false, reviewer: { login: "ann" } }],
-            reviewRequests: { nodes: [{ requestedReviewer: {} }] },
+            author: null,
+            suggestedReviewers: [null, { isAuthor: true, isCommenter: false, reviewer: { login: "ann" } }],
+            reviewRequests: { nodes: [{ requestedReviewer: {} }, { requestedReviewer: null }] },
             latestOpinionatedReviews: { nodes: [] }
           }
         }
@@ -154,6 +159,33 @@ describe("GitHub's suggestions", () => {
     })
 
     expect(readSuggestions(answer, [12])).toEqual(new Map([[12, ["ann"]]]))
+  })
+
+  test("only an approval leaves someone out: a dismissed one or a change request does not; suggestions that aren't a list are none", () => {
+    const answer = JSON.stringify({
+      data: {
+        repository: {
+          pull12: {
+            suggestedReviewers: ["ann", "bob"].map((login) => ({ isAuthor: true, reviewer: { login } })),
+            reviewRequests: { nodes: [] },
+            latestOpinionatedReviews: {
+              nodes: [
+                { state: "DISMISSED", author: { login: "ann" } },
+                { state: "CHANGES_REQUESTED", author: { login: "bob" } }
+              ]
+            }
+          },
+          pull13: { suggestedReviewers: { nodes: [] }, reviewRequests: { nodes: {} }, latestOpinionatedReviews: null }
+        }
+      }
+    })
+
+    expect(readSuggestions(answer, [12, 13])).toEqual(
+      new Map([
+        [12, ["ann", "bob"]],
+        [13, []]
+      ])
+    )
   })
 
   test("an answer that can't be read is none", () => {
@@ -165,7 +197,7 @@ describe("GitHub's suggestions", () => {
 describe("asking for them after a load", () => {
   const LIST = snapshotOf({ mine: [UNASKED, MORE_APPROVALS, REQUESTED] })
 
-  test("asks once for every row that wants them, keeps the answers for each row's head, and draws the pane again", async () => {
+  test("asks once for every row that wants them, keeps the answers for each row's head and reviews, and draws the pane again", async () => {
     const session = sessionOf()
     const { host, asked, redraws } = hostOf(() => ({
       exitCode: 0,
@@ -210,6 +242,28 @@ describe("asking for them after a load", () => {
     // Forgotten, not only passed over: wanting them again, they are asked again.
     await askSuggestions(host, session, REPO, moved)
     expect(asked()).toEqual([[12, 13], [12], [12, 13]])
+  })
+
+  test("asks again for a row someone reviewed since, at the same head, as GitHub leaves out anyone who approved", async () => {
+    const session = sessionOf()
+    let answer = answerOf({ 12: { suggested: ["kim"] }, 13: { suggested: ["cy", "dee"], approved: ["ann"] } })
+    const { host, asked } = hostOf(() => ({ exitCode: 0, stdout: answer }))
+    await askSuggestions(host, session, REPO, LIST)
+    expect(suggestionsFor(session, LIST, rowOf(LIST, 13))).toEqual(["cy", "dee"])
+
+    // cy approves unasked, and the base still wants another approval.
+    const cyApproved = { login: "cy", state: "APPROVED", at: "2026-10-01T13:00:00Z" }
+    const approved = snapshotOf({
+      mine: [UNASKED, { ...MORE_APPROVALS, reviews: [...(MORE_APPROVALS.reviews ?? []), cyApproved] }, REQUESTED]
+    })
+    expect(rowOf(approved, 13).stage).toBe("moreApprovals")
+    // Asked before that review, the answer no longer stands for the row.
+    expect(suggestionsFor(session, approved, rowOf(approved, 13))).toEqual([])
+    answer = answerOf({ 13: { suggested: ["cy", "dee"], approved: ["ann", "cy"] } })
+    await askSuggestions(host, session, REPO, approved)
+    expect(asked()).toEqual([[12, 13], [13]])
+    expect(suggestionsFor(session, approved, rowOf(approved, 13))).toEqual(["dee"])
+    expect(suggestionsFor(session, approved, rowOf(approved, 12))).toEqual(["kim"])
   })
 
   // A host whose requests each wait to be let go (`releases`, in the order asked), GitHub answering them in that order.
@@ -329,6 +383,9 @@ describe("asking for them after a load", () => {
 
     const other = { ...LIST, repo: "acme/web" }
     expect(suggestionsFor(session, other, rowOf(other, 12))).toEqual([])
+    // A load of another repository forgets this one's, so coming back asks GitHub again.
+    await askSuggestions(host, session, REPO, other)
+    expect(suggestionsFor(session, LIST, rowOf(LIST, 12))).toEqual([])
   })
 })
 

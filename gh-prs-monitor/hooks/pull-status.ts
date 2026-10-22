@@ -4,7 +4,7 @@
 // the author), its label and tone, and the button that moves it on; for one to review, where the viewer's review
 // stands.
 
-import type { Badge, CiState, MineStage, PullAction } from "../types"
+import type { Badge, CiState, MineStage, PullAction, ReviewStage } from "../types"
 
 type MineFacts = {
   isDraft: boolean
@@ -129,21 +129,35 @@ type ReviewFacts = {
   hasCommitsSinceMyReview: boolean
 }
 
-export function reviewStatus(facts: ReviewFacts): Badge {
+const REVIEW_STATUSES: Readonly<Record<ReviewStage, Badge>> = {
+  requested: { text: "Review Requested", tone: "warning" },
+  rerequested: { text: "Re-Review Requested", tone: "warning" },
+  dismissed: { text: "Your Review Was Dismissed", tone: "warning" },
+  updated: { text: "Updated Since Your Review", tone: "warning" },
+  waitingOnAuthor: { text: "Waiting On Author", tone: "neutral" },
+  commented: { text: "You Commented", tone: "neutral" }
+}
+
+export function reviewStatus(facts: ReviewFacts): { stage: ReviewStage; status: Badge } {
+  const stage = reviewStage(facts)
+
+  return { stage, status: REVIEW_STATUSES[stage] }
+}
+
+// The first of these that holds: a request, a dismissal, new commits since the viewer's review, their change request
+// waiting on the author, else their comments.
+function reviewStage(facts: ReviewFacts): ReviewStage {
   if (facts.isRequested) {
-    return { text: facts.hasReviewed ? "Re-Review Requested" : "Review Requested", tone: "warning" }
+    return facts.hasReviewed ? "rerequested" : "requested"
   }
   if (facts.myState === "DISMISSED") {
-    return { text: "Your Review Was Dismissed", tone: "warning" }
+    return "dismissed"
   }
   if (facts.hasCommitsSinceMyReview) {
-    return { text: "Updated Since Your Review", tone: "warning" }
-  }
-  if (facts.myState === "CHANGES_REQUESTED") {
-    return { text: "Waiting On Author", tone: "neutral" }
+    return "updated"
   }
 
-  return { text: "You Commented", tone: "neutral" }
+  return facts.myState === "CHANGES_REQUESTED" ? "waitingOnAuthor" : "commented"
 }
 
 export function isCiFailing(ci: CiState): boolean {

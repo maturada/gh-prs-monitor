@@ -33,7 +33,7 @@ ${stacks}  author { login }
   mergeable autoMergeRequest { enabledAt } statusCheckRollup { state }
   reviewThreads(last: 100) { nodes { isResolved isOutdated } }
   writerVerdicts: latestOpinionatedReviews(first: 20, writersOnly: true) {
-    nodes { author { __typename login } state submittedAt }
+    nodes { author { __typename login } state submittedAt commit { oid } }
   }
   reviewRequests(first: 100) { nodes { requestedReviewer { __typename ... on Actor { login } ... on Team { slug } } } }
   comments(last: 5) { totalCount nodes { author { __typename login } } }
@@ -86,7 +86,7 @@ export function isStackless(stdout: string): boolean {
 
 // Raised whenever the snapshot's shape or its statuses' wording changes, so an update never compares against the
 // old one.
-export const SNAPSHOT_SCHEMA = 20
+export const SNAPSHOT_SCHEMA = 21
 
 // A snapshot read back from the store, or from the session's state after an update: one from another version of
 // the plugin is none.
@@ -450,13 +450,15 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
   return {
     ...identity,
     stage,
+    reviewStage: null,
+    myReview: null,
     status:
       stage === "conflicts" || stage === "ciFailing" ? { ...status, ...linked(url, STATUS_PAGES[stage]) } : status,
     details: mineDetails(pull, own, stage, request, identity, now, { isUpdateOffered, isAutoMergeOn }),
     actions,
     primary: primaryOf(stage, actions),
     rerequestFrom: own.rerequestFrom,
-    isReviewerUnrequested: request === "nobody",
+    isReviewerUnrequested: isNobodyAsked(request, own, stage),
     signals: {
       ci: own.ci,
       isConflicting: own.isConflicting,
@@ -475,9 +477,9 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
 type Offers = { isUpdateOffered: boolean; isAutoMergeOn: boolean }
 
 // Who is asked to review the viewer's own pull request, which its details say until it is approved or changes are
-// requested, and again while it waits on a re-review or more approvals: the reviewers requested, or nobody, as at first
-// or again after someone's feedback. Null where the details say nothing of it.
-type ReviewerRequest = { named: string[]; unnamed: number } | "nobody" | "nobodyAgain" | null
+// requested, and again while it waits on a re-review or more approvals: the reviewers requested, how many of them aren't
+// bots (`people`), or nobody, as at first or again after someone's feedback. Null where the details say nothing of it.
+type ReviewerRequest = { named: string[]; unnamed: number; people: number } | "nobody" | "nobodyAgain" | null
 
 function reviewerRequestOf(pull: Pull, own: OwnPull, stage: MineStage): ReviewerRequest {
   if ((own.isApproved || own.isChangesRequested) && stage !== "rereview" && stage !== "moreApprovals") {
@@ -488,9 +490,25 @@ function reviewerRequestOf(pull: Pull, own: OwnPull, stage: MineStage): Reviewer
     return reviewers
   }
 
-  // GitHub takes a reviewer off the requested ones once they review, so after feedback the one missing is a request to
-  // look again.
-  return own.changes.length + own.commentsOnly.length > 0 ? "nobodyAgain" : "nobody"
+  return hasFeedback(own) ? "nobodyAgain" : "nobody"
+}
+
+// Where Request Review may offer people: no person is asked to review it, a bot asked aside (as Copilot is as a pull
+// request opens), and no person gave feedback yet, but for an approved one that needs more approvals, whose next
+// approval may come from anyone.
+function isNobodyAsked(request: ReviewerRequest, own: OwnPull, stage: MineStage): boolean {
+  if (request === null) {
+    return false
+  }
+  const isPersonAsked = typeof request !== "string" && request.people > 0
+
+  return !isPersonAsked && (stage === "moreApprovals" || !hasFeedback(own))
+}
+
+// GitHub takes a reviewer off the requested ones once they review, so after a person's feedback the one missing is a
+// request to look again.
+function hasFeedback(own: OwnPull): boolean {
+  return own.changes.length + own.commentsOnly.length > 0
 }
 
 // The details under an own pull request's status, as they apply, parted by dots.
@@ -630,9 +648,10 @@ function reviewRow(
 
   // The viewer's latest review stays theirs when they are asked again, where GitHub's latest reviews drop it. Their
   // verdict, their latest approval or change request, is read among those who can push; for a reviewer who can't,
-  // their latest review is all GitHub names.
-  const myReview = viewerReviewOf(pull, viewer)
+  // their latest review is all GitHub names. A review they are still writing takes the latest's place on GitHub, so
+  // their verdict stands in for it there: a draft hides neither the commit they reviewed nor what came since.
   const myVerdict = reviewsOf(pull.writerVerdicts).find((review) => review.login === viewer) ?? null
+  const myReview = viewerReviewOf(pull, viewer) ?? myVerdict
   const myState = myVerdict?.state ?? myReview?.state ?? null
   // A request to the viewer by name always counts. One to a team of theirs counts until they review: GitHub may
   // keep the team's request after a member's review, which must not read as being asked again.
@@ -676,7 +695,7 @@ function reviewRow(
   if (unresolvedThreads > 0) {
     details.push({ ...linked(url, "files"), text: plural(unresolvedThreads, "unresolved comment"), tone: "neutral" })
   }
-  const status = reviewStatus({
+  const { stage: reviewStage, status } = reviewStatus({
     hasReviewed: myReview !== null || myVerdict !== null,
     myState,
     isRequested,
@@ -686,6 +705,8 @@ function reviewRow(
   return {
     ...identity,
     stage: null,
+    reviewStage,
+    myReview: myReview && { commit: myReview.commit, at: myReview.at },
     status,
     details,
     actions: ["review"],
@@ -836,15 +857,17 @@ function authorOf(pull: Pull): string {
 
 // People, bots and teams by name; one the query cannot name (an enterprise team, or a team the viewer can't see, which
 // GitHub answers as none) still counts.
-function requestedReviewersOf(pull: Pull): { named: string[]; unnamed: number } {
+function requestedReviewersOf(pull: Pull): { named: string[]; unnamed: number; people: number } {
   const reviewers = (pull.reviewRequests?.nodes ?? []).flatMap((node) => (node ? [node.requestedReviewer] : []))
   const named = reviewers.flatMap((reviewer) => {
     const name = reviewer?.login ?? reviewer?.slug
 
     return name ? [name] : []
   })
+  // One the viewer can't see, as a secret team, may hold people.
+  const people = reviewers.filter((reviewer) => reviewer?.__typename !== "Bot").length
 
-  return { named, unnamed: reviewers.length - named.length }
+  return { named, unnamed: reviewers.length - named.length, people }
 }
 
 function requestedText({ named, unnamed }: { named: string[]; unnamed: number }): string {

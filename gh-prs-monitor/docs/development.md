@@ -57,7 +57,7 @@ hooks/branch-lookup.ts    GitHub's lookup of the pull requests from the session'
                           a load and Create PR's press ask: its query, the answer read, and the request
 hooks/suggestions.ts      the people GitHub suggests to review your own pull requests nobody was asked to review, or
                           that need more approvals, which a load asks once it shows the list: which rows want them,
-                          the request, the answer read, kept for each row's head commit
+                          the request, the answer read, kept for each row's head commit and reviews
 hooks/branch-flow.ts      where Resolve Comments, Fix CI and Resolve Conflicts work, and the arguments they hand
                           their skills
 hooks/review-flow.ts      Review's question and the arguments it hands the skill

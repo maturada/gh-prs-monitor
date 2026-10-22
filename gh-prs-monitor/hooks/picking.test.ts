@@ -9,7 +9,7 @@ import { isAllPicked, isPickReady, pickAllOrClear, pickedNames, togglePick } fro
 const PEOPLE: Picking = {
   names: ["kim", "lou"],
   isSingle: false,
-  first: [],
+  initial: [],
   needsPick: true,
   startsOn: "names"
 }
@@ -18,7 +18,7 @@ const PEOPLE: Picking = {
 const KIND: Picking = {
   names: ["Since Your Review", "Full Review"],
   isSingle: true,
-  first: [0],
+  initial: [0],
   needsPick: false,
   startsOn: "answers"
 }

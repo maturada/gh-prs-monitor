@@ -60,11 +60,13 @@ describe("Request Review", () => {
 
     expect(world.header).toBe("Request")
     expect(world.question).toBe("Who should review it?")
-    expect(world.detail).toBe("GitHub suggests the people who last changed this code.")
+    expect(world.detail).toBe("GitHub suggests them from who changed or reviewed this code before.")
     expect(world.choices).toEqual(["kim", "lou", "Select All", "Request Review", "Cancel"])
     expect(seen.runs).toContain(`${REQUEST} -f reviewers[]=lou`)
     expect(seen.toasts).toContain("#12: review requested from lou")
     expect(lists()).toBe(before + 1)
+    // lou is requested now, so the row offers nobody.
+    expect(await ui.find({ key: "requestReview-12" })).toBeUndefined()
   })
 
   test("its question in the pane draws no field, so nothing typed picks anyone", async ($, on) => {
@@ -77,6 +79,24 @@ describe("Request Review", () => {
     const nodes = drawnNodes(await ui.drawn())
     expect(nodes.some((node) => node.type === "Button" && node.props?.label === "Select All")).toBe(true)
     expect(nodes.some((node) => node.type === "Input")).toBe(false)
+  })
+
+  test("a row only a bot such as Copilot is asked to review offers people too", async ($, on) => {
+    const copilot = { __typename: "Bot", login: "copilot-pull-request-reviewer" }
+    const github: ResponseFixture = { mine: [{ ...UNASKED.mine![0]!, requestedOthers: [copilot] }] }
+    const { ui } = await loaded($, on, { github, branch: "main", uncommitted: 0, suggested: SUGGESTED })
+
+    expect(await ui.find({ key: "requestReview-12" })).toBeDefined()
+  })
+
+  test("drawn on every surface, as each draws the list", async ($, on) => {
+    const world: World = { github: UNASKED, branch: "main", uncommitted: 0, suggested: SUGGESTED }
+    await loaded($, on, world)
+
+    for (const surface of ["desktop", "vscode", "mobile"] as const) {
+      const pane = await mountPane($, surface)
+      expect(await pane.find({ key: "requestReview-12" })).toBeDefined()
+    }
   })
 
   test("no button where GitHub suggests nobody", async ($, on) => {
@@ -97,7 +117,7 @@ describe("Request Review", () => {
     expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
   })
 
-  test("someone asked on GitHub while the question was open is left out; with everyone, nobody is asked twice", async ($, on) => {
+  test("someone asked on GitHub while the question was open is left out", async ($, on) => {
     const world: World = {
       github: UNASKED,
       branch: "main",
@@ -111,14 +131,27 @@ describe("Request Review", () => {
 
     await ui.press({ key: "requestReview-12" })
     await clock.settle()
-    expect(seen.runs).toContain(`${REQUEST} -f reviewers[]=lou`)
 
-    world.current = undefined
-    world.picks = ["kim"]
-    seen.toasts.length = 0
+    expect(seen.runs.filter((run) => run.includes("requested_reviewers"))).toEqual([`${REQUEST} -f reviewers[]=lou`])
+    expect(seen.toasts).toContain("#12: review requested from lou")
+  })
+
+  test("everyone picked asked on GitHub while the question was open: nobody is asked twice, and it says so", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      picks: ["kim"],
+      answer: "Request Review",
+      whileAsking: () => (world.current = { 12: { requested: ["kim"] } })
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
     await ui.press({ key: "requestReview-12" })
     await clock.settle()
-    expect(seen.runs.filter((run) => run.includes("requested_reviewers"))).toHaveLength(1)
+
+    expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
     expect(seen.toasts).toContain("#12: kim is asked to review it already; refreshing the list")
   })
 
@@ -129,7 +162,7 @@ describe("Request Review", () => {
     world.current = { 12: { requested: ["kim"] } }
     await ui.press({ key: "requestReview-12" })
     await clock.settle()
-    expect(world.choices).toEqual(["lou", "Select All", "Request Review", "Cancel"])
+    expect(world.choices).toEqual(["lou", "Request Review", "Cancel"])
 
     world.current = { 12: { requested: ["kim", "lou"] } }
     await ui.press({ key: "requestReview-12" })
@@ -138,7 +171,7 @@ describe("Request Review", () => {
     expect(seen.toasts).toContain("#12: kim and lou are asked to review it already; refreshing the list")
   })
 
-  test("merged or turned into a draft while the question was open, it says so and asks nobody", async ($, on) => {
+  test("turned into a draft while the question was open, it says so and asks nobody", async ($, on) => {
     const world: World = {
       github: UNASKED,
       branch: "main",
@@ -153,6 +186,64 @@ describe("Request Review", () => {
     await ui.press({ key: "requestReview-12" })
     await clock.settle()
 
+    expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
+    // That said, and nothing after it.
+    expect(seen.toasts.at(-1)).toBe("#12 is a draft now; refreshing the list")
+  })
+
+  test("merged while the question was open, it says so and asks nobody", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      picks: ["kim"],
+      answer: "Request Review",
+      whileAsking: () => (world.current = { 12: { state: "merged" } })
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-12" })
+    await clock.settle()
+
+    expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
+    expect(seen.toasts).toContain("#12 was merged meanwhile")
+  })
+
+  test("merged before the press, it asks nothing", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      answer: "Request Review",
+      current: { 12: { state: "merged" } }
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-12" })
+    await clock.settle()
+
+    expect(world.question).toBeUndefined()
+    expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
+    expect(seen.toasts).toContain("#12 was merged meanwhile")
+  })
+
+  test("turned into a draft before the press, it asks nothing", async ($, on) => {
+    const world: World = {
+      github: UNASKED,
+      branch: "main",
+      uncommitted: 0,
+      suggested: SUGGESTED,
+      answer: "Request Review",
+      current: { 12: { isDraft: true } }
+    }
+    const { clock, seen, ui } = await loaded($, on, world)
+
+    await ui.press({ key: "requestReview-12" })
+    await clock.settle()
+
+    expect(world.question).toBeUndefined()
     expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
     expect(seen.toasts).toContain("#12 is a draft now; refreshing the list")
   })
@@ -178,7 +269,7 @@ describe("Request Review", () => {
     expect(await ui.find({ key: "requestReview-12" })).toBeDefined()
   })
 
-  test("once asked, a row that still wants reviewers has GitHub asked afresh, so whoever was just asked isn't offered", async ($, on) => {
+  test("needing more approvals, once someone is asked the row offers nobody: the next approval is theirs to give", async ($, on) => {
     const world: World = {
       github: MORE_APPROVALS,
       branch: "main",
@@ -188,8 +279,6 @@ describe("Request Review", () => {
       answer: "Request Review"
     }
     const { clock, seen, ui } = await loaded($, on, world)
-    const suggestionRequests = () => seen.runs.filter((run) => run.includes("suggestedReviewers")).length
-    const before = suggestionRequests()
 
     await ui.press({ key: "requestReview-13" })
     await clock.settle()
@@ -197,10 +286,10 @@ describe("Request Review", () => {
     expect(seen.runs).toContain(
       "gh api --method POST repos/acme/app/pulls/13/requested_reviewers --hostname github.com -f reviewers[]=kim"
     )
-    expect(suggestionRequests()).toBe(before + 1)
+    expect(await ui.find({ key: "requestReview-13" })).toBeUndefined()
   })
 
-  test("everyone picked asked meanwhile: the names kept are out of date, so GitHub is asked afresh", async ($, on) => {
+  test("everyone picked asked on GitHub while the question was open, needing more approvals: nobody is asked twice, and the row offers nobody", async ($, on) => {
     const world: World = {
       github: MORE_APPROVALS,
       branch: "main",
@@ -208,17 +297,19 @@ describe("Request Review", () => {
       suggested: SUGGESTED,
       picks: ["kim"],
       answer: "Request Review",
-      whileAsking: () => (world.current = { 13: { requested: ["kim"] } })
+      whileAsking: () => {
+        world.current = { 13: { requested: ["kim"] } }
+        world.github = { mine: [{ ...MORE_APPROVALS.mine![0]!, requested: ["kim"] }] }
+      }
     }
     const { clock, seen, ui } = await loaded($, on, world)
-    const suggestionRequests = () => seen.runs.filter((run) => run.includes("suggestedReviewers")).length
-    const before = suggestionRequests()
 
     await ui.press({ key: "requestReview-13" })
     await clock.settle()
 
     expect(seen.runs.some((run) => run.includes("requested_reviewers"))).toBe(false)
-    expect(suggestionRequests()).toBe(before + 1)
+    expect(seen.toasts).toContain("#13: kim is asked to review it already; refreshing the list")
+    expect(await ui.find({ key: "requestReview-13" })).toBeUndefined()
   })
 
   test("where GitHub can't say how the pull request stands, the request goes, GitHub having the last word", async ($, on) => {

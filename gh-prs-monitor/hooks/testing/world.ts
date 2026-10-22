@@ -65,6 +65,8 @@ export type World = StoreWorld & {
   instructions?: string
   // The names the person picks in the pane before pressing the answer, where the question offers some.
   picks?: string[]
+  // Claude Code's own dialog answered in steps, one answer each, in order; `answer` once these run out.
+  engineAnswers?: string[]
   // What changes on GitHub while the question is open, before the person answers.
   whileAsking?: () => void
   asked?: number
@@ -434,6 +436,10 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     const { questions } = e as unknown as {
       questions: { question: string; header?: string; options?: { label: string }[] }[]
     }
+    // What Claude Code's own dialog takes (`AskOptions`): four options at most, and a header of 12 characters.
+    if ((questions[0]?.options?.length ?? 0) > 4 || (questions[0]?.header?.length ?? 0) > 12) {
+      throw new Error("Claude Code's dialog takes four options and a 12-character header at most")
+    }
     world.asked = (world.asked ?? 0) + 1
     world.question = questions[0]?.question
     world.header = questions[0]?.header
@@ -442,11 +448,12 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
       await clock.sleep(world.slowDialogMs)
     }
     world.whileAsking?.()
-    if (world.answer === undefined) {
+    const answer = world.engineAnswers?.shift() ?? world.answer
+    if (answer === undefined) {
       return { deny: "dismissed" }
     }
 
-    return { result: { questions, answers: { [questions[0]?.question ?? ""]: world.answer } } as never }
+    return { result: { questions, answers: { [questions[0]?.question ?? ""]: answer } } as never }
   })
 
   return seen
@@ -596,17 +603,28 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
   if (line.startsWith("gh api graphql") && line.includes("suggestedReviewers")) {
     const numbers = [...line.matchAll(/pull(\d+): pullRequest/g)].map((match) => Number(match[1]))
     const repository = Object.fromEntries(
-      numbers.map((number) => [
-        `pull${number}`,
-        {
-          suggestedReviewers: (world.suggested?.[number] ?? []).map((login) => ({
-            isAuthor: false,
-            reviewer: { login }
-          })),
-          reviewRequests: { nodes: [] },
-          latestOpinionatedReviews: { nodes: [] }
-        }
-      ])
+      numbers.map((number) => {
+        const listed = world.github.mine?.find((pull) => pull.number === number)
+        const requested = world.current?.[number]?.requested ?? listed?.requested ?? []
+        const approved = (listed?.reviews ?? []).filter((review) => review.state === "APPROVED")
+
+        return [
+          `pull${number}`,
+          {
+            author: { login: listed?.author ?? "me" },
+            // As GitHub marks a suggestion from past commits, as nearly all are.
+            suggestedReviewers: (world.suggested?.[number] ?? []).map((login) => ({
+              isAuthor: true,
+              isCommenter: false,
+              reviewer: { login }
+            })),
+            reviewRequests: { nodes: requested.map((login) => ({ requestedReviewer: { login } })) },
+            latestOpinionatedReviews: {
+              nodes: approved.map((review) => ({ state: "APPROVED", author: { login: review.login } }))
+            }
+          }
+        ]
+      })
     )
 
     return ok(JSON.stringify({ data: { repository } }))
@@ -718,6 +736,18 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
   }
   if (line.startsWith("gh pr merge ")) {
     world.lastMerge = line.includes(" --auto") ? "auto" : "merge"
+  }
+  // Those asked to review are requested on GitHub from then on, in the list and in the pull request.
+  const reviewersAsked = /^gh api --method POST repos\/acme\/app\/pulls\/(\d+)\/requested_reviewers /.exec(line)
+  if (reviewersAsked) {
+    const number = Number(reviewersAsked[1])
+    const logins = [...line.matchAll(/reviewers\[\]=(\S+)/g)].map((match) => match[1]!)
+    world.github = {
+      ...world.github,
+      mine: world.github.mine?.map((pull) =>
+        pull.number === number ? { ...pull, requested: [...(pull.requested ?? []), ...logins] } : pull
+      )
+    }
   }
   if (line.startsWith("gh pr update-branch ") && world.isUpToDate) {
     return { ...ok(""), stderr: "✓ PR branch already up-to-date\n" }

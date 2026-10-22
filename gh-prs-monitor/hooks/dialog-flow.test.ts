@@ -149,7 +149,7 @@ describe("asking in the pane", () => {
   test("a question that offers names to pick opens with its first picks, the keyboard on its first name", async () => {
     const session = sessionOf()
     const { host, seen } = hostOf()
-    const picking = { names: ["A", "B"], isSingle: false, first: [1], needsPick: true, startsOn: "names" as const }
+    const picking = { names: ["A", "B"], isSingle: false, initial: [1], needsPick: true, startsOn: "names" as const }
 
     const answered = ask(host, session, { ...QUESTION, picking }, "refresh")
     await promisesRun(20)
@@ -163,7 +163,7 @@ describe("asking in the pane", () => {
   test("one with a field of its own puts the keyboard there, though it offers names first", async () => {
     const session = sessionOf()
     const { host, seen } = hostOf()
-    const picking = { names: ["A", "B"], isSingle: false, first: [], needsPick: true, startsOn: "names" as const }
+    const picking = { names: ["A", "B"], isSingle: false, initial: [], needsPick: true, startsOn: "names" as const }
     const field = { label: "Note", placeholder: "Optional", submitLabel: "Send", otherHint: "Type it." }
 
     const answered = ask(host, session, { ...QUESTION, picking, field }, "refresh")
@@ -176,7 +176,7 @@ describe("asking in the pane", () => {
   test("one whose keyboard starts on its answers puts it on the first answer, as other questions do", async () => {
     const session = sessionOf()
     const { host, seen } = hostOf()
-    const picking = { names: ["A", "B"], isSingle: true, first: [0], needsPick: false, startsOn: "answers" as const }
+    const picking = { names: ["A", "B"], isSingle: true, initial: [0], needsPick: false, startsOn: "answers" as const }
 
     const answered = ask(host, session, { ...QUESTION, picking }, "refresh")
     await promisesRun(20)
@@ -361,30 +361,34 @@ describe("asking where the pane doesn't show", () => {
 describe("a question that offers names, where the pane doesn't show", () => {
   // Request Review's: any number of the people GitHub suggests, none at first.
   const PEOPLE: Question = {
-    header: "Request Review",
+    header: "Request",
     subject: "#7 Fix the menu",
     text: "Who should review it?",
     detail: null,
     choices: ["Request Review", "Cancel"],
     main: "Request Review",
     instructions: null,
-    picking: { names: ["kim", "lou"], isSingle: false, first: [], needsPick: true, startsOn: "names" }
+    picking: { names: ["kim", "lou"], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
   }
   // Re-Review's: one kind of review of two, what changed at first, then where it runs, with room for instructions.
   const KIND: Question = {
-    header: "Re-Review",
+    header: "Review PR",
     subject: "#7 Fix the menu",
     text: "What should it cover, and where?",
     detail: "New commits came in since.",
-    choices: ["This Session", "New Session", "Cancel"],
+    choices: ["This session", "New session", "Cancel"],
     main: null,
-    instructions: "to the review in this session",
+    instructions: "to a review in this session",
     picking: {
       names: ["Since Your Review", "Full Review"],
       isSingle: true,
-      first: [0],
+      initial: [0],
       needsPick: false,
-      startsOn: "answers"
+      startsOn: "answers",
+      steps: {
+        names: { text: "What should it cover?", detail: "New commits came in since." },
+        answers: { text: "Where should it be reviewed?", detail: "Here it runs in this conversation." }
+      }
     }
   }
 
@@ -405,7 +409,7 @@ describe("a question that offers names, where the pane doesn't show", () => {
       picks: ["kim", "lou"]
     })
     expect(seen.engine).toEqual(["#7 Fix the menu — Who should review it?"])
-    expect(seen.offered).toEqual([{ header: "Request Review", options: ["kim", "lou"], multiSelect: true }])
+    expect(seen.offered).toEqual([{ header: "Request", options: ["kim", "lou"], multiSelect: true }])
   })
 
   test("what is typed beside the names picks no one; with no one ticked, nobody is asked", async () => {
@@ -426,7 +430,7 @@ describe("a question that offers names, where the pane doesn't show", () => {
       instructions: "",
       picks: ["lou"]
     })
-    expect(yes.seen.offered).toEqual([{ header: "Request Review", options: ["lou", "Cancel"] }])
+    expect(yes.seen.offered).toEqual([{ header: "Request", options: ["lou", "Cancel"] }])
     const no = hostOf({ isShown: false, engine: async () => "Cancel" })
     expect(await ask(no.host, sessionOf(), lone, "request-7")).toBeNull()
     // Where one name is always picked, Cancel beside it is no answer still.
@@ -435,26 +439,27 @@ describe("a question that offers names, where the pane doesn't show", () => {
   })
 
   test("one of two: what to cover, then where, the instructions' hint only with where", async () => {
-    const { host, seen } = answering("Full Review", "This Session")
+    const { host, seen } = answering("Full Review", "This session")
 
     expect(await ask(host, sessionOf(), KIND, "review-7")).toEqual({
-      choice: "This Session",
+      choice: "This session",
       instructions: "",
       picks: ["Full Review"]
     })
+    // Each step says what it asks.
     expect(seen.engine).toEqual([
-      "#7 Fix the menu — What should it cover, and where? New commits came in since.",
-      "#7 Fix the menu — What should it cover, and where? New commits came in since. Instructions typed under Other go to the review in this session."
+      "#7 Fix the menu — What should it cover? New commits came in since.",
+      "#7 Fix the menu — Where should it be reviewed? Here it runs in this conversation. Instructions typed under Other go to a review in this session."
     ])
     expect(seen.offered).toEqual([
-      { header: "Re-Review", options: ["Since Your Review", "Full Review"] },
-      { header: "Re-Review", options: ["This Session", "New Session", "Cancel"] }
+      { header: "Review PR", options: ["Since Your Review", "Full Review"] },
+      { header: "Review PR", options: ["This session", "New session", "Cancel"] }
     ])
   })
 
   test("an answer that names nothing while it asks what to cover is no answer, a decline above all; typed while it asks where, it is instructions", async () => {
     for (const typed of ["no thanks", "cancel", "be thorough"]) {
-      expect(await ask(answering(typed, "This Session").host, sessionOf(), KIND, "review-7")).toBeNull()
+      expect(await ask(answering(typed, "This session").host, sessionOf(), KIND, "review-7")).toBeNull()
     }
     expect(await ask(answering("full review", "only the tests").host, sessionOf(), KIND, "review-7")).toEqual({
       choice: null,

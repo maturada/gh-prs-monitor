@@ -597,6 +597,32 @@ describe("own pull request status", () => {
     expect(snapshotOf({ requested: [{ number: 2, author: "ann" }] }).review[0]?.isReviewerUnrequested).toBe(false)
   })
 
+  test("a bot asked to review, as Copilot is as a pull request opens, asks no person: until one is, Request Review may offer people", () => {
+    const copilot = { __typename: "Bot", login: "copilot-pull-request-reviewer" }
+    const botOnly = mine({ requestedOthers: [copilot] })
+    expect(texts(botOnly)).toContain("requested: copilot-pull-request-reviewer")
+    expect(botOnly.isReviewerUnrequested).toBe(true)
+
+    expect(mine({ requestedOthers: [copilot], requested: ["ann"] }).isReviewerUnrequested).toBe(false)
+    expect(mine({ requestedOthers: [copilot], requestedTeams: ["web"] }).isReviewerUnrequested).toBe(false)
+    expect(mine({ requestedOthers: [copilot], requestedHidden: 1 }).isReviewerUnrequested).toBe(false)
+    // After a person's feedback, the one missing is a request to look again, as with nobody asked.
+    const commented = { login: "ann", state: "COMMENTED", at: "2026-10-07T13:00:00Z" }
+    expect(mine({ requestedOthers: [copilot], reviews: [commented] }).isReviewerUnrequested).toBe(false)
+  })
+
+  test("needing more approvals, it offers people only while no person is asked, whoever gave feedback", () => {
+    const approved = { login: "ann", state: "APPROVED", at: "2026-10-07T13:00:00Z" }
+    const commented = { login: "bob", state: "COMMENTED", at: "2026-10-07T14:00:00Z" }
+    const more = { ...REVIEW_REQUIRED, reviews: [approved] }
+
+    expect(mine(more).stage).toBe("moreApprovals")
+    expect(mine(more).isReviewerUnrequested).toBe(true)
+    expect(mine({ ...more, reviews: [approved, commented] }).isReviewerUnrequested).toBe(true)
+    expect(mine({ ...more, requested: ["cy"] }).isReviewerUnrequested).toBe(false)
+    expect(mine({ ...more, requestedTeams: ["web"] }).isReviewerUnrequested).toBe(false)
+  })
+
   test("after someone's feedback, the missing request is to look again; an approval alone still needs a reviewer", () => {
     const commented = mine({ reviews: [{ login: "ann", state: "COMMENTED", at: "2026-10-07T13:00:00Z" }] })
     expect(commented.details.map((detail) => detail.text)).toEqual(["CI ✓", "reviewed: ann", "no re-review requested"])
@@ -724,6 +750,84 @@ describe("pull requests waiting on the viewer", () => {
     return snapshotOf(fixture).review
   }
 
+  test("where each stands for the viewer is kept in data, with their last review's commit and when", () => {
+    const mine = { login: "me", at: MY_REVIEW_AT }
+    const row = (fixture: ResponseFixture) => {
+      const [only] = [...reviewRows(fixture), ...snapshotOf(fixture).mine]
+
+      return { stage: only?.reviewStage, myReview: only?.myReview, status: only?.status.text }
+    }
+
+    expect(row({ requested: [{ number: 7, author: "ann" }] })).toEqual({
+      stage: "requested",
+      myReview: null,
+      status: "Review Requested"
+    })
+    expect(
+      row({
+        requested: [
+          { number: 7, author: "ann", requested: ["me"], reviews: [{ ...mine, state: "COMMENTED", commit: "earlier" }] }
+        ]
+      })
+    ).toEqual({
+      stage: "rerequested",
+      myReview: { commit: "earlier", at: MY_REVIEW_AT },
+      status: "Re-Review Requested"
+    })
+    expect(
+      row({
+        reviewed: [
+          {
+            number: 7,
+            author: "ann",
+            headRefOid: "new-head",
+            reviews: [{ ...mine, state: "CHANGES_REQUESTED", commit: "old-head" }]
+          }
+        ]
+      })
+    ).toEqual({
+      stage: "updated",
+      myReview: { commit: "old-head", at: MY_REVIEW_AT },
+      status: "Updated Since Your Review"
+    })
+    expect(
+      row({ reviewed: [{ number: 7, author: "ann", reviews: [{ ...mine, state: "CHANGES_REQUESTED" }] }] })?.stage
+    ).toBe("waitingOnAuthor")
+    expect(row({ reviewed: [{ number: 7, author: "ann", reviews: [{ ...mine, state: "DISMISSED" }] }] })?.stage).toBe(
+      "dismissed"
+    )
+    // Dismissed, then asked again: back to the viewer, as any request after their review.
+    expect(
+      row({ requested: [{ number: 7, author: "ann", requested: ["me"], reviews: [{ ...mine, state: "DISMISSED" }] }] })
+        ?.stage
+    ).toBe("rerequested")
+    expect(row({ commented: [{ number: 7, author: "ann" }] })).toEqual({
+      stage: "commented",
+      myReview: null,
+      status: "You Commented"
+    })
+    // The viewer's own rows stand by their own stage.
+    expect(row({ mine: [{ number: 8 }] })).toMatchObject({ stage: null, myReview: null })
+  })
+
+  test("a review the viewer is writing hides none they gave: their last verdict stands in, with its commit", () => {
+    const [row] = reviewRows({
+      reviewed: [
+        {
+          number: 7,
+          author: "ann",
+          headRefOid: "new-head",
+          reviews: [{ login: "me", state: "PENDING", at: "2026-10-08T09:00:00Z" }],
+          verdicts: [{ login: "me", state: "CHANGES_REQUESTED", at: MY_REVIEW_AT, commit: "old-head" }]
+        }
+      ]
+    })
+
+    expect(row?.status).toEqual({ text: "Updated Since Your Review", tone: "warning" })
+    expect(row?.myReview).toEqual({ commit: "old-head", at: MY_REVIEW_AT })
+    expect(pullsQuery(true)).toMatch(/writerVerdicts: [^}]*\{\s*nodes \{[^\n]*commit \{ oid \} \}/)
+  })
+
   test("a fresh review request", () => {
     const [row] = reviewRows({ requested: [{ number: 7, author: "ann" }] })
 
@@ -752,12 +856,13 @@ describe("pull requests waiting on the viewer", () => {
     expect(row?.signals.hasCommitsSinceMyReview).toBe(true)
   })
 
-  test("a review the viewer still has pending is no review given", () => {
+  test("a review the viewer still has pending is no review given, where they gave no verdict either", () => {
     const [row] = reviewRows({
       requested: [{ number: 7, author: "ann", reviews: [{ login: "me", state: "PENDING", at: MY_REVIEW_AT }] }]
     })
 
     expect(row?.status).toEqual({ text: "Review Requested", tone: "warning" })
+    expect(row?.myReview).toBeNull()
   })
 
   test("the viewer's approval is read among those who can push, or from their latest review where they can't", () => {

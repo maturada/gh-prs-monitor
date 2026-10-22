@@ -455,11 +455,11 @@ export function requestQuestion(row: PullRow, names: readonly string[]): Picking
     header: "Request",
     subject: pullSubject(row),
     text: "Who should review it?",
-    detail: "GitHub suggests the people who last changed this code.",
+    detail: "GitHub suggests them from who changed or reviewed this code before.",
     choices: [REQUEST_REVIEW, CANCEL],
     main: REQUEST_REVIEW,
     instructions: null,
-    picking: { names: [...names], isSingle: false, first: [], needsPick: true, startsOn: "names" }
+    picking: { names: [...names], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
   }
 }
 
