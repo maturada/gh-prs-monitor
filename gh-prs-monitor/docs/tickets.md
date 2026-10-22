@@ -12,8 +12,9 @@ tickets shows anywhere.
 ## Set them up
 
 Run `/prs tickets` in the repository. The pane asks for a link to any ticket from your tracker, as copied from the
-browser's address bar. **Check the link** (or Enter) shows what the plugin makes of it, as `Tickets like WEB-5785 link
-to https://linear.app/acme/issue/WEB-5785`, and which pull request in your list it would link; **Save** keeps it.
+browser's address bar. **Check the link** (or Enter) shows what the plugin makes of it, as
+`Tickets like WEB-5785 link to https://linear.app/acme/issue/WEB-5785`, and which pull request in your list it would
+link; **Save** keeps it.
 
 The link is read on your machine, by the plugin's code: nothing is sent anywhere, and the plugin never opens a ticket.
 What it reads from the link:
@@ -58,8 +59,8 @@ desktop app and VS Code all use them, and none of it goes into the repository.
   like a key (`feature/WEB-5785-…`) gets one line in the preview, once: paste a link there to set them up, or skip. A
   skip, any no, or a plain yes turns the question off for that repository. Pasted there, the link goes through your
   conversation, as anything you type does, and is kept only once you press **Save** in Claude Code's dialog, which shows
-  what it would link and any address it would replace (a no holds for the rest of the session); one whose address holds a number alone is left to
-  `/prs tickets`, which asks how its keys are written. [Create PR](create-pr.md)
+  what it would link and any address it would replace (a no holds for the rest of the session); one whose address holds
+  a number alone is left to `/prs tickets`, which asks how its keys are written. [Create PR](create-pr.md)
 - **Review** names the ticket in its overview. With a tool for your tracker already connected to Claude Code (Linear's
   or Atlassian's, say), it reads the ticket once, read-only, and tells you, for you alone, where the change seems to
   miss or go beyond it, as up to three questions. [Review](review.md)

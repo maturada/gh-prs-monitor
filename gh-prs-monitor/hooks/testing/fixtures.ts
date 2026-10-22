@@ -42,8 +42,15 @@ export type PullFixture = {
   // request, as GitHub does; on the review lists only the viewer's own is read.
   reviews?: { login: string; state: string; at: string; commit?: string | null; isBot?: boolean }[]
   // Each reviewer's latest approval or change request; defaults to those among `reviews`. `isWriter: false` for one
-  // who cannot push to the repository, left out where GitHub counts only writers.
-  verdicts?: { login: string; state: string; at?: string; isBot?: boolean; isWriter?: boolean }[]
+  // who cannot push to the repository, left out where GitHub counts only writers; `commit` as a review's.
+  verdicts?: {
+    login: string
+    state: string
+    at?: string
+    commit?: string | null
+    isBot?: boolean
+    isWriter?: boolean
+  }[]
   requested?: string[]
   // The stack it is in, and where.
   stack?: { number: number; position: number; size: number }
@@ -51,11 +58,12 @@ export type PullFixture = {
   comments?: { count: number; lastAuthor?: string; isBot?: boolean; earlier?: { login: string; isBot?: boolean }[] }
 }
 
-function verdictNode(verdict: NonNullable<PullFixture["verdicts"]>[number]): unknown {
+function verdictNode(verdict: NonNullable<PullFixture["verdicts"]>[number], head: string): unknown {
   return {
     author: { __typename: verdict.isBot ? "Bot" : "User", login: verdict.login },
     state: verdict.state,
-    submittedAt: verdict.at ?? null
+    submittedAt: verdict.at ?? null,
+    commit: verdict.commit === null ? null : { oid: verdict.commit ?? head }
   }
 }
 
@@ -95,7 +103,9 @@ export function rawPull(
     autoMergeRequest: pull.isAutoMergeOn ? { enabledAt: "2026-10-07T09:00:00Z" } : null,
     statusCheckRollup: pull.ci === null ? null : { state: pull.ci ?? "SUCCESS" },
     reviewThreads: { nodes: pull.threads ?? [] },
-    writerVerdicts: { nodes: verdicts.filter((verdict) => verdict.isWriter !== false).map(verdictNode) },
+    writerVerdicts: {
+      nodes: verdicts.filter((verdict) => verdict.isWriter !== false).map((verdict) => verdictNode(verdict, head))
+    },
     reviewRequests: {
       nodes: [
         ...(pull.requested ?? []).map((login) => ({ requestedReviewer: { __typename: "User", login } })),
@@ -120,7 +130,10 @@ export function rawPull(
       ...(pull.size
         ? { additions: pull.size.additions, deletions: pull.size.deletions, changedFiles: pull.size.files }
         : {}),
-      viewerLatestReview: own ? { state: own.state, submittedAt: own.at, commit: commitOf(own) } : null
+      // A review still being written has no time yet.
+      viewerLatestReview: own
+        ? { state: own.state, submittedAt: own.state === "PENDING" ? null : own.at, commit: commitOf(own) }
+        : null
     }
   }
   // GitHub's latest reviews leave out a reviewer asked to review again, until they do.

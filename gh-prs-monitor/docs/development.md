@@ -4,10 +4,10 @@ The engine follows `$`, and the names of the session's state, only within the ho
 the engine lives in `hooks/register.tsx`, and everything else lives in the modules it imports: what decides and parses
 is tested on its own, the drawing through the hooks module's tests. A module whose steps need the engine takes what it
 needs as plain functions the hooks module hands in, its host: `RefreshHost` for a load, `CleanupHost`, `PressHost` for a
-press and the writes, `SkillHost` for a skill's run, `BranchLookupHost`, `DialogHost`, `BackHost` for the window going
-back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for the create-pr skill's choices, `TicketsHost` for
-`/prs tickets`, `TicketToolHost` for the skills' ticket tool, `ReportHost` for `/prs report`, and `Host` (`machine.ts`)
-for git and gh.
+press and the writes, `SkillHost` for a skill's run, `BranchLookupHost`, `SuggestionsHost` for GitHub's suggested
+reviewers, `DialogHost`, `BackHost` for the window going back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for
+the create-pr skill's choices, `TicketsHost` for `/prs tickets`, `TicketToolHost` for the skills' ticket tool,
+`ReportHost` for `/prs report`, and `Host` (`machine.ts`) for git and gh.
 register.tsx builds each (`refreshHostOf($, session)`, `pressHostOf`, …). A member passes the call on, a few with a
 guard of their own (a load of the module a reload replaced shows no list, problem or loading mark; an end mark is
 waited for a moment at most), and a module is tested with a host of stand-ins.
@@ -43,19 +43,26 @@ hooks/store-keys.ts       the store's keys: an id too long for one goes in by it
 hooks/shared.ts           GitHub's answers the sessions in a repository share, and when a session takes one, waits
                           for one, or asks GitHub
 hooks/writes.ts           the writes a row's buttons make, each behind the person's yes: merge (a stack's in order),
-                          auto-merge, branch update, ready for review, review asked again, failed runs re-run
-hooks/press.ts            what a press on a row does around its write: the look at GitHub before the question, the
-                          refresh after, a merged row shown merged until GitHub's search catches up
-hooks/actions.ts          the merge, branch update, re-run, ready for review and re-request review questions,
-                          commands and outcomes, and what a press finds changed on GitHub since the list was read
+                          auto-merge, branch update, ready for review, review requested of GitHub's suggestions,
+                          review asked again, failed runs re-run
+hooks/press.ts            what a press on a row does around its write: the look at GitHub before the question (and
+                          before Request Review's write), the refresh after, a merged row shown merged until GitHub's
+                          search catches up
+hooks/actions.ts          the merge, branch update, re-run, ready for review, request review and re-request review
+                          questions, commands and outcomes, and what a press finds changed on GitHub since the list
+                          was read
 hooks/skill-runs.ts       the bundled skills' runs: Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR
                           started from a button (here, in a worktree, or typed into a new session), and each skill
                           turn's life (its row marked while it works, given back as it ends, the list following it)
 hooks/branch-lookup.ts    GitHub's lookup of the pull requests from the session's branch the lists don't show, which
                           a load and Create PR's press ask: its query, the answer read, and the request
+hooks/suggestions.ts      the people GitHub suggests to review your own pull requests nobody was asked to review, at
+                          first or for more approvals, which a load asks once it shows the list: which rows want them,
+                          the request, the answer read, kept for each row's head commit and reviews
 hooks/branch-flow.ts      where Resolve Comments, Fix CI and Resolve Conflicts work, and the arguments they hand
                           their skills
-hooks/review-flow.ts      Review's question and the arguments it hands the skill
+hooks/review-flow.ts      Review's questions: where, and on a pull request back to you what to cover, under a line on
+                          your last review; the answer read, and the arguments it hands the skill
 hooks/create-flow.ts      Create PR: the pull request it could open from the session's branch, its question, the
                           arguments it hands the skill, and the key its button and work go by
 hooks/args.ts             a skill's argument line: written with values quoted and instructions on one line, and the
@@ -91,13 +98,21 @@ hooks/when.ts             how times read: a clock time, the day, how long ago, h
 hooks/demo.ts             the example pull requests, alerts and list /prs demo shows
 hooks/pane.tsx            the pane, from elements every surface draws, and the desktop app's band above the prompt,
                           the header's counts
-hooks/dialog.tsx          the question a button asks, drawn in the pane in place of the list
-hooks/keys.ts             the keys of what the pane and the dialog draw that the flows name too
+hooks/question-frame.tsx  what every question is drawn with, in place of the list: the frame (header, subject, text,
+                          how to leave), the field, and the answers' row
+hooks/dialog.tsx          the question a button asks as the pane draws it: by the picker where it offers names, else
+                          its field and its answers, in that frame
+hooks/picking.ts          the rules of a question answered by picking names first: a pick, Select All and Clear, when
+                          the main answer may go, the names an answer carries
+hooks/picker.tsx          that question as the pane draws it, in that frame: the names that pick, Select All and
+                          Clear, and an answer that carries the names picked
+hooks/keys.ts             the keys of what the pane and the dialog draw that the flows name too, and where a
+                          question's keyboard starts
 hooks/dialog-flow.ts      the dialog as it runs: one question at a time, in the pane or Claude Code's own dialog, and
                           the pane's window back on its row once it is answered
 hooks/back-to-row.ts      the pane's window put back on its row once a question is answered
-hooks/question.ts         what a question is about, text typed in place of a choice read as an answer, and where a
-                          skill runs: this session or a new one
+hooks/question.ts         what a question is about, text typed in place of a choice read as an answer, where a skill
+                          runs (this session or a new one), and how many options Claude Code's own dialog offers
 hooks/layout.ts           what each surface draws differently: text in cells or a font, space by rows or steps, a box
                           out of the flow, toasts, and the colours VS Code names otherwise
 hooks/stable-buttons.ts   a button drawn again unchanged kept as the same element, so its handle outlives a redraw
@@ -148,6 +163,11 @@ changes one is where to look first.
 - A pane opened while another holds the keyboard opens behind it, as a tab, and a plugin can't bring it forward: so
   a question is drawn in the pane whose button was pressed, and only while `$.ui.panes()` says it is shown; otherwise
   the engine's own dialog asks.
+- Claude Code's own dialog (`$.ui.ask`) offers two to four options, padding fewer than two with Yes and No, under a
+  header of 12 characters at most, which the plugin's headers keep to, and with `multiSelect` sends back the options
+  ticked joined by commas: so a question with more answers or names waits in the pane (`fitsEngineDialog`), a lone name
+  goes beside Cancel (`askPicks`), the names ticked are read back from the commas, and GitHub's suggestions are four at
+  most (`ENGINE_OPTIONS`). The test world's dialog refuses what the engine refuses.
 - Escape, or the close mark, closes the pane as the person's close, raising `ui.close`: while a question is up, the hook
   takes it as Cancel and keeps the pane open. A question answered already that still shows has a press waiting on an
   engine call that never came back: that close lets it go and closes the pane, and the pane draws a question only while

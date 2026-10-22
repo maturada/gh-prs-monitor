@@ -48,9 +48,9 @@ about the ones waiting on your review; mentions about anyone else's open pull re
 
 ## When alerts show
 
-By default, alerts don't cut into Claude's work. While a turn runs, they wait and show together when it finishes, so they don't
-cover what you are reading; a long turn shows what it held each quarter of an hour, then holds again. A reload of the
-plugin during the turn keeps holding them for it, and **Hold alerts while working** turns the waiting off.
+By default, alerts don't cut into Claude's work. While a turn runs, they wait and show together when it finishes, so
+they don't cover what you are reading; a long turn shows what it held each quarter of an hour, then holds again. A
+reload of the plugin during the turn keeps holding them for it, and **Hold alerts while working** turns the waiting off.
 
 Coming back is quiet too. A session's first check compares with your last look and sums up everything in one toast,
 `Since yesterday 17:40, 3 pull requests changed — see /prs`, and marks the changes in the pane; so does the first

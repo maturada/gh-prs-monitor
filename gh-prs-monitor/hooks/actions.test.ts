@@ -22,7 +22,11 @@ import {
   readyArgv,
   readyConfirm,
   readyDone,
-  rerequestArgv,
+  requestArgv,
+  requestDone,
+  requestedAlready,
+  requestQuestion,
+  requestRefused,
   rerequestConfirm,
   rerequestDone,
   rerunArgv,
@@ -48,11 +52,14 @@ const ROW: PullRow = {
   isDraft: false,
   stack: null,
   stage: "ready",
+  reviewStage: null,
+  myReview: null,
   status: { text: "Ready To Merge", tone: "success" },
   details: [],
   actions: ["merge"],
   primary: "merge",
   rerequestFrom: [],
+  isReviewerUnrequested: false,
   signals: {
     ci: "SUCCESS",
     isConflicting: false,
@@ -277,6 +284,9 @@ describe("the pull request as GitHub has it at a press", () => {
     expect(staleFor("fixCi", asking, { ...current, isDraft: true })).toBe(null)
     expect(staleNote(asking, "draft")).toBe("#7 is a draft now; refreshing the list")
     expect(staleFor("merge", asking, { ...current, requested: ["bob"] })).toBe(null)
+    // Request Review asks only of one up for review; whom it asks is the second look's (`requestedAlready`).
+    expect(staleFor("requestReview", row, { ...current, requested: ["bob"] })).toBe(null)
+    expect(staleFor("requestReview", row, { ...current, isDraft: true })).toBe("draft")
     expect(staleFor("resolve", asking, { ...current, requested: ["bob"] })).toBe(null)
     expect(staleNote(asking, "asked")).toBe("#7 had its review re-requested meanwhile; refreshing the list")
     expect(staleFor("merge", row, current)).toBe(null)
@@ -470,6 +480,39 @@ describe("stacked merge", () => {
   })
 })
 
+describe("request review", () => {
+  test("asks who should review it, among the people GitHub suggests, none picked at first and the request waiting for one", () => {
+    expect(requestQuestion(ROW, ["kim", "lou"])).toEqual({
+      header: "Request",
+      subject: "#7 Fix the menu",
+      text: "Who should review it?",
+      detail: "GitHub suggests them from who changed or reviewed this code before.",
+      choices: ["Request Review", "Cancel"],
+      main: "Request Review",
+      instructions: null,
+      picking: { names: ["kim", "lou"], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
+    })
+  })
+
+  test("asks those picked by GitHub's request for reviewers, and says so", () => {
+    expect(requestArgv(GITHUB, ROW, ["ann", "bob"])).toEqual([
+      ...["gh", "api", "--method", "POST", "repos/acme/app/pulls/7/requested_reviewers", "--hostname", "github.com"],
+      ...["-f", "reviewers[]=ann", "-f", "reviewers[]=bob"]
+    ])
+    expect(requestDone(ROW, ["ann", "bob"])).toBe("#7: review requested from ann and bob")
+  })
+
+  test("those asked meanwhile, and GitHub's refusal, which asks nobody, are said so", () => {
+    expect(requestedAlready(ROW, ["ann"])).toBe("#7: ann is asked to review it already; refreshing the list")
+    expect(requestedAlready(ROW, ["ann", "bob"])).toBe(
+      "#7: ann and bob are asked to review it already; refreshing the list"
+    )
+    expect(requestRefused("Reviews may only be requested from collaborators.")).toBe(
+      "nobody was asked: Reviews may only be requested from collaborators."
+    )
+  })
+})
+
 describe("re-request review", () => {
   test("asks those named again, by GitHub's request for reviewers, and says so", () => {
     const row = { ...ROW, rerequestFrom: ["ann"] }
@@ -484,7 +527,7 @@ describe("re-request review", () => {
     expect(confirmLabels(confirm)).toEqual(["Re-request review", "Cancel"])
     expect(readConfirm(confirm, pressed("Re-request review"))).toBe(true)
     expect(readConfirm(confirm, pressed("Cancel"))).toBe(null)
-    expect(rerequestArgv(GITHUB, row)).toEqual([
+    expect(requestArgv(GITHUB, row, row.rerequestFrom)).toEqual([
       ...["gh", "api", "--method", "POST", "repos/acme/app/pulls/7/requested_reviewers", "--hostname", "github.com"],
       ...["-f", "reviewers[]=ann"]
     ])
@@ -495,7 +538,7 @@ describe("re-request review", () => {
     const row = { ...ROW, rerequestFrom: ["ann", "bob", "cid"] }
 
     expect(rerequestConfirm(row).text).toBe("Ask ann, bob and cid to review it again?")
-    expect(rerequestArgv(ENTERPRISE, row)).toEqual([
+    expect(requestArgv(ENTERPRISE, row, row.rerequestFrom)).toEqual([
       ...["gh", "api", "--method", "POST", "repos/acme/app/pulls/7/requested_reviewers", "--hostname"],
       ...["github.acme.dev", "-f", "reviewers[]=ann", "-f", "reviewers[]=bob", "-f", "reviewers[]=cid"]
     ])

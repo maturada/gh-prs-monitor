@@ -1,16 +1,26 @@
 // Author: David Matura
 
 import type { Activity, Answer, Badge, MergedPull, PullAction, PullRow, PullsSnapshot, Question } from "../types"
-import { confirmQuestion, mergeConfirm, readyConfirm, rerequestConfirm, rerunConfirm, updateConfirm } from "./actions"
+import {
+  andList,
+  confirmQuestion,
+  mergeConfirm,
+  readyConfirm,
+  requestQuestion,
+  rerequestConfirm,
+  rerunConfirm,
+  updateConfirm
+} from "./actions"
 import { branchPlaceQuestion } from "./branch-flow"
 import type { PullToOpen } from "./create-flow"
 import { CANCEL, isDecline } from "./question"
-import { reviewPlaceQuestion } from "./review-flow"
+import { isBackToReview, backToReviewQuestion, reviewPlaceQuestion } from "./review-flow"
 import type { PaneView } from "./pane"
 import { readPulls } from "./pulls"
 import { activityOf, alertLines, awayLine, systemNotificationText } from "./alerts"
 import type { Alert, AlertKind } from "./alerts"
 import { listText } from "./list"
+import { withRequestReview } from "./suggestions"
 import { summaryCounts } from "./summary"
 import type { SummaryCounts } from "./summary"
 import type { TicketLinks } from "./tickets"
@@ -55,8 +65,14 @@ export function demoQuestion(
     updateBranch: () => confirmQuestion(updateConfirm(row)),
     ready: () => confirmQuestion(readyConfirm(row)),
     rerequest: () => confirmQuestion(rerequestConfirm(row)),
+    requestReview: () => requestQuestion(row, demoSuggested(row)),
     rerun: () => confirmQuestion(rerunConfirm(row, [{ id: 0, name: "test" }])),
-    review: () => (canOpenSession ? reviewPlaceQuestion(row, false) : null),
+    review: () =>
+      isBackToReview(row)
+        ? backToReviewQuestion(row, false, snapshot.fetchedAt, canOpenSession)
+        : canOpenSession
+          ? reviewPlaceQuestion(row, false)
+          : null,
     resolve: () => branchPlaceQuestion("resolve", row, checkout, canOpenSession, false),
     fixCi: () => branchPlaceQuestion("fixCi", row, checkout, canOpenSession, false),
     resolveConflicts: () => branchPlaceQuestion("resolveConflicts", row, checkout, canOpenSession, false)
@@ -82,8 +98,14 @@ export function demoAnswerNote(example: string, question: Question, answer: Answ
   ) {
     return null
   }
-  const along = answer.instructions === "" ? "" : " with your instructions"
-  const picked = answer.choice === null ? "your instructions" : `"${answer.choice}"${along}`
+  // What goes ahead, the place pressed or instructions sent alone, and what goes with it: the names picked, and
+  // instructions typed before a press.
+  const what = answer.choice === null ? "your instructions" : `"${answer.choice}"`
+  const along = [
+    ...(answer.picks ?? []),
+    ...(answer.choice !== null && answer.instructions !== "" ? ["your instructions"] : [])
+  ]
+  const picked = along.length > 0 ? `${what} with ${andList(along)}` : what
 
   return `${example} is an example: in your own list, ${picked} would go ahead. Nothing was sent to GitHub.`
 }
@@ -208,7 +230,14 @@ const MINE: readonly Example[] = [
     isInMergeQueue: true,
     reviews: [{ login: "another-teammate", state: "APPROVED", hoursAgo: 1 }]
   },
-  { number: 1239, title: "Lazy-load the video player", mergeStateStatus: "BEHIND", requested: ["a-teammate"] },
+  // Just opened where the base requires a review, nobody asked yet: Request Review offers the people GitHub would
+  // suggest (`DEMO_SUGGESTED`).
+  {
+    number: 1239,
+    title: "Lazy-load the video player",
+    reviewDecision: "REVIEW_REQUIRED",
+    mergeStateStatus: "BLOCKED"
+  },
   { number: 1244, title: "New onboarding experiment", isDraft: true }
 ]
 
@@ -274,22 +303,21 @@ const DEMO_TICKETS: TicketLinks = {
 
 // As GitHub answers the query: the viewer's own fragment (`pull`) or the review lists' (`reviewPull`).
 function rawPull(example: Example, now: number, isOwn: boolean): unknown {
-  const head = `example-${example.number}`
+  // Commit ids that read as GitHub's do, cut to seven characters as a review's line names one: the head, and one
+  // before it.
+  const head = `${example.number}ab3f9c2e7d1`
+  const before = `${example.number}0d71e5a4c96`
   const reviews = example.reviews ?? []
-  const verdict = (each: ExampleReview) => ({
+  const review = (each: ExampleReview) => ({
     author: { __typename: "User", login: each.login },
     state: each.state,
-    submittedAt: new Date(now - each.hoursAgo * HOUR).toISOString()
+    submittedAt: new Date(now - each.hoursAgo * HOUR).toISOString(),
+    commit: { oid: each.isBeforeHead ? before : head }
   })
-  const review = (each: ExampleReview) => ({
-    ...verdict(each),
-    commit: { oid: each.isBeforeHead ? `${head}-before` : head }
-  })
-  const verdicts = reviews
-    .filter((each) => each.state === "APPROVED" || each.state === "CHANGES_REQUESTED")
-    .map(verdict)
+  const verdicts = reviews.filter((each) => each.state === "APPROVED" || each.state === "CHANGES_REQUESTED").map(review)
   const [additions, deletions, changedFiles] = example.size ?? []
   const own = reviews.find((each) => each.login === VIEWER)
+  const ownReview = own && review(own)
   // GitHub's latest reviews leave out a reviewer asked to review again, until they do.
   const askedAgain = new Set(example.requested ?? [])
   const byFragment = isOwn
@@ -305,8 +333,8 @@ function rawPull(example: Example, now: number, isOwn: boolean): unknown {
         additions,
         deletions,
         changedFiles,
-        viewerLatestReview: own
-          ? { state: own.state, submittedAt: verdict(own).submittedAt, commit: review(own).commit }
+        viewerLatestReview: ownReview
+          ? { state: ownReview.state, submittedAt: ownReview.submittedAt, commit: ownReview.commit }
           : null
       }
 
@@ -385,7 +413,21 @@ export function demoSnapshot(now: number): PullsSnapshot | null {
     return null
   }
 
-  return { ...result.snapshot, mine: withoutLinks(result.snapshot.mine), review: withoutLinks(result.snapshot.review) }
+  const snapshot = {
+    ...result.snapshot,
+    mine: withoutLinks(result.snapshot.mine),
+    review: withoutLinks(result.snapshot.review)
+  }
+
+  return withRequestReview(snapshot, demoSuggested)
+}
+
+// Whom GitHub would suggest to review the example nobody was asked to review, as Request Review offers a real list's
+// suggestions (`suggestions.ts`).
+const DEMO_SUGGESTED: Readonly<Record<number, readonly string[]>> = { 1239: ["a-teammate", "another-teammate"] }
+
+function demoSuggested(row: PullRow): readonly string[] {
+  return DEMO_SUGGESTED[row.number] ?? []
 }
 
 // What changed lately on two of the examples, from their example alerts, as the pane marks it under their rows, and

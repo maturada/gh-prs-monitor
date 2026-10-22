@@ -100,3 +100,27 @@ git checkout -q main; git checkout -q pr-7; echo "  (a plain checkout back and f
 # 7. the sparse check, as written
 p=$(scenario sparse 'echo a > a.txt' 'git sparse-checkout set --cone src' | tail -1)
 cd "$p"; echo "=== sparse: '$(bash -c "$(cat $T/sparse-check)")' (dense clone: '$(cd ../teammate && bash -c "$(cat $T/sparse-check)")')"
+
+# 8. create-pr's view of what the pull request changes, on a branch three commits behind its base: Phase 5's stat and
+#    Phase 6's who-changed lookup, as written, list the branch's own files alone, never what the base added since (a
+#    two-point diff names those as deleted). A version without them says so.
+python3 - "$SK" "$T" <<'PY'
+import re, sys, pathlib
+sk, out = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+pr = (sk / "create-pr/SKILL.md").read_text()
+stat = re.findall(r"`(git diff --stat '<BASE_SHA>\.\.\.HEAD')`", pr)
+look = re.findall(r"\*\*Who last changed these files\*\*.*?```bash\n(.+?\n.+?)\n", pr, re.S)
+# With no file picked in Phase 4, the lookup runs its first git diff alone, as the skill says.
+picked = r"git -c core.quotePath=false diff --numstat --no-renames --diff-filter=a HEAD -- ':\(top,literal\)<file>' ':\(top,literal\)<file>'; "
+(out / "createpr-stat").write_text(stat[0] if len(stat) == 1 else "")
+(out / "createpr-files").write_text(re.sub(picked, "", look[0]) if len(look) == 1 else "")
+PY
+p=$(scenario createpr-behind 'echo a > a.txt' 'git checkout -q -b feature origin/feature && echo one > seed.txt && git commit -qam one && echo two > two.txt && git add two.txt && git commit -qm two' | tail -1)
+(cd "$p/../teammate" && git checkout -q main && for f in b c d; do echo $f > $f.txt && git add $f.txt && git commit -qm "base $f"; done && git push -q origin main)
+cd "$p"; git fetch -q origin; BASE_SHA=$(git rev-parse origin/main)
+if [ -s "$T/createpr-stat" ] && [ -s "$T/createpr-files" ]; then
+  echo "=== createpr-behind: stat lists $(bash -c "$(sub createpr-stat "<BASE_SHA>" "$BASE_SHA")" | awk -F'|' 'NF > 1 { gsub(/ /, "", $1); print $1 }' | sort | tr '\n' ' ')"
+  echo "  the lookup asks about: $(bash -c "$(sub createpr-files "<BASE_SHA>" "$BASE_SHA")" | tr '\n' ' ')(the base added b.txt, c.txt and d.txt since)"
+else
+  echo "=== createpr-behind: not in this version's skill"
+fi

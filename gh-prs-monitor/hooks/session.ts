@@ -2,7 +2,7 @@
 
 import type { Timer } from "claude-code"
 
-import type { Answer, BranchPulls, PullsSnapshot } from "../types"
+import type { Answer, BranchPulls, PullsSnapshot, Question } from "../types"
 import { nothingHeld } from "./alerts"
 import type { HeldAlerts } from "./alerts"
 import type { CREATE_PR } from "./create-flow"
@@ -62,6 +62,9 @@ export type Session = {
   // GitHub asked about the pull requests from the session's branch at a commit, with where the list knew the last one
   // to end (`BranchPulls`), `<branch> <commit> <ended at>`, shared by what asks the same meanwhile.
   branchLookup: { key: string; done: Promise<BranchLook> } | null
+  // The people GitHub suggests to review the viewer's own pull requests that want them (`suggestions.ts`), by
+  // repository and number.
+  suggestedReviewers: Map<string, Suggested>
   // The question the plugin's dialog asks, one at a time, or null while none is open, and how many it has asked.
   asking: OpenQuestion | null
   questionCount: number
@@ -80,16 +83,24 @@ export type GoingBack = {
   offset: number
 }
 
-// A question open: what gives it its answer (null when dismissed), whether it has one already, which its press has yet
-// to put away, whether it is in the pane, where the pane's close cancels it, or in Claude Code's own dialog, and its
-// field for instructions in the pane: the key it is drawn under and what was typed in it so far.
+// A question open: the question asked, which a press reads as it lands (`stableButtons`); what gives it its answer
+// (null when dismissed), whether it has one already, which its press has yet to put away, whether it is in the pane,
+// where the pane's close cancels it, or in Claude Code's own dialog, and its field for instructions in the pane: the
+// key it is drawn under and what was typed in it so far.
 export type OpenQuestion = {
+  question: Question
   answer: (answer: Answer | null) => void
   isAnswered: boolean
   isInPane: boolean
   fieldKey: string
   draft: string
+  // The names picked so far, by index, where the question offers some to pick (`picker.tsx`); none elsewhere.
+  picks: number[]
 }
+
+// GitHub's suggested reviewers for a pull request: kept for the head commit and reviews asked about
+// (`suggestionBasis`), or null names while they are asked for.
+export type Suggested = { basis: string; names: string[] | null }
 
 // The loads, and the timer that runs them.
 export type Checks = {
@@ -213,6 +224,7 @@ export function createSession(settings: Settings): Session {
     stacklessHosts: new Set(),
     switchingFor: null,
     branchLookup: null,
+    suggestedReviewers: new Map(),
     asking: null,
     questionCount: 0,
     listOffset: 0,

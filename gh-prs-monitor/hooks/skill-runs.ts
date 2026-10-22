@@ -42,7 +42,8 @@ import type { PressHost } from "./press"
 import { isOnBranch, pullOnBranch, storedSnapshot } from "./pulls"
 import { readSessionAnswer } from "./question"
 import type { SessionPlace } from "./question"
-import { reviewArgs, reviewPlaceQuestion } from "./review-flow"
+import { isBackToReview, readReviewAnswer, backToReviewQuestion, reviewArgs, reviewPlaceQuestion } from "./review-flow"
+import type { ReviewStart } from "./review-flow"
 import type { Mark, Session, SkillMark, SkillStart } from "./session"
 
 // What a bundled skill's run reaches beyond a press's (`PressHost`), handed in by the hooks module.
@@ -224,18 +225,17 @@ export function installNotices(host: SkillHost, session: Session, number: number
 
 // --- Review, Resolve Comments, Fix CI and Resolve Conflicts ---
 
-// Asks whether to review here or in a new session where the person's surface can open one (`canOpenSession`);
-// elsewhere it starts here.
+// Starts the review where the person says (`askReview`), from their last review where they pick so.
 export async function review(host: SkillHost, session: Session, row: PullRow, surface: string): Promise<void> {
   await pressing(host, session, row.number, "Checking…", async () => {
     if (!(await lookBeforeAsking(host, session, "review", row)).isGoing) {
       return
     }
-    const place: SessionPlace = canOpenSession(surface) ? await askReviewPlace(host, session, row) : { kind: "here" }
+    const { place, isSince } = await askReview(host, session, row, surface)
     if (place.kind === "cancel") {
       return
     }
-    const args = reviewArgs(row.url, place.note)
+    const args = reviewArgs(row.url, place.note, isSince)
     const here = async (): Promise<"started"> => {
       await host.setBusy(row.number, "Starting Review…")
       await runSkill(host, session, REVIEW_COMMAND, args, row.number)
@@ -257,11 +257,23 @@ export async function review(host: SkillHost, session: Session, row: PullRow, su
   })
 }
 
-async function askReviewPlace(host: SkillHost, session: Session, row: PullRow): Promise<SessionPlace> {
-  const question = reviewPlaceQuestion(row, session.runningTurns.size > 0)
+// What Review asks before it starts: on a row back to the viewer, what to cover and where, or what alone where no new
+// session can open (`canOpenSession`); elsewhere where, or nothing where no new session can open, which starts the
+// whole review here.
+async function askReview(host: SkillHost, session: Session, row: PullRow, surface: string): Promise<ReviewStart> {
+  const canOpen = canOpenSession(surface)
+  const isWorking = session.runningTurns.size > 0
+  const question = isBackToReview(row)
+    ? backToReviewQuestion(row, isWorking, await host.now(), canOpen)
+    : canOpen
+      ? reviewPlaceQuestion(row, isWorking)
+      : null
+  if (question === null) {
+    return { place: { kind: "here" }, isSince: false }
+  }
   const answer = await host.ask(question, buttonKey("review", row.number))
 
-  return answer === null ? { kind: "cancel" } : readSessionAnswer(answer)
+  return answer === null ? { place: { kind: "cancel" }, isSince: false } : readReviewAnswer(answer)
 }
 
 export async function workOnBranch(

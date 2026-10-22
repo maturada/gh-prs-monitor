@@ -202,6 +202,7 @@ function hostWith(
     // The rows shown merged, what the lookup Create PR waits on was asked about, and what each cleanup was handed.
     merged: [] as MergedPull[],
     branchLookups: [] as [string | null, string | null][],
+    suggested: [] as number[][],
     cleanUps: [] as number[][],
     // The store the sessions share, and the clock.
     store: {} as Record<string, unknown>,
@@ -352,6 +353,9 @@ function hostWith(
     },
     lookUpBranch: async (_, branch, head) => {
       state.branchLookups.push([branch, head])
+    },
+    suggestReviewers: async (_, snapshot) => {
+      state.suggested.push(snapshot.mine.map((row) => row.number))
     },
     cleanUp: async (_, known) => {
       state.cleanUps.push(known.map((each) => each.number))
@@ -952,6 +956,16 @@ describe("a load", () => {
     await refresh(host, sessionOf(), false)
 
     expect(state.branchLookups).toEqual([["feature/export", "pressed"]])
+  })
+
+  test("GitHub's suggested reviewers are asked for with the list shown, and not where another list took its place", async () => {
+    const shown = hostWith({ list: { mine: [{ number: 12 }] } })
+    await refresh(shown.host, sessionOf(), false)
+    expect(shown.state.suggested).toEqual([[12]])
+
+    const replaced = hostWith({ list: { mine: [{ number: 12 }] }, isReplaced: true })
+    await refresh(replaced.host, sessionOf(), false)
+    expect(replaced.state.suggested).toEqual([])
   })
 
   test("a cleanup is handed how the pull requests that left ended, also where only a branch of the viewer's left", async () => {

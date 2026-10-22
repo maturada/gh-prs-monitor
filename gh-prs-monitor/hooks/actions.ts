@@ -4,10 +4,12 @@ import type { Answer, MergeMethod, PullAction, PullRow, PullStack, Question } fr
 import { CANCEL, isDecline, pullSubject } from "./question"
 import { ghApiArgv } from "./gh"
 import type { RepoRef } from "./gh"
+import type { PickingQuestion } from "./picking"
 
 export const ACTION_LABELS: Readonly<Record<PullAction, string>> = {
   resolve: "Resolve Comments",
   rerequest: "Re-Request Review",
+  requestReview: "Request Review",
   review: "Review",
   fixCi: "Fix CI",
   resolveConflicts: "Resolve Conflicts",
@@ -186,8 +188,8 @@ export function readCurrentPull(json: string): CurrentPull | null {
 // What changed since the list was read that a press doesn't go on past: merged or closed, new commits under a merge,
 // which would pin it to a commit the pull request no longer ends at, a draft marked ready already, auto-merge on
 // already, a branch with nothing of its base to bring in now or conflicting with it, conflicts resolved already, and
-// for Re-Request Review a review asked again already of someone it would ask, who would be notified twice, or a pull
-// request turned back into a draft, which isn't up for review. Null for none.
+// for Re-Request Review a review asked again already of someone it would ask, who would be notified twice, or, for it
+// and Request Review, a pull request turned back into a draft, which isn't up for review. Null for none.
 export type Stale =
   | "merged"
   | "closed"
@@ -233,7 +235,7 @@ export function staleFor(action: PullAction, row: PullRow, current: CurrentPull)
   if (action === "rerequest" && row.rerequestFrom.some((login) => current.requested.includes(login))) {
     return "asked"
   }
-  if (action === "rerequest" && current.isDraft) {
+  if ((action === "rerequest" || action === "requestReview") && current.isDraft) {
     return "draft"
   }
 
@@ -342,7 +344,7 @@ function pullList(pulls: readonly StackMember[]): string {
 }
 
 // "a", "a and b", "a, b and c".
-function andList(items: readonly string[]): string {
+export function andList(items: readonly string[]): string {
   return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? "")
 }
 
@@ -443,6 +445,48 @@ export function readyDone(row: PullRow): string {
   return `#${row.number} is ready for review`
 }
 
+// Request Review's main answer, which its press reads back.
+export const REQUEST_REVIEW = "Request Review"
+
+// Request Review's question: who of the people GitHub suggests should review it, any number of them, nobody picked at
+// first, and the request only once someone is.
+export function requestQuestion(row: PullRow, names: readonly string[]): PickingQuestion {
+  return {
+    header: "Request",
+    subject: pullSubject(row),
+    text: "Who should review it?",
+    detail: "GitHub suggests them from who changed or reviewed this code before.",
+    choices: [REQUEST_REVIEW, CANCEL],
+    main: REQUEST_REVIEW,
+    instructions: null,
+    picking: { names: [...names], isSingle: false, initial: [], needsPick: true, startsOn: "names" }
+  }
+}
+
+// GitHub's request for reviewers, which Request Review and Re-Request Review both make: of someone who reviewed before,
+// a review asked again.
+export function requestArgv(repo: RepoRef, row: PullRow, logins: readonly string[]): string[] {
+  return [
+    ...ghApiArgv(repo, `pulls/${row.number}/requested_reviewers`, "POST"),
+    ...logins.flatMap((login) => ["-f", `reviewers[]=${login}`])
+  ]
+}
+
+export function requestDone(row: PullRow, logins: readonly string[]): string {
+  return `#${row.number}: review requested from ${andList(logins)}`
+}
+
+// Everyone Request Review would ask is asked on GitHub already, since GitHub suggested them or while the question was
+// open: nobody is asked twice.
+export function requestedAlready(row: PullRow, logins: readonly string[]): string {
+  return `#${row.number}: ${andList(logins)} ${logins.length > 1 ? "are" : "is"} asked to review it already; refreshing the list`
+}
+
+// GitHub asks all of those picked or none: one it refuses, as one without access, refuses the request.
+export function requestRefused(said: string): string {
+  return `nobody was asked: ${said}`
+}
+
 // GitHub's re-request: a review asked of someone who reviewed before is asked again.
 export function rerequestConfirm(row: PullRow): Confirm<true> {
   const people = andList(row.rerequestFrom)
@@ -454,13 +498,6 @@ export function rerequestConfirm(row: PullRow): Confirm<true> {
     detail: `${people} requested changes before the latest commits.`,
     choices: [{ label: "Re-request review", value: true }]
   }
-}
-
-export function rerequestArgv(repo: RepoRef, row: PullRow): string[] {
-  return [
-    ...ghApiArgv(repo, `pulls/${row.number}/requested_reviewers`, "POST"),
-    ...row.rerequestFrom.flatMap((login) => ["-f", `reviewers[]=${login}`])
-  ]
 }
 
 export function rerequestDone(row: PullRow): string {

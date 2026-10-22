@@ -8,7 +8,7 @@
 import { atom, read, update } from "claude-code"
 import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOpenResult } from "claude-code"
 
-import type { Activity, CheckoutAt, PullAction, PullRow, Question } from "../types"
+import type { Activity, CheckoutAt, PullAction, PullRow, PullsSnapshot, Question } from "../types"
 import { ACTION_LABELS } from "./actions"
 import { nextNoteExpiry, nothingHeld, recentNotes } from "./alerts"
 import { pullSuggestions } from "./autocomplete"
@@ -36,7 +36,7 @@ import {
   demoView,
   DEMO_TO_OPEN
 } from "./demo"
-import { dialogView } from "./dialog"
+import { questionView } from "./dialog"
 import { ask, askInEngineDialog, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { messageOf, SETUP_NOTE_MS } from "./gh"
@@ -91,6 +91,8 @@ import {
   shareAnswer
 } from "./store"
 import type { StoreHost } from "./store"
+import { askSuggestions, suggestionsFor, withRequestReview } from "./suggestions"
+import type { SuggestionsHost } from "./suggestions"
 import { hasAnything, statusSummary, summaryCounts, summaryText } from "./summary"
 import { answerTicketLinks, TICKET_TOOL } from "./ticket-tool"
 import type { TicketToolHost } from "./ticket-tool"
@@ -100,7 +102,7 @@ import { ticketsFlow, ticketsText } from "./tickets-flow"
 import type { TicketsHost } from "./tickets-flow"
 import { announce, release } from "./toasts"
 import type { ToastHost } from "./toasts"
-import { markReady, merge, rerequestReview, rerun, updateBranch } from "./writes"
+import { markReady, merge, requestReview, rerequestReview, rerun, updateBranch } from "./writes"
 
 type Engine = EngineInterface
 
@@ -424,7 +426,7 @@ export const register: Register = (on, options) => {
     // A question takes the list's place until it is answered (`ask`).
     const question = drawnQuestion(session, await read($, dialogState))
     if (question !== null) {
-      return drawQuestion(session, e, question, $.ui.resolve(e))
+      return drawQuestion(session, e, question, $.ui.resolve(e), () => $.ui.invalidate("ui.render"))
     }
     // Where the window stands over the list, for a question to put it back there (`backToRow`): the terminal's drawing
     // says; elsewhere the drawing carries what the app last sent, and the `ui.scroll` hook keeps it as each move lands.
@@ -436,12 +438,13 @@ export const register: Register = (on, options) => {
   })
 }
 
-// The open question in the pane, its buttons kept stable across redraws.
+// The open question in the pane (`questionView`), its buttons kept stable across redraws.
 function drawQuestion(
   session: Session,
   e: RenderInput<"Pane">,
   question: Question,
-  elements: ReturnType<Engine["ui"]["resolve"]>
+  elements: ReturnType<Engine["ui"]["resolve"]>,
+  redraw: () => void
 ): RenderElement {
   const { Box, Text, Button } = elements
   const kit = {
@@ -454,20 +457,8 @@ function drawQuestion(
   }
   // Escape cancels where the pane holds the keyboard; at the prompt it may stop Claude's turn instead.
   const isEscapable = e.surface === "terminal" && e.props.isFocused
-  const field = {
-    key: session.asking?.fieldKey ?? "answer-text",
-    read: () => session.asking?.draft ?? "",
-    keep: (text: string) => {
-      if (session.asking) {
-        session.asking.draft = text
-      }
-    }
-  }
 
-  return dialogView(kit, question, (answer) => session.asking?.answer(answer), field, {
-    surface: e.surface,
-    isEscapable
-  })
+  return questionView(kit, session, question, { surface: e.surface, isEscapable }, redraw)
 }
 
 // The examples' list. Its buttons write nothing; Refresh leaves it for the person's own list. They keep buttons of
@@ -502,7 +493,7 @@ async function drawDemo($: Engine, session: Session, e: RenderInput<"Pane">): Pr
 // the next refresh instead of being drawn.
 async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Promise<RenderElement> {
   const { Box, Text, Button, Link } = $.ui.resolve(e)
-  const snapshot = storedSnapshot(await read($, snapshotState))
+  const snapshot = listAsDrawn(session, storedSnapshot(await read($, snapshotState)))
   const checkout = await read($, checkoutState)
   const branch = checkout?.branch ?? null
   const head = checkout?.head ?? null
@@ -1007,10 +998,16 @@ async function actOn(
   pullNumber: number,
   surface: string
 ): Promise<void> {
-  const row = rowOf(await read($, snapshotState), pullNumber)
+  const row = rowOf(listAsDrawn(session, await read($, snapshotState)), pullNumber)
   if (row?.actions.includes(action)) {
     act($, session, action, row, surface)
   }
+}
+
+// The list kept, with Request Review on the rows GitHub suggests someone for (`suggestions.ts`), as the pane draws it
+// and a press finds the button pressed.
+function listAsDrawn(session: Session, snapshot: PullsSnapshot | null): PullsSnapshot | null {
+  return snapshot && withRequestReview(snapshot, (row) => suggestionsFor(session, snapshot, row))
 }
 
 // The notes of what changed, kept: each goes at its time, whether or not a load comes then (on demand, or with an
@@ -1059,6 +1056,8 @@ function act($: Engine, session: Session, action: PullAction, row: PullRow, surf
       return background($, markReady(pressHostOf($, session), session, row))
     case "rerequest":
       return background($, rerequestReview(pressHostOf($, session), session, row))
+    case "requestReview":
+      return background($, requestReview(pressHostOf($, session), session, row))
     case "rerun":
       return background($, rerun(pressHostOf($, session), session, row))
     default:
@@ -1075,6 +1074,15 @@ function branchLookupHostOf($: Engine): BranchLookupHost {
     storedList: () => read($, snapshotState),
     ...branchPullsStateOf($),
     log: (line) => logDebug($, line)
+  }
+}
+
+// What asking GitHub for its suggested reviewers reaches (`suggestions.ts`): a load's.
+function suggestionsHostOf($: Engine): SuggestionsHost {
+  return {
+    ...hostOf($),
+    log: (line) => logDebug($, line),
+    redraw: () => $.ui.invalidate("ui.render")
   }
 }
 
@@ -1310,6 +1318,7 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
     announce: (repo, lines, areChanges) => announce(toastHostOf($, session), session, repo, lines, areChanges),
     lookUpBranch: (repo, branch, head) => lookUpBranch(branchLookupHostOf($), session, repo, branch, head, false),
+    suggestReviewers: (repo, snapshot) => askSuggestions(suggestionsHostOf($), session, repo, snapshot),
     cleanUp: (repo, known) => cleanUp(cleanupHostOf($, session), session, repo, known),
     recallShared: (repo, viewer) => recallShared(storeOf($), repo, viewer),
     shareAnswer: (repo, shared) => shareAnswer(storeOf($), repo, shared),

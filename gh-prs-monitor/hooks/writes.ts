@@ -1,8 +1,9 @@
 // Author: David Matura
 
 // The writes to GitHub a row's buttons make, each behind the person's yes: merge (a stack's pull requests in order),
-// auto-merge, the branch updated, ready for review, review asked again, and the failed runs re-run. What each asks and
-// says is `actions.ts`'s; the look before the question and the refresh after it are `press.ts`'s.
+// auto-merge, the branch updated, ready for review, review asked of the people GitHub suggests, review asked again, and
+// the failed runs re-run. What each asks and says is `actions.ts`'s; the look before the question and the refresh after
+// it are `press.ts`'s.
 
 import type { PullAction, PullRow } from "../types"
 import {
@@ -17,7 +18,12 @@ import {
   readyArgv,
   readyConfirm,
   readyDone,
-  rerequestArgv,
+  REQUEST_REVIEW,
+  requestArgv,
+  requestDone,
+  requestedAlready,
+  requestQuestion,
+  requestRefused,
   rerequestConfirm,
   rerequestDone,
   rerunArgv,
@@ -28,15 +34,16 @@ import {
   updateConfirm,
   updateDone
 } from "./actions"
-import type { Confirm } from "./actions"
+import type { Confirm, CurrentPull } from "./actions"
 import { messageOf } from "./gh"
 import type { RepoRef } from "./gh"
-import { failedRuns, ghWrite, mergeOutcome, mergeStacked, stackOf } from "./github"
+import { failedRuns, ghWrite, mergeOutcome, mergeStacked, stackOf, WriteRefused } from "./github"
 import { buttonKey } from "./keys"
-import { dropMerged, lookBeforeAsking, pressing, settleAfterWrite } from "./press"
+import { dropMerged, lookAtPull, lookBeforeAsking, pressing, settleAfterWrite } from "./press"
 import type { PressHost } from "./press"
 import { rowOf } from "./pulls"
 import type { Session } from "./session"
+import { forgetSuggestions, suggestionsFor } from "./suggestions"
 
 export async function merge(host: PressHost, session: Session, row: PullRow, isAutoMerge: boolean): Promise<void> {
   const snapshot = await host.storedList()
@@ -106,12 +113,102 @@ export async function markReady(host: PressHost, session: Session, row: PullRow)
   })
 }
 
+// Request Review: those of the people GitHub suggests (`suggestionsFor`) the person picks are asked, once GitHub is
+// looked at again (`stillToAsk`): a pull request that moved on asks nobody, and anyone asked meanwhile is left out.
+export async function requestReview(host: PressHost, session: Session, row: PullRow): Promise<void> {
+  const snapshot = await host.storedList()
+  if (!snapshot) {
+    return
+  }
+  await pressing(host, session, row.number, "Checking…", async () => {
+    // None to offer where a load forgot them since the button was drawn: the row draws without it, and GitHub is asked
+    // nothing.
+    const suggested = suggestionsFor(session, snapshot, row)
+    if (suggested.length === 0) {
+      return
+    }
+    const look = await lookBeforeAsking(host, session, "requestReview", row)
+    if (!look.isGoing) {
+      return
+    }
+    const names = unasked(suggested, look.current)
+    if (names.length === 0) {
+      await askedAlready(host, session, snapshot.repo, row, suggested)
+
+      return
+    }
+    const picks = await askWhom(host, row, names)
+    if (picks.length === 0) {
+      return
+    }
+    const asking = await stillToAsk(host, session, look.repo, row, picks)
+    if (asking === null) {
+      return
+    }
+    if (asking.length === 0) {
+      await askedAlready(host, session, snapshot.repo, row, picks)
+
+      return
+    }
+    await host.setBusy(row.number, "Requesting Review…")
+    try {
+      await ghWrite(host, requestArgv(look.repo, row, asking))
+    } catch (error) {
+      throw error instanceof WriteRefused ? new WriteRefused(requestRefused(error.message)) : error
+    }
+    forgetSuggestions(session, snapshot.repo, row.number)
+    await host.notify(requestDone(row, asking), session.settings.alertMs)
+    await settleAfterWrite(host)
+  })
+}
+
+// Those of `logins` the pull request as it stands asks nobody of yet; all of them where it couldn't be looked up.
+function unasked(logins: readonly string[], current: CurrentPull | null): string[] {
+  return logins.filter((login) => !current?.requested.includes(login))
+}
+
+// Whom the person picks among `names`; nobody on Cancel, or with the question dismissed.
+async function askWhom(host: PressHost, row: PullRow, names: readonly string[]): Promise<string[]> {
+  const answer = await host.ask(requestQuestion(row, names), buttonKey("requestReview", row.number))
+
+  return answer?.choice === REQUEST_REVIEW ? (answer.picks ?? []) : []
+}
+
+// Those picked still to ask, once GitHub is looked at again (`lookAtPull`), as the question may have been open for
+// minutes: none (null) where the pull request moved on or gh signed out, which is said; all of them where the lookup
+// fails, GitHub having the last word.
+async function stillToAsk(
+  host: PressHost,
+  session: Session,
+  repo: RepoRef,
+  row: PullRow,
+  picks: readonly string[]
+): Promise<string[] | null> {
+  const look = await lookAtPull(host, session, "requestReview", row, repo)
+
+  return look.isGoing ? unasked(picks, look.current) : null
+}
+
+// Everyone Request Review would ask was asked on GitHub already: said so, and the list read again, the names kept for
+// the row forgotten, as out of date, so the next load asks GitHub afresh.
+async function askedAlready(
+  host: PressHost,
+  session: Session,
+  repo: string,
+  row: PullRow,
+  logins: readonly string[]
+): Promise<void> {
+  forgetSuggestions(session, repo, row.number)
+  await host.notify(requestedAlready(row, logins), session.settings.alertMs)
+  await settleAfterWrite(host)
+}
+
 export async function rerequestReview(host: PressHost, session: Session, row: PullRow): Promise<void> {
   await askThenWrite(host, session, row, {
     action: "rerequest",
     confirm: rerequestConfirm(row),
     busy: "Re-Requesting Review…",
-    argv: (_, repo) => rerequestArgv(repo, row),
+    argv: (_, repo) => requestArgv(repo, row, row.rerequestFrom),
     done: () => rerequestDone(row)
   })
 }

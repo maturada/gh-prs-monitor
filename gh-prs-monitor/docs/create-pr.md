@@ -83,11 +83,16 @@ the repository's root, VS Code at the window's folder), `--worktree "<path>"`, t
 6. **Shows one preview:** the branch and the one it goes into, draft or ready for review, the commit with every file and
    its whole message, the push, the reviewers, the checks run, the ticket, and the title and body as they will be
    posted. `yes` goes ahead; `draft` or `ready` switches; logins add or drop reviewers; anything else changes the draft
-   and shows it again. In a repository without ticket links whose branch names something like a key
-   (`feature/WEB-5785-…`), the preview asks once: paste a link to a ticket whose address holds its key to set them up
-   there, and press **Save** in the dialog that shows what it would link (a tracker whose links hold a number alone is
-   set up with `/prs tickets`), or skip. A skip, any no, or a plain
-   yes turns the question off for that repository, and `/prs tickets` sets them up whenever you like.
+   and shows it again. It may also ask:
+   - **Who should review it**, with no reviewers from your instructions or from last time, and no instructions to ask
+     nobody: up to three people who last changed the files the pull request touches, from GitHub's history (at most 11
+     requests to GitHub), or someone else. Nobody is asked until you reply with their logins; a plain yes opens it
+     without reviewers.
+   - **Whether to set up ticket links**, once, in a repository without them whose branch names something like a key
+     (`feature/WEB-5785-…`): paste a link to a ticket whose address holds its key, and press **Save** in the dialog that
+     shows what it would link (a tracker whose links hold a number alone is set up with `/prs tickets`), or skip. A
+     skip, any no, or a plain yes turns the question off for that repository, and `/prs tickets` sets them up whenever
+     you like.
 7. **On your yes,** commits, pushes the branch and opens the pull request. It never pushes by force or skips the
    repository's hooks; a branch that moved on GitHub meanwhile stops the push.
 

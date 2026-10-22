@@ -25,6 +25,11 @@ export type MineStage =
   | "ready"
   | "waiting"
 
+// Where someone else's pull request stands for the viewer: asked to review it, asked again after their review, their
+// review dismissed, new commits since their review, waiting on its author after their change request, or commented on
+// (`pull-status.ts`).
+export type ReviewStage = "requested" | "rerequested" | "dismissed" | "updated" | "waitingOnAuthor" | "commented"
+
 export type CiState = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED" | null
 
 // A bot's review (a code assistant's) is never announced.
@@ -57,6 +62,7 @@ export type PullSignals = {
 export type PullAction =
   | "resolve"
   | "rerequest"
+  | "requestReview"
   | "review"
   | "fixCi"
   | "resolveConflicts"
@@ -89,6 +95,10 @@ export type PullRow = {
   stack: PullStack | null
   // The stage its status says, on the viewer's own; null on someone else's.
   stage: MineStage | null
+  // On someone else's, where it stands for the viewer, as its status says, and their latest review: the commit it was
+  // given on and when; null where they gave none. Both null on the viewer's own.
+  reviewStage: ReviewStage | null
+  myReview: { commit: string | null; at: string } | null
   status: Badge
   details: Badge[]
   actions: PullAction[]
@@ -97,6 +107,11 @@ export type PullRow = {
   // On your own: those whose change request stands though commits came after their latest review, and who aren't
   // asked to review again yet, whom Re-Request Review asks. Empty on others'.
   rerequestFrom: string[]
+  // On your own: whether no person is asked to review it, a bot asked aside (Copilot, say), and nobody requested changes
+  // or left a comment-only review yet, as its details say ("no reviewer requested", or the bot "requested"); approved
+  // but needing more approvals, whether no person is asked, whoever gave feedback. Request Review offers GitHub's
+  // suggestions then (`suggestions.ts`). False on others'.
+  isReviewerUnrequested: boolean
   signals: PullSignals
 }
 
@@ -195,14 +210,33 @@ export type Question = {
   instructions: string | null
   // A question that asks for a piece of text other than instructions, as a link to paste, names its field.
   field?: QuestionField
+  // A question answered by picking among names before pressing an answer names them (`picking.ts`).
+  picking?: Picking
 }
+
+// What a question offers to pick: names, any number of them or one of them always (`isSingle`), those picked as it
+// opens (`initial`, by index), whether its main answer waits for a pick (`needsPick`), and whether the keyboard starts
+// on the names or on the answers. Claude Code's own dialog asks the names in a step of their own, then the answers: where
+// the question's one text speaks of both, `steps` words each.
+export type Picking = {
+  names: string[]
+  isSingle: boolean
+  initial: number[]
+  needsPick: boolean
+  startsOn: "names" | "answers"
+  steps?: { names: QuestionText; answers: QuestionText }
+}
+
+// What a question says: the question, and what its answers do under it.
+export type QuestionText = { text: string; detail: string | null }
 
 // A field for a piece of text: its label and placeholder, what its Enter does in a word (drawn beside it, `↵Check`),
 // and what Claude Code's own dialog says of typing it under Other.
 export type QuestionField = { label: string; placeholder: string; submitLabel: string; otherHint: string }
 
-// An answer: the choice pressed, or null for instructions sent alone, with the instructions typed ("" for none).
-export type Answer = { choice: string | null; instructions: string }
+// An answer: the choice pressed, or null for instructions sent alone, with the instructions typed ("" for none), and
+// the names picked where the question offered some.
+export type Answer = { choice: string | null; instructions: string; picks?: string[] }
 
 declare module "claude-code" {
   interface PluginState {

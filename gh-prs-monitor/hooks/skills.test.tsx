@@ -468,6 +468,201 @@ describe("Review", () => {
     ])
   })
 
+  // Back to the viewer: new commits since their review, a comment on an earlier commit.
+  const BACK: World["github"] = {
+    reviewed: [
+      {
+        number: 9,
+        title: "Cache the tiles",
+        author: "ann",
+        headRefOid: "new-head",
+        reviews: [{ login: "me", state: "COMMENTED", at: "2026-10-07T12:00:00Z", commit: "a1b2c3d4e5f6" }]
+      }
+    ]
+  }
+  const REVIEW_9 = "/gh-prs-monitor:review https://github.com/acme/app/pull/9"
+
+  test("back to the viewer, Review asks what to cover and where; from their review at first, it sends since", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: BACK, branch: "main", uncommitted: 0, answer: "This session" }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+
+    expect(world.question).toBe("What should it cover, and where?")
+    expect(world.choices).toEqual(["✓ Since Your Review", "Full Review", "This session", "New session", "Cancel"])
+    expect(seen.commands).toEqual([`${REVIEW_9} since`])
+  })
+
+  test("back to the viewer, pressing the kind picked at first keeps it", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: BACK,
+      branch: "main",
+      uncommitted: 0,
+      picks: ["Since Your Review"],
+      answer: "This session"
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+
+    expect(seen.commands).toEqual([`${REVIEW_9} since`])
+  })
+
+  test("Full Review sends no since, and instructions go along", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: BACK,
+      branch: "main",
+      uncommitted: 0,
+      picks: ["Full Review"],
+      instructions: "look closer at error handling",
+      answer: "This session"
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+
+    expect(seen.commands).toEqual([`${REVIEW_9} -- look closer at error handling`])
+  })
+
+  test("a row asked for the first time keeps today's question, and sends no since", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: GITHUB, branch: "main", uncommitted: 0, answer: "This session" }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-7" })
+    await clock.settle()
+
+    expect(world.choices).toEqual(["This session", "New session", "Cancel"])
+    expect(seen.commands).toEqual(["/gh-prs-monitor:review https://github.com/acme/app/pull/7"])
+  })
+
+  test("back to the viewer where no new session can open, as in the phone app, it asks what to cover; Start Review starts it here", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: BACK, branch: "main", uncommitted: 0, answer: "Start Review" }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "mobile")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+
+    expect(world.question).toBe("What should it cover?")
+    expect(world.choices).toEqual(["✓ Since Your Review", "Full Review", "Start Review", "Cancel"])
+    expect(seen.commands).toEqual([`${REVIEW_9} since`])
+  })
+
+  test("where the pane doesn't show, Claude Code's own dialog asks what to cover, then where", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: BACK,
+      branch: "main",
+      uncommitted: 0,
+      engineAnswers: ["Full Review", "This session"]
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    world.isPaneOpen = false
+    await ui.press({ key: "review-9" })
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    expect(world.asked).toBe(2)
+    // Its second step asks only where.
+    expect(world.question).toMatch(/^#9 [^—]+ — Where should it be reviewed\? Here it runs in this conversation\. /)
+    expect(seen.commands).toEqual([REVIEW_9])
+  })
+
+  test("back to the viewer, New session types the review in with since", async ($, on) => {
+    const clock = clockOf(on)
+    const seen = machine($, on, { github: BACK, branch: "main", uncommitted: 0, answer: "New session" })
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await settleAll(clock, seen, () => seen.runs.some((run) => run.startsWith("open ")))
+
+    expect(seen.runs).toContain(
+      "open claude-cli://open?cwd=%2Frepo&q=%2Fgh-prs-monitor%3Areview%20https%3A%2F%2Fgithub.com%2Facme%2Fapp%2Fpull%2F9%20since"
+    )
+    expect(seen.commands).toEqual([])
+  })
+
+  test("back to the viewer, Cancel starts nothing; instructions sent alone review here, from their review", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: BACK, branch: "main", uncommitted: 0, answer: "Cancel" }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+    expect(seen.commands).toEqual([])
+
+    world.answer = "only the migration"
+    await ui.press({ key: "review-9" })
+    await clock.settle()
+    expect(seen.commands).toEqual([`${REVIEW_9} since -- only the migration`])
+  })
+
+  test("in Claude Code's own dialog, the kind first picked stays where it is answered", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = {
+      github: BACK,
+      branch: "main",
+      uncommitted: 0,
+      engineAnswers: ["Since Your Review", "This session"]
+    }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "terminal")
+    world.isPaneOpen = false
+    await ui.press({ key: "review-9" })
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    expect(seen.commands).toEqual([`${REVIEW_9} since`])
+  })
+
+  test("where no new session can open, Claude Code's own dialog asks only what to cover, and starts it here", async ($, on) => {
+    const clock = clockOf(on)
+    const world: World = { github: BACK, branch: "main", uncommitted: 0, engineAnswers: ["Full Review"] }
+    const seen = machine($, on, world)
+    await startSession($)
+    await clock.settle()
+
+    const ui = await mountPane($, "mobile")
+    world.isPaneOpen = false
+    await ui.press({ key: "review-9" })
+    await settleAll(clock, seen, () => seen.commands.length > 0)
+
+    expect(world.asked).toBe(1)
+    expect(seen.commands).toEqual([REVIEW_9])
+  })
+
   test("where no new session can be opened, as in the phone app, Review starts here", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }

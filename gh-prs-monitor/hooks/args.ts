@@ -20,8 +20,9 @@ export function oneLine(text: string): string {
 }
 
 // The pull request a skill's arguments name, as given: the first word that is not one of the options the pane writes
-// (`--worktree "…"`, `--deps "…"`, `--branch "…"`, `--include-outdated`), before any ` -- ` instructions. None when
-// they name none, as Create PR's, or a branch skill typed bare, which works on the current branch's.
+// (`--worktree "…"`, `--deps "…"`, `--branch "…"`, `--include-outdated`), before any ` -- ` instructions; a review's
+// `since` follows it. None when they name none, as Create PR's, or a branch skill typed bare, which works on the
+// current branch's.
 export function pullRefIn(args: string): string | null {
   const options = args.split(/(?:^|\s)--(?:\s|$)/)[0] ?? ""
   const words = options

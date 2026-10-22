@@ -412,6 +412,20 @@ describe("the demo pane", () => {
     expect(demoAnswerNote(example, question, { choice: null, instructions: "only the typos" })).toBe(
       said("your instructions")
     )
+    // What was picked goes along, with the place pressed or with instructions sent alone.
+    expect(
+      demoAnswerNote(example, question, { choice: "This session", instructions: "", picks: ["Full Review"] })
+    ).toBe(said('"This session" with Full Review'))
+    expect(
+      demoAnswerNote(example, question, {
+        choice: "This session",
+        instructions: "only the typos",
+        picks: ["Full Review"]
+      })
+    ).toBe(said('"This session" with Full Review and your instructions'))
+    expect(
+      demoAnswerNote(example, question, { choice: null, instructions: "only the typos", picks: ["Since Your Review"] })
+    ).toBe(said("your instructions with Since Your Review"))
     expect(demoAnswerNote(example, question, { choice: "Cancel", instructions: "only the typos" })).toBe(null)
     expect(demoAnswerNote(example, question, { choice: null, instructions: "no thanks" })).toBe(null)
     // An empty Other in Claude Code's dialog is no answer, as the real flows read it.
@@ -421,13 +435,24 @@ describe("the demo pane", () => {
     expect(demoAnswerNote(example, confirm, { choice: null, instructions: "squash it" })).toBe(null)
   })
 
-  test("an example asks only what the real button asks: Review nothing where no new session opens; a stacked Merge says what merges along", () => {
+  test("an example asks only what the real button asks: Review nothing where no new session opens, but what to cover where it's back to you; a stacked Merge says what merges along", () => {
     const snapshot = demoSnapshot(0)!
-    const reviewed = snapshot.review[0]!
+    const reviewed = snapshot.review.find((row) => row.number === 1240)!
+    const back = snapshot.review.find((row) => row.number === 1241)!
     const stacked = snapshot.mine.find((row) => row.number === 1242)!
 
     expect(demoQuestion("review", reviewed, snapshot, true)?.header).toBe("Review PR")
     expect(demoQuestion("review", reviewed, snapshot, false)).toBe(null)
+    expect(demoQuestion("review", back, snapshot, false)?.choices).toEqual(["Start Review", "Cancel"])
+    expect(demoQuestion("review", back, snapshot, true)?.picking?.names).toEqual(["Since Your Review", "Full Review"])
+    const askedAgain = snapshot.review.find((row) => row.number === 1252)!
+    // The line names each example's commit as GitHub's short form would.
+    expect(demoQuestion("review", askedAgain, snapshot, true)?.detail).toMatch(
+      /^Your review was on 1252ab3, \d+[hd] ago; you're asked again, with no new commits since\. /
+    )
+    expect(demoQuestion("review", back, snapshot, true)?.detail).toMatch(
+      /^Your review was on 12410d7, \d+[hd] ago; new commits came in since\. /
+    )
     expect(demoQuestion("merge", stacked, snapshot, true)?.detail).toBe(
       "It is 2 of 3 in stack #30; those below it are merged or closed."
     )

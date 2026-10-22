@@ -1,6 +1,6 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Your GitHub pull requests inside Claude Code: what needs you first, each linked to its ticket, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
   "author": {
     "name": "David Matura",

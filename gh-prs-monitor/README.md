@@ -22,7 +22,8 @@ The screenshots show `/prs demo`, the plugin's example pull requests, or made-up
   that needs you is on top.
 - **Know the moment it changes.** Alerts while you work and a count in the status line, with no pane to keep open; in
   the terminal, system notifications too, if you want them.
-- **Act in one press.** Merge, update a branch, re-run CI or ask for a re-review, each confirmed before it writes.
+- **Act in one press.** Merge, update a branch, re-run CI, or ask for a review or a re-review, each confirmed before it
+  writes.
 - **Hand off the work.** Skills resolve review comments, fix CI, resolve conflicts, review and create pull requests,
   and post only on your yes.
 - **Link your tickets.** Paste one ticket link with `/prs tickets`, and every pull request links its ticket in Linear,
@@ -104,9 +105,11 @@ With background refresh (the default), the terminal's status line keeps the coun
 ### One press for the routine
 
 **Merge** (stacked pull requests too, with the methods the repository allows, your usual one first), **Auto-Merge**,
-**Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review** and **Re-Request Review**.
-Each first looks at the pull request as it stands on GitHub at the press, not as the list last read it, then asks
-before it writes. [Acting on GitHub](docs/actions.md)
+**Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review**, **Request Review** to ask the
+people GitHub suggests where no person is asked to review, before the first review or for more approvals, and
+**Re-Request Review** to ask those who requested changes to look again. Each first looks at the pull request as it
+stands on GitHub at the press, not as the list last read it, then asks before it writes.
+[Acting on GitHub](docs/actions.md)
 
 ### Skills that do the work
 
@@ -116,9 +119,10 @@ before it writes. [Acting on GitHub](docs/actions.md)
   [More](docs/fix-ci.md)
 - **Resolve Conflicts** merges the base in apart from your checkout and proposes a resolution for each conflict, for
   you to approve. [More](docs/resolve-conflicts.md)
-- **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and
-  posts its inline comments only after you approve their wording; with ticket links, it can weigh the change against
-  its ticket, for you alone. [More](docs/review.md)
+- **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and posts
+  its inline comments only after you approve their wording. On a pull request you reviewed before, with new commits
+  since or a new request for your review, it can review only what changed since and tell you what came of your comments.
+  With ticket links, it can weigh the change against its ticket, for you alone. [More](docs/review.md)
 - **Create PR** runs the checks you pick, drafts the title and body in the repository's own format, with the ticket
   where you link tickets, and remembers your choices for next time. [More](docs/create-pr.md)
 
@@ -165,7 +169,7 @@ alike: every 3 minutes, that is 2% of the 5,000 points an hour your account gets
 | `/prs close` | Closes the pane, for when a click does nothing. |
 | `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
 | `/prs tickets` | Sets up [ticket links](docs/tickets.md) for this repository, from a link to any ticket you paste; once set up, shows, adds to or removes them. |
-| `/gh-prs-monitor:review <number or URL> [-- <instructions>]` | Reviews a pull request. |
+| `/gh-prs-monitor:review <number or URL> [since] [-- <instructions>]` | Reviews a pull request; with `since`, only what changed since your last review of it. |
 | `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]` | Resolves its review comments. |
 | `/gh-prs-monitor:fix-ci [<number or URL>] [-- <instructions>]` | Fixes its failing CI. |
 | `/gh-prs-monitor:resolve-conflicts [<number or URL>] [-- <instructions>]` | Resolves its conflicts with its base. |
@@ -173,8 +177,9 @@ alike: every 3 minutes, that is 2% of the 5,000 points an hour your account gets
 
 Without a number or URL, the branch skills take the pull request of the current branch. The pane's buttons start the
 same skills, and first ask where they should run: Resolve Comments, Fix CI and Resolve Conflicts here, in a worktree or
-in a new session; Review and Create PR here or in a new session. A button's question replaces the list until you answer
-it; **Cancel** (or Esc, in the terminal) leaves it.
+in a new session; Review and Create PR here or in a new session, Review first asking what to cover on a pull request
+with new commits or a new request since your review. A button's question replaces the list until you answer it;
+**Cancel** (or Esc, in the terminal) leaves it.
 
 ## Requirements
 
@@ -217,10 +222,10 @@ It has no server, no token of its own and no telemetry, and reads no credential 
 `git`, it uses Claude Code's own links.
 
 - **GitHub, through `gh`.** It reads with `gh api`: one GraphQL request for the list at each check, and a few more for
-  how pull requests that left the list ended, for the pull requests of your branch, and for what a press or a cleanup
-  needs to see; `gh repo view`, `gh config get git_protocol` and `gh --version` besides. It writes with `gh pr merge`,
-  `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each only after you confirm it in its dialog. How
-  many requests that comes to: [Cost](docs/settings.md#cost).
+  how pull requests that left the list ended, for the pull requests of your branch, for the reviewers GitHub suggests,
+  and for what a press or a cleanup needs to see; `gh repo view`, `gh config get git_protocol` and `gh --version`
+  besides. It writes with `gh pr merge`, `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each only
+  after you confirm it in its dialog. How many requests that comes to: [Cost](docs/settings.md#cost).
 - **git.** Every git command the plugin runs itself carries `core.hooksPath=/dev/null`, so no hook a repository carries
   runs from it. A pull request's branch is fetched with gh's credentials (`gh auth git-credential`) in place of your own
   credential helper, as `gh pr checkout` fetches it. The skills' commits and pushes do run the repository's hooks; on
@@ -271,10 +276,10 @@ It has no server, no token of its own and no telemetry, and reads no credential 
     turn's end can start a check of the list, at most every half minute; nothing of the turn goes into it;
   - the skills' commands above: to mark the row a skill works on.
 
-  Besides, it answers `/prs`, printing the list too where it came over Remote Control; answers its own tools; offers pull
-  requests for a word in the prompt that starts with `#`, reading that word alone; draws its pane and, in the desktop
-  app, the band above the prompt; follows the pane's scrolling and focus; and keeps the pane open when you close it
-  while it asks a question, cancelling the question instead.
+  Besides, it answers `/prs`, printing the list too where it came over Remote Control; answers its own tools; offers
+  pull requests for a word in the prompt that starts with `#`, reading that word alone; draws its pane and, in the
+  desktop app, the band above the prompt; follows the pane's scrolling and focus; and keeps the pane open when you close
+  it while it asks a question, cancelling the question instead.
 - **New session** opens a Claude Code session through Claude Code's own link, with `open`, `xdg-open` or `rundll32`
   (after `uname`, and `reg query` on Windows, tell which). In VS Code it is the extension's link, in the scheme the
   editor answers on (`vscode`, `cursor`, …): the editor's folder comes from `VSCODE_NLS_CONFIG`, the one environment
@@ -310,7 +315,7 @@ More in [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.m
 - [Resolve Comments](docs/resolve-comments.md), [Fix CI](docs/fix-ci.md),
   [Resolve Conflicts](docs/resolve-conflicts.md), and [where they work](docs/working-on-a-branch.md): this folder, a
   worktree or a new session; branches, dependencies and cleanup
-- [Review](docs/review.md)
+- [Review](docs/review.md): where it runs, since your last review, and ticket links
 - [Create PR](docs/create-pr.md): when it shows, what the skill does, and what it remembers
 - [Ticket links](docs/tickets.md): set up once per repository, where they show, and what the skills do with them
 - [Settings and cost](docs/settings.md)

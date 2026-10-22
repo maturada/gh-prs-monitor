@@ -50,6 +50,8 @@ export type World = StoreWorld & {
   // The repository's name on GitHub, where it was renamed or moved from the one the folder's remote names.
   movedTo?: string
   graphqlFailure?: { stdout: string; stderr: string }
+  // Whom GitHub suggests to review each pull request, by number (`suggestions.ts`): nobody unless given.
+  suggested?: Record<number, string[]>
   checkoutFailure?: string
   isPaneOpen?: boolean
   // Which apps draw the session; the terminal unless a test stands for another.
@@ -61,6 +63,12 @@ export type World = StoreWorld & {
   answer?: string
   // Instructions the person types in the pane's field before pressing the answer.
   instructions?: string
+  // The names the person picks in the pane before pressing the answer, where the question offers some.
+  picks?: string[]
+  // Claude Code's own dialog answered in steps, one answer each, in order; `answer` once these run out.
+  engineAnswers?: string[]
+  // What changes on GitHub while the question is open, before the person answers.
+  whileAsking?: () => void
   asked?: number
   // The last question the dialog asked, its header, and the choices it offered; the pane's also its subject and the
   // detail under the question.
@@ -428,6 +436,10 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     const { questions } = e as unknown as {
       questions: { question: string; header?: string; options?: { label: string }[] }[]
     }
+    // What Claude Code's own dialog takes (`AskOptions`): four options at most, and a header of 12 characters.
+    if ((questions[0]?.options?.length ?? 0) > 4 || (questions[0]?.header?.length ?? 0) > 12) {
+      throw new Error("Claude Code's dialog takes four options and a 12-character header at most")
+    }
     world.asked = (world.asked ?? 0) + 1
     world.question = questions[0]?.question
     world.header = questions[0]?.header
@@ -435,11 +447,13 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     if (world.slowDialogMs && clock) {
       await clock.sleep(world.slowDialogMs)
     }
-    if (world.answer === undefined) {
+    world.whileAsking?.()
+    const answer = world.engineAnswers?.shift() ?? world.answer
+    if (answer === undefined) {
       return { deny: "dismissed" }
     }
 
-    return { result: { questions, answers: { [questions[0]?.question ?? ""]: world.answer } } as never }
+    return { result: { questions, answers: { [questions[0]?.question ?? ""]: answer } } as never }
   })
 
   return seen
@@ -471,15 +485,28 @@ async function answerDialog($: Engine, world: World, clock?: MockClock): Promise
   if (world.slowDialogMs && clock) {
     await clock.sleep(world.slowDialogMs)
   }
+  world.whileAsking?.()
   if (world.answer === undefined) {
     return
   }
-  const index = choices.findIndex((choice) => choice === world.answer)
-  if (index >= 0) {
+  // A button by its label, a name picked already drawn with its mark, and the kind its key names: a name to pick, or an
+  // answer.
+  const keyOf = (label: string, kind: "pick" | "answer") =>
+    nodes.find(
+      (node) =>
+        node.type === "Button" &&
+        (node.props?.label === label || node.props?.label === `✓ ${label}`) &&
+        String(node.props?.key).startsWith(`${kind}-`)
+    )?.props?.key
+  for (const name of world.picks ?? []) {
+    await pane.press({ key: String(keyOf(name, "pick")) })
+  }
+  const answer = keyOf(world.answer, "answer")
+  if (answer !== undefined) {
     if (world.instructions !== undefined) {
       await pane.input({ key: fieldKey(nodes), text: world.instructions, kind: "change" })
     }
-    await pane.press({ key: `answer-${index}` })
+    await pane.press({ key: String(answer) })
   } else {
     await pane.input({ key: fieldKey(nodes), text: world.answer })
   }
@@ -576,6 +603,36 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
     return world.repoViewFailure
       ? failed(world.repoViewFailure)
       : ok(`${world.repoName ?? "acme/app"} ${world.repoUrl ?? `https://github.com/${world.repoName ?? "acme/app"}`}\n`)
+  }
+  if (line.startsWith("gh api graphql") && line.includes("suggestedReviewers")) {
+    const numbers = [...line.matchAll(/pull(\d+): pullRequest/g)].map((match) => Number(match[1]))
+    const repository = Object.fromEntries(
+      numbers.map((number) => {
+        const listed = world.github.mine?.find((pull) => pull.number === number)
+        const requested = world.current?.[number]?.requested ?? listed?.requested ?? []
+        // GitHub's latest verdicts, as the list fixture's own (`verdicts`, else those among `reviews`).
+        const approved = (listed?.verdicts ?? listed?.reviews ?? []).filter((review) => review.state === "APPROVED")
+
+        return [
+          `pull${number}`,
+          {
+            author: { login: listed?.author ?? "me" },
+            // As GitHub marks a suggestion from past commits, as nearly all are.
+            suggestedReviewers: (world.suggested?.[number] ?? []).map((login) => ({
+              isAuthor: true,
+              isCommenter: false,
+              reviewer: { login }
+            })),
+            reviewRequests: { nodes: requested.map((login) => ({ requestedReviewer: { login } })) },
+            latestOpinionatedReviews: {
+              nodes: approved.map((review) => ({ state: "APPROVED", author: { login: review.login } }))
+            }
+          }
+        ]
+      })
+    )
+
+    return ok(JSON.stringify({ data: { repository } }))
   }
   if (line.startsWith("gh api graphql") && line.includes("pullRequests(headRefName") && world.isBranchPullsFailing) {
     return failed("error connecting to api.github.com")
@@ -684,6 +741,18 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
   }
   if (line.startsWith("gh pr merge ")) {
     world.lastMerge = line.includes(" --auto") ? "auto" : "merge"
+  }
+  // Those asked to review are requested on GitHub from then on, in the list and in the pull request.
+  const reviewersAsked = /^gh api --method POST repos\/acme\/app\/pulls\/(\d+)\/requested_reviewers /.exec(line)
+  if (reviewersAsked) {
+    const number = Number(reviewersAsked[1])
+    const logins = [...line.matchAll(/reviewers\[\]=(\S+)/g)].map((match) => match[1]!)
+    world.github = {
+      ...world.github,
+      mine: world.github.mine?.map((pull) =>
+        pull.number === number ? { ...pull, requested: [...(pull.requested ?? []), ...logins] } : pull
+      )
+    }
   }
   if (line.startsWith("gh pr update-branch ") && world.isUpToDate) {
     return { ...ok(""), stderr: "✓ PR branch already up-to-date\n" }
