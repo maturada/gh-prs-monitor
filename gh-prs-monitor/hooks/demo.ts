@@ -1,7 +1,16 @@
 // Author: David Matura
 
 import type { Activity, Answer, Badge, MergedPull, PullAction, PullRow, PullsSnapshot, Question } from "../types"
-import { confirmQuestion, mergeConfirm, readyConfirm, rerequestConfirm, rerunConfirm, updateConfirm } from "./actions"
+import {
+  andList,
+  confirmQuestion,
+  mergeConfirm,
+  readyConfirm,
+  requestQuestion,
+  rerequestConfirm,
+  rerunConfirm,
+  updateConfirm
+} from "./actions"
 import { branchPlaceQuestion } from "./branch-flow"
 import type { PullToOpen } from "./create-flow"
 import { CANCEL, isDecline } from "./question"
@@ -11,6 +20,7 @@ import { readPulls } from "./pulls"
 import { activityOf, alertLines, awayLine, systemNotificationText } from "./alerts"
 import type { Alert, AlertKind } from "./alerts"
 import { listText } from "./list"
+import { withRequestReview } from "./suggestions"
 import { summaryCounts } from "./summary"
 import type { SummaryCounts } from "./summary"
 import type { TicketLinks } from "./tickets"
@@ -55,6 +65,7 @@ export function demoQuestion(
     updateBranch: () => confirmQuestion(updateConfirm(row)),
     ready: () => confirmQuestion(readyConfirm(row)),
     rerequest: () => confirmQuestion(rerequestConfirm(row)),
+    requestReview: () => requestQuestion(row, demoSuggested(row)),
     rerun: () => confirmQuestion(rerunConfirm(row, [{ id: 0, name: "test" }])),
     review: () => (canOpenSession ? reviewPlaceQuestion(row, false) : null),
     resolve: () => branchPlaceQuestion("resolve", row, checkout, canOpenSession, false),
@@ -83,7 +94,8 @@ export function demoAnswerNote(example: string, question: Question, answer: Answ
     return null
   }
   const along = answer.instructions === "" ? "" : " with your instructions"
-  const picked = answer.choice === null ? "your instructions" : `"${answer.choice}"${along}`
+  const named = answer.picks?.length ? ` for ${andList(answer.picks)}` : ""
+  const picked = answer.choice === null ? "your instructions" : `"${answer.choice}"${named}${along}`
 
   return `${example} is an example: in your own list, ${picked} would go ahead. Nothing was sent to GitHub.`
 }
@@ -208,7 +220,14 @@ const MINE: readonly Example[] = [
     isInMergeQueue: true,
     reviews: [{ login: "another-teammate", state: "APPROVED", hoursAgo: 1 }]
   },
-  { number: 1239, title: "Lazy-load the video player", mergeStateStatus: "BEHIND", requested: ["a-teammate"] },
+  // Just opened where the base requires a review, nobody asked yet: Request Review offers the people GitHub would
+  // suggest (`DEMO_SUGGESTED`).
+  {
+    number: 1239,
+    title: "Lazy-load the video player",
+    reviewDecision: "REVIEW_REQUIRED",
+    mergeStateStatus: "BLOCKED"
+  },
   { number: 1244, title: "New onboarding experiment", isDraft: true }
 ]
 
@@ -385,7 +404,21 @@ export function demoSnapshot(now: number): PullsSnapshot | null {
     return null
   }
 
-  return { ...result.snapshot, mine: withoutLinks(result.snapshot.mine), review: withoutLinks(result.snapshot.review) }
+  const snapshot = {
+    ...result.snapshot,
+    mine: withoutLinks(result.snapshot.mine),
+    review: withoutLinks(result.snapshot.review)
+  }
+
+  return withRequestReview(snapshot, demoSuggested)
+}
+
+// Whom GitHub would suggest to review the example nobody was asked to review, as Request Review offers a real list's
+// suggestions (`suggestions.ts`).
+const DEMO_SUGGESTED: Readonly<Record<number, readonly string[]>> = { 1239: ["a-teammate", "another-teammate"] }
+
+function demoSuggested(row: PullRow): readonly string[] {
+  return DEMO_SUGGESTED[row.number] ?? []
 }
 
 // What changed lately on two of the examples, from their example alerts, as the pane marks it under their rows, and

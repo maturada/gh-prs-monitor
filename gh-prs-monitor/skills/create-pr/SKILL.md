@@ -137,7 +137,7 @@ When Phase 1's status command, run again, lists changes, now including any fixes
 
 ## Phase 5: The title and the body
 
-Draft them from the commits (`git log --format='%s%n%n%b' '<BASE_SHA>..HEAD'`), the commit to make, what they change (`git diff --stat '<BASE_SHA>' HEAD` for the commits, `git diff --stat HEAD -- ':(top,literal)<file>'` for the files picked in Phase 4, read whole where git does not track them yet, and the diffs themselves where the summary needs them; never the changes left out), Phase 2's format and the instructions.
+Draft them from the commits (`git log --format='%s%n%n%b' '<BASE_SHA>..HEAD'`), the commit to make, what they change since the branch left the base (`git diff --stat '<BASE_SHA>...HEAD'` for the commits, `git diff --stat HEAD -- ':(top,literal)<file>'` for the files picked in Phase 4, read whole where git does not track them yet, and the diffs themselves, from the same points, where the summary needs them; never the changes left out), Phase 2's format and the instructions.
 
 - **The title** says what the pull request changes, short, in the form the repository's titles take; with a ticket, its key only where those titles carry one, and not twice.
 - **The body** fills in the template's sections, keeping its checkboxes and ticking only what is true. Without a template: what changes and why, in a few lines, then how it was checked (the checks run, and how they went).
@@ -151,6 +151,22 @@ Nothing in the title, the body or the commit message credits an assistant, a too
 
 **Draft or ready:** what the instructions say; else what was chosen last time (`isDraft`); else what the repository's guide asks; else ready for review. **Reviewers:** those the instructions name, and those asked last time, by their GitHub logins; none otherwise.
 
+**Who last changed these files**, looked up only when neither names a reviewer and the instructions don't say to ask nobody: the people GitHub's history shows last changing the files this pull request changes, offered for the user to ask. The files are those the pull request changes, the most changed first, ten at most: those of the commits since the branch left the base (the first `git diff`) and those picked in Phase 4 (the second, left out when none were picked), a file in both counting once. A file the commits add has no history and is left out (one they add and Phase 4 changes again finds no one, which costs a request and nothing else), a renamed one counts by its old path, and one git prints in double quotes is left out. The last line prints the user's own login.
+
+```bash
+{ git -c core.quotePath=false diff --numstat --no-renames --diff-filter=a '<BASE_SHA>...HEAD'; git -c core.quotePath=false diff --numstat --no-renames --diff-filter=a HEAD -- ':(top,literal)<file>' ':(top,literal)<file>'; } \
+  | awk -F'\t' '{ n[$3] += $1 + $2 } END { for (f in n) print n[f] "\t" f }' | sort -rn | head -10 | cut -f2-
+gh api user --hostname <HOST> --jq .login
+```
+
+Then who committed last to each, on the base, in one command over those files (each a field of its own, so a `&`, `#` or space in a path stays in it):
+
+```bash
+for f in '<file>' '<file>'; do gh api --method GET 'repos/<OWNER>/<REPO>/commits' --hostname <HOST> -f sha='<BASE_SHA>' -f path="$f" -f per_page=5 --jq '.[] | select(.author != null) | .author.login'; done | sort | uniq -c | sort -rn
+```
+
+Leave out the user's own login, bots (a login ending `[bot]`), and any login that is not letters, digits and `-` alone; the first three by count are the people the preview offers, as a question: them, or someone else. That is at most 11 requests, against the 5,000 an hour REST allows. A lookup that fails, or finds no one: no one found, and the preview asks who should review it. A reply naming logins makes them the reviewers and shows the preview again; a yes opens it without any.
+
 ````markdown
 **Open this pull request?**
 
@@ -158,6 +174,8 @@ Nothing in the title, the body or the commit message credits an assistant, a too
 - **Commit first:** `src/menu.ts`, `src/menu.test.ts`, with the message below *(only when committing; every file named, and a folder of Phase 4's named with its count, its files listed a line each under the preview)*
 - **Push:** `<n>` commits to `<BRANCH>` on GitHub, with `git push '<REMOTE>' 'HEAD:refs/heads/<BRANCH>'` *(or: already on GitHub)*
 - **Reviewers:** @<login>, @<login> *(only when any)*
+- **Reviewers:** none yet. Ask @<login>, @<login> or @<login>, who last changed these files, or someone else? Reply with their logins; a yes opens it without reviewers *(in place of the line above, only when looked up and someone found; the people named are offered, not asked, until the reply names them)*
+- **Reviewers:** none yet. Who should review it? Reply with their logins; a yes opens it without reviewers *(in place of the two lines above, only when looked up and no one found)*
 - **Checks:** `npm run lint` passed, `npm test` passed *(or: none run; and "with changes left out of this pull request present" when Phase 4 left any out)*
 - **Ticket:** [WEB-5785](<TICKET_URL>) *(only with a ticket; where the repository isn't private, `WEB-5785, its link left out: reply "add the link" to put it in`)*
 - **Ticket:** this branch names WEB-5785, and ticket links aren't set up here. Paste a link to any ticket from its tracker to link them, or reply `skip tickets`; a yes with neither turns them off here, and `/prs tickets` sets them up later. *(only with Phase 2's `unset`, in place of the line above)*

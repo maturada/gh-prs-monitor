@@ -73,9 +73,11 @@ export type RefreshHost = Host & {
   notify: (text: string, timeoutMs: number) => Promise<void>
   // `areChanges`: pull request changes, which a system notification may carry; a session's first summary is not one.
   announce: (repo: RepoRef, lines: readonly string[], areChanges: boolean) => Promise<void>
-  // What a load sets off: the lookup Create PR waits on, and the cleanup of pull requests that left the lists, with
-  // what the load found of how they ended (`known`), which it asks GitHub no more.
+  // What a load sets off: the lookup Create PR waits on, the people GitHub suggests where Request Review would offer
+  // them (`suggestions.ts`), and the cleanup of pull requests that left the lists, with what the load found of how
+  // they ended (`known`), which it asks GitHub no more.
   lookUpBranch: (repo: RepoRef, branch: string | null, head: string | null) => Promise<unknown>
+  suggestReviewers: (repo: RepoRef, snapshot: PullsSnapshot) => Promise<unknown>
   cleanUp: (repo: RepoRef, known: readonly ClosedState[]) => Promise<void>
   // The answer a person's sessions in a repository share through the store, and the claim of one asking GitHub now
   // (`audienceId`); one that can't be read is none, and one that can't be kept is logged, and `shareAnswer` says so.
@@ -466,6 +468,7 @@ async function present(
     return
   }
   host.background(host.lookUpBranch(repo, shown.branch, shown.head))
+  host.background(host.suggestReviewers(repo, snapshot))
   // Working again, a later sign-out is news again, and checks a problem stopped come back, as when /prs or an
   // attached window loaded past it.
   session.checks.hasAnnouncedSetup = false

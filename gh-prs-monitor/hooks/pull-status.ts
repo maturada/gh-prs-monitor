@@ -25,7 +25,7 @@ type MineFacts = {
 export const STATUS_PAGES = { conflicts: "conflicts", ciFailing: "checks" } as const
 
 // The button that moves a pull request on from each stage, when the row offers it.
-export const MINE_NEXT_STEPS: Readonly<Record<MineStage, readonly PullAction[]>> = {
+const MINE_NEXT_STEPS: Readonly<Record<MineStage, readonly PullAction[]>> = {
   draft: ["ready"],
   queued: [],
   conflicts: ["resolveConflicts"],
@@ -34,14 +34,20 @@ export const MINE_NEXT_STEPS: Readonly<Record<MineStage, readonly PullAction[]>>
   changesRequested: ["rerequest", "resolve"],
   comments: ["resolve"],
   rereview: [],
-  moreApprovals: ["autoMerge"],
+  // Asking someone GitHub suggests, where nobody is asked yet or more approvals are wanted, comes before waiting.
+  moreApprovals: ["requestReview", "autoMerge"],
   approvedCiRunning: ["autoMerge"],
   behind: ["updateBranch"],
   // Open conversations are often what holds an approved pull request back, where the base requires them resolved.
   blocked: ["resolve", "autoMerge"],
   checking: [],
   ready: ["merge"],
-  waiting: []
+  waiting: ["requestReview"]
+}
+
+// A row's main button: the first of its stage's next steps it offers.
+export function primaryOf(stage: MineStage, actions: readonly PullAction[]): PullAction | null {
+  return MINE_NEXT_STEPS[stage].find((action) => actions.includes(action)) ?? null
 }
 
 const MINE_STATUSES: Readonly<Record<MineStage, Badge>> = {

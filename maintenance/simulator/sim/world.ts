@@ -552,6 +552,7 @@ export class World {
           if (shown.length > 0) await world.show(sim, liveStore, repo, shown)
         },
         lookUpBranch: async () => undefined,
+        suggestReviewers: async () => undefined,
         cleanUp: async () => undefined,
         recallShared: (repo, viewer) => recallShared(liveStore, repo, viewer),
         shareAnswer: (repo, shared) => {

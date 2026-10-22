@@ -30,6 +30,7 @@ const ROW: PullRow = {
   actions: ["resolve"],
   primary: "resolve",
   rerequestFrom: [],
+  isReviewerUnrequested: false,
   signals: {
     ci: "SUCCESS",
     isConflicting: false,

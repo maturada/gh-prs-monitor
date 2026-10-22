@@ -15,7 +15,7 @@ import type {
   ReviewMark,
   Tone
 } from "../types"
-import { isCiFailing, isCiRunning, MINE_NEXT_STEPS, mineStatus, reviewStatus, STATUS_PAGES } from "./pull-status"
+import { isCiFailing, isCiRunning, mineStatus, primaryOf, reviewStatus, STATUS_PAGES } from "./pull-status"
 import { ago } from "./when"
 import { prBranch } from "./worktrees"
 
@@ -86,7 +86,7 @@ export function isStackless(stdout: string): boolean {
 
 // Raised whenever the snapshot's shape or its statuses' wording changes, so an update never compares against the
 // old one.
-export const SNAPSHOT_SCHEMA = 19
+export const SNAPSHOT_SCHEMA = 20
 
 // A snapshot read back from the store, or from the session's state after an update: one from another version of
 // the plugin is none.
@@ -367,6 +367,8 @@ type OwnPull = {
   unresolvedThreads: number
   // People whose latest review only commented.
   commentedBy: string[]
+  // Those of them who gave no verdict either, whose review the details name apart.
+  commentsOnly: Review[]
   isAskedAgain: boolean
   rerequestFrom: string[]
 }
@@ -388,6 +390,8 @@ function ownPullOf(pull: Pull, options: ReadOptions): OwnPull {
   // Whom to ask again: a change request whose reviewer's latest review was of an earlier commit. One whose latest
   // review is not among those read is left out, as nothing says commits came after it.
   const reviewedCommits = new Map(reviews.map((review) => [review.login, review.commit]))
+  // Someone who only commented has no verdict to name them, but their review is still news to the author.
+  const withVerdicts = new Set([...approvals, ...changes].map((review) => review.login))
 
   return {
     reviews,
@@ -402,6 +406,7 @@ function ownPullOf(pull: Pull, options: ReadOptions): OwnPull {
     // reviewer then. Threads carry no author here (fetching one per thread would triple the query's cost), so a bot's
     // threads alone, as an automated reviewer's, leave the status be.
     commentedBy: loginsIn(reviews, "COMMENTED"),
+    commentsOnly: reviewsIn(reviews, "COMMENTED").filter((review) => !withVerdicts.has(review.login)),
     isAskedAgain: changesBy.length > 0 && changesBy.every((login) => requestedUsers.includes(login)),
     rerequestFrom: changesBy.filter((login) => {
       const reviewed = reviewedCommits.get(login)
@@ -439,6 +444,7 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
     stage !== "queued"
   const identity = identityOf(pull)
   const actions = mineActions(pull, own, stage, merging, { isUpdateOffered, isAutoMergeOn })
+  const request = reviewerRequestOf(pull, own, stage)
   const url = pull.url ?? ""
 
   return {
@@ -446,10 +452,11 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
     stage,
     status:
       stage === "conflicts" || stage === "ciFailing" ? { ...status, ...linked(url, STATUS_PAGES[stage]) } : status,
-    details: mineDetails(pull, own, stage, identity, now, { isUpdateOffered, isAutoMergeOn }),
+    details: mineDetails(pull, own, stage, request, identity, now, { isUpdateOffered, isAutoMergeOn }),
     actions,
-    primary: MINE_NEXT_STEPS[stage].find((action) => actions.includes(action)) ?? null,
+    primary: primaryOf(stage, actions),
     rerequestFrom: own.rerequestFrom,
+    isReviewerUnrequested: request === "nobody",
     signals: {
       ci: own.ci,
       isConflicting: own.isConflicting,
@@ -467,11 +474,31 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
 // What GitHub offers on the row beside its status.
 type Offers = { isUpdateOffered: boolean; isAutoMergeOn: boolean }
 
+// Who is asked to review the viewer's own pull request, which its details say until it is approved or changes are
+// requested, and again while it waits on a re-review or more approvals: the reviewers requested, or nobody, as at first
+// or again after someone's feedback. Null where the details say nothing of it.
+type ReviewerRequest = { named: string[]; unnamed: number } | "nobody" | "nobodyAgain" | null
+
+function reviewerRequestOf(pull: Pull, own: OwnPull, stage: MineStage): ReviewerRequest {
+  if ((own.isApproved || own.isChangesRequested) && stage !== "rereview" && stage !== "moreApprovals") {
+    return null
+  }
+  const reviewers = requestedReviewersOf(pull)
+  if (reviewers.named.length + reviewers.unnamed > 0) {
+    return reviewers
+  }
+
+  // GitHub takes a reviewer off the requested ones once they review, so after feedback the one missing is a request to
+  // look again.
+  return own.changes.length + own.commentsOnly.length > 0 ? "nobodyAgain" : "nobody"
+}
+
 // The details under an own pull request's status, as they apply, parted by dots.
 function mineDetails(
   pull: Pull,
   own: OwnPull,
   stage: MineStage,
+  request: ReviewerRequest,
   identity: ReturnType<typeof identityOf>,
   now: number,
   { isUpdateOffered, isAutoMergeOn }: Offers
@@ -493,21 +520,14 @@ function mineDetails(
   if (own.changes.length > 0) {
     details.push(reviewedBy("changes requested", own.changes, now, "warning"))
   }
-  // Someone who only commented has no verdict to name them, but their review is still news to the author.
-  const withVerdicts = new Set([...own.approvals, ...own.changes].map((review) => review.login))
-  const commentsOnly = reviewsIn(own.reviews, "COMMENTED").filter((review) => !withVerdicts.has(review.login))
-  if (commentsOnly.length > 0) {
-    details.push(reviewedBy("reviewed", commentsOnly, now, "neutral"))
+  if (own.commentsOnly.length > 0) {
+    details.push(reviewedBy("reviewed", own.commentsOnly, now, "neutral"))
   }
-  if ((!own.isApproved && !own.isChangesRequested) || stage === "rereview" || stage === "moreApprovals") {
-    const reviewers = requestedReviewersOf(pull)
-    // GitHub takes a reviewer off the requested ones once they review, so after feedback the one missing is a request
-    // to look again.
-    const isAfterFeedback = own.changes.length + commentsOnly.length > 0
+  if (request !== null) {
     details.push(
-      reviewers.named.length + reviewers.unnamed > 0
-        ? { text: `requested: ${requestedText(reviewers)}`, tone: "neutral" }
-        : { text: isAfterFeedback ? "no re-review requested" : "no reviewer requested", tone: "warning" }
+      typeof request === "string"
+        ? { text: request === "nobodyAgain" ? "no re-review requested" : "no reviewer requested", tone: "warning" }
+        : { text: `requested: ${requestedText(request)}`, tone: "neutral" }
     )
   }
   if (own.unresolvedThreads > 0) {
@@ -672,6 +692,7 @@ function reviewRow(
     // A review is the next step only while it waits on the viewer.
     primary: status.tone === "warning" ? "review" : null,
     rerequestFrom: [],
+    isReviewerUnrequested: false,
     signals: {
       ci,
       isConflicting: conflictOf(pull),

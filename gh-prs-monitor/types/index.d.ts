@@ -57,6 +57,7 @@ export type PullSignals = {
 export type PullAction =
   | "resolve"
   | "rerequest"
+  | "requestReview"
   | "review"
   | "fixCi"
   | "resolveConflicts"
@@ -97,6 +98,10 @@ export type PullRow = {
   // On your own: those whose change request stands though commits came after their latest review, and who aren't
   // asked to review again yet, whom Re-Request Review asks. Empty on others'.
   rerequestFrom: string[]
+  // On your own: whether nobody is asked to review it and nobody requested changes or left a comment-only review yet, as
+  // its details say ("no reviewer requested"); Request Review offers GitHub's suggestions then (`suggestions.ts`).
+  // False on others'.
+  isReviewerUnrequested: boolean
   signals: PullSignals
 }
 
@@ -195,14 +200,28 @@ export type Question = {
   instructions: string | null
   // A question that asks for a piece of text other than instructions, as a link to paste, names its field.
   field?: QuestionField
+  // A question answered by picking among names before pressing an answer names them (`picking.ts`).
+  picking?: Picking
+}
+
+// What a question offers to pick: names, any number of them or one of them always (`isSingle`), those picked as it
+// opens (`first`, by index), whether its main answer waits for a pick (`needsPick`), and whether the keyboard starts on
+// the names or on the answers.
+export type Picking = {
+  names: string[]
+  isSingle: boolean
+  first: number[]
+  needsPick: boolean
+  startsOn: "names" | "answers"
 }
 
 // A field for a piece of text: its label and placeholder, what its Enter does in a word (drawn beside it, `↵Check`),
 // and what Claude Code's own dialog says of typing it under Other.
 export type QuestionField = { label: string; placeholder: string; submitLabel: string; otherHint: string }
 
-// An answer: the choice pressed, or null for instructions sent alone, with the instructions typed ("" for none).
-export type Answer = { choice: string | null; instructions: string }
+// An answer: the choice pressed, or null for instructions sent alone, with the instructions typed ("" for none), and the
+// names picked where the question offered some.
+export type Answer = { choice: string | null; instructions: string; picks?: string[] }
 
 declare module "claude-code" {
   interface PluginState {

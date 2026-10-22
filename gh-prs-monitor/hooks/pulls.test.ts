@@ -575,6 +575,28 @@ describe("own pull request status", () => {
     expect(row.details).toEqual([{ text: "no reviewer requested", tone: "warning" }])
   })
 
+  test("the row says in data, as its detail does, that nobody is asked to review it and nobody gave feedback yet", () => {
+    const commented = { login: "ann", state: "COMMENTED", at: "2026-10-07T13:00:00Z" }
+    const approved = { login: "ann", state: "APPROVED", at: "2026-10-07T13:00:00Z" }
+    const rows = [
+      mine({ ci: null }),
+      mine({ requested: ["ann"] }),
+      mine({ reviews: [commented] }),
+      mine({ ...REVIEW_REQUIRED, reviews: [approved] }),
+      mine({ reviewDecision: "APPROVED", reviews: [approved] }),
+      mine({ reviewDecision: "CHANGES_REQUESTED", reviews: [{ ...approved, state: "CHANGES_REQUESTED" }] }),
+      mine({ isDraft: true })
+    ]
+
+    expect(rows.map((row) => row.isReviewerUnrequested)).toEqual(
+      rows.map((row) => texts(row).includes("no reviewer requested"))
+    )
+    expect(rows[0]?.isReviewerUnrequested).toBe(true)
+    expect(rows[1]?.isReviewerUnrequested).toBe(false)
+    expect(rows[2]?.isReviewerUnrequested).toBe(false)
+    expect(snapshotOf({ requested: [{ number: 2, author: "ann" }] }).review[0]?.isReviewerUnrequested).toBe(false)
+  })
+
   test("after someone's feedback, the missing request is to look again; an approval alone still needs a reviewer", () => {
     const commented = mine({ reviews: [{ login: "ann", state: "COMMENTED", at: "2026-10-07T13:00:00Z" }] })
     expect(commented.details.map((detail) => detail.text)).toEqual(["CI ✓", "reviewed: ann", "no re-review requested"])

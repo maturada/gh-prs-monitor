@@ -120,7 +120,8 @@ With background refresh (the default), the terminal's status line keeps the coun
 ### One press for the routine
 
 **Merge** (stacked pull requests too, with the methods the repository allows, your usual one first), **Auto-Merge**,
-**Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review** and **Re-Request Review**.
+**Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review**, **Request Review** for the
+people GitHub suggests where nobody was asked yet or more approvals are needed, and **Re-Request Review**.
 Each first looks at the pull request as it stands on GitHub at the press, not as the list last read it, then asks
 before it writes. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
 
@@ -233,10 +234,10 @@ It has no server, no token of its own and no telemetry, and reads no credential 
 `git`, it uses Claude Code's own links.
 
 - **GitHub, through `gh`.** It reads with `gh api`: one GraphQL request for the list at each check, and a few more for
-  how pull requests that left the list ended, for the pull requests of your branch, and for what a press or a cleanup
-  needs to see; `gh repo view`, `gh config get git_protocol` and `gh --version` besides. It writes with `gh pr merge`,
-  `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each only after you confirm it in its dialog. How
-  many requests that comes to: [Cost](gh-prs-monitor/docs/settings.md#cost).
+  how pull requests that left the list ended, for the pull requests of your branch, for the reviewers GitHub suggests,
+  and for what a press or a cleanup needs to see; `gh repo view`, `gh config get git_protocol` and `gh --version`
+  besides. It writes with `gh pr merge`, `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each only
+  after you confirm it in its dialog. How many requests that comes to: [Cost](gh-prs-monitor/docs/settings.md#cost).
 - **git.** Every git command the plugin runs itself carries `core.hooksPath=/dev/null`, so no hook a repository carries
   runs from it. A pull request's branch is fetched with gh's credentials (`gh auth git-credential`) in place of your own
   credential helper, as `gh pr checkout` fetches it. The skills' commits and pushes do run the repository's hooks; on

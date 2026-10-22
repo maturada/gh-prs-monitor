@@ -8,7 +8,7 @@ import type { Timer } from "claude-code"
 
 import type { Answer, MergedPull, PullAction, PullRow, PullsSnapshot, Question } from "../types"
 import { staleFor, staleNote } from "./actions"
-import type { CurrentPull } from "./actions"
+import type { CurrentPull, Stale } from "./actions"
 import type { Host } from "./machine"
 import { CREATE_PR } from "./create-flow"
 import { OPEN_QUESTION_NOTE } from "./dialog-flow"
@@ -200,12 +200,19 @@ export async function lookBeforeAsking(
   if (stale === null) {
     return { isGoing: true, repo: known.repo, current }
   }
+  await stopStale(host, session, row, stale)
+
+  return { isGoing: false }
+}
+
+// A press stopped by what changed on GitHub (`staleFor`), said so: one of your own merged turns ✓ Merged where it was;
+// anything else refreshes the list.
+export async function stopStale(host: PressHost, session: Session, row: PullRow, stale: Stale): Promise<void> {
+  const list = await host.storedList()
   const isOwn = list?.mine.some((each) => each.number === row.number) ?? false
   const isShownMerged = stale === "merged" && isOwn
   await host.notify(staleNote(row, stale, isShownMerged), session.settings.alertMs)
   await (isShownMerged ? dropMerged(host, session, row) : settleAfterWrite(host))
-
-  return { isGoing: false }
 }
 
 // The session's repository for a press or a typed skill, looked up here where no load has found it since a reload. What

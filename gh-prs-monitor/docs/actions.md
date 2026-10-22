@@ -15,6 +15,7 @@ pages of their own: [Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md)
 | **Update Branch** | behind its base, where the base must be up to date to merge or the repository always suggests updating branches, and GitHub lets you update the branch; at any stage but draft, conflicts and in the merge queue | Merges the base branch in, or rebases onto it, as you pick. |
 | **Re-Run CI** | CI failing, not a draft, and you can push to the repository | Re-runs the failed jobs of the failed GitHub Actions runs it names. |
 | **Ready For Review** | a draft, as its main button | Marks it ready for review. |
+| **Request Review** | nobody is asked to review it and nobody has reviewed it yet ("no reviewer requested"), or it needs more approvals; GitHub suggests someone; not on a draft or in the merge queue, and you need triage access to the repository; the main button while it waits for review or for more approvals | Asks the people you pick among GitHub's suggestions (below), as GitHub's request for reviewers does. |
 | **Re-Request Review** | someone requested changes, commits came after their latest review, and they aren't asked again yet; not on a draft, and you need triage access to the repository; the main button while changes requested is the status | Asks them to review again, as GitHub's re-request does (only those who requested changes). Once everyone holding it back is asked, the row waits on them. |
 
 ## Each press checks GitHub first
@@ -30,10 +31,27 @@ the button, the press says so, asks nothing, and the list refreshes:
 | **Update Branch** | GitHub moved it into another branch, is up to date with its base already, or conflicts with it now |
 | **Resolve Conflicts** | merges cleanly now |
 | **Ready For Review** | is out of draft already |
+| **Request Review** | was turned back into a draft |
 | **Re-Request Review** | had its review re-requested already, or was turned back into a draft |
 
 Where GitHub's answer can't be read, the question is asked all the same, as GitHub turns down a write that no longer
 fits; a `gh` that needs setting up stops it.
+
+## Request Review
+
+GitHub suggests reviewers from who last changed the lines a pull request touches. After each refresh, the plugin asks
+GitHub for its suggestions on your pull requests that wait on reviewers nobody asked, or need more approvals, in one
+small request; the button comes a moment after the list. It leaves out the author, anyone asked already and anyone who
+approved, at most four people, and asks again when the pull request gets new commits, after someone was asked from the
+pane, or after a request that failed.
+
+Its dialog shows each person as a button that picks them (✓), with **Select All**, which reads **Clear** once everyone
+is picked. **Request Review** stays dim until someone is picked; Cancel or Escape asks nobody. Where the pane doesn't
+show, Claude Code's own dialog asks instead, the names ticked there.
+
+Before asking, it looks at GitHub once more, as the dialog may have been open for minutes: anyone asked meanwhile is
+left out, and with everyone asked already, nobody is asked twice. GitHub asks all of those picked or none: one it
+refuses, as someone without access to the repository, refuses the request, and the alert says nobody was asked.
 
 ## Your repository's rules
 

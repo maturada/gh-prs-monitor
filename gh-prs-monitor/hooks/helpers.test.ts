@@ -894,7 +894,23 @@ describe("putting the pane's window back after a question", () => {
   })
 
   test("the person's own move ends a window going back; where one over the list lands is kept", async () => {
-    const asking = { answer: () => undefined, isAnswered: false, isInPane: true, fieldKey: "answer-text", draft: "" }
+    const asking = {
+      question: {
+        header: "Merge",
+        subject: "#7 Fix the menu",
+        text: "Merge it?",
+        detail: null,
+        choices: ["Merge", "Cancel"],
+        main: "Merge",
+        instructions: null
+      },
+      answer: () => undefined,
+      isAnswered: false,
+      isInPane: true,
+      fieldKey: "answer-text",
+      draft: "",
+      picks: []
+    }
     const window = { listOffset: 3, goingBack: { offset: 3 } as { offset: number } | null, asking: null }
 
     expect(await windowMoved(window, true, 9, async () => ({}))).toEqual({})

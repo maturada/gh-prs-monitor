@@ -2,16 +2,18 @@
 
 // The plugin's dialog as it runs: a question asked in the pane where its button was pressed, or in Claude Code's own
 // dialog where the pane doesn't show, one at a time; and the pane's window put back on its row once it is answered.
-// dialog.tsx draws the question; branch-flow, review-flow and create-flow build the questions and the skills'
-// arguments. This one holds the open question (`Session`) and reaches the engine through a host.
+// dialog.tsx and picker.tsx draw the question, in question-frame.tsx's frame; branch-flow, review-flow and create-flow
+// build the questions and the skills' arguments. This one holds the open question (`Session`) and reaches the engine
+// through a host.
 
 import type { AskOptions, Timer, UiPane, UiScrollResult } from "claude-code"
 
-import type { Answer, Question } from "../types"
+import type { Answer, Picking, Question } from "../types"
 import { goBack } from "./back-to-row"
-import { answerKey, BACK_MARK } from "./keys"
+import { BACK_MARK, firstFocusKey } from "./keys"
 import { placesOutOfFlow } from "./layout"
-import { readAnswer } from "./question"
+import { pickedNames } from "./picking"
+import { CANCEL, readAnswer } from "./question"
 import type { GoingBack, OpenQuestion, Session } from "./session"
 
 // What the plugin's dialog reaches through the engine, handed in by the hooks module.
@@ -68,7 +70,15 @@ export async function ask(
       open.isAnswered = true
       resolve(given)
     }
-    open = { answer, isAnswered: false, isInPane: true, fieldKey, draft: "" }
+    open = {
+      question,
+      answer,
+      isAnswered: false,
+      isInPane: true,
+      fieldKey,
+      draft: "",
+      picks: [...(question.picking?.first ?? [])]
+    }
   })
   session.asking = open
   // Where the window stood over the list, kept before the question takes its place and moves the window; a window still
@@ -84,10 +94,10 @@ export async function ask(
       if (isSettled) {
         return null
       }
-      // Claude Code's own dialog offers four answers at most: one with more waits in the pane where it is placed, though
-      // behind; with none placed, it goes there still, whose refusal is a Cancel.
-      if (isShown || (question.choices.length > ENGINE_ANSWERS && (await isPanePlaced(host)))) {
-        await moveToQuestion(host, question.field ? fieldKey : answerKey(0))
+      // Claude Code's own dialog offers four answers at most, and four names: one with more waits in the pane where it
+      // is placed, though behind; with none placed, it goes there still, whose refusal is a Cancel.
+      if (isShown || (!fitsEngineDialog(question) && (await isPanePlaced(host)))) {
+        await moveToQuestion(host, firstFocusKey(question, fieldKey))
 
         return answered
       }
@@ -170,8 +180,8 @@ export async function isQuestionOpen(host: DialogHost, session: Session): Promis
   return open !== null && !(open.isInPane && !(await host.panes()).some((pane) => pane.id === host.pane))
 }
 
-// The question at the top of the pane, and the keyboard where the pane holds it on its first answer, as after a press
-// there, or in its field where it asks for a piece of text; elsewhere the person goes on as they were.
+// The question at the top of the pane, and the keyboard where the question starts it (`firstFocusKey`) where the pane
+// holds it, as after a press there; elsewhere the person goes on as they were.
 async function moveToQuestion(host: DialogHost, key: string): Promise<void> {
   await host.scrollToTop().catch(() => undefined)
   await host.focus(key).catch(() => undefined)
@@ -204,29 +214,77 @@ async function backToRow(host: DialogHost, session: Session, pressed: string, ba
   )
 }
 
-const ENGINE_ANSWERS = 4
+// What Claude Code's own dialog offers at each step: four options at most, the answers or the names to pick.
+export const ENGINE_OPTIONS = 4
+
+function fitsEngineDialog(question: Question): boolean {
+  return question.choices.length <= ENGINE_OPTIONS && (question.picking?.names.length ?? 0) <= ENGINE_OPTIONS
+}
 
 async function isPanePlaced(host: DialogHost): Promise<boolean> {
   return (await host.panes()).some((pane) => pane.id === host.pane && pane.isPlaced)
 }
 
 // The engine's dialog has a short header and one text, so the subject leads the text, as an alert names a pull
-// request, and the detail follows the question; instructions typed under Other are sent alone. It rejects when the
-// person dismisses it, which counts as Cancel.
+// request, and the detail follows the question. A question that offers names asks for them first, in a step of their
+// own (`askPicks`), then for its answer where it has more than one besides Cancel. It rejects when the person
+// dismisses it, which counts as Cancel.
 export async function askInEngineDialog(host: DialogHost, question: Question): Promise<Answer | null> {
-  const detail = question.detail === null ? "" : ` ${question.detail}`
-  const instructions = question.field
+  try {
+    const picking = question.picking
+    if (!picking) {
+      return await askAnswer(host, question)
+    }
+    const picks = await askPicks(host, question, picking)
+    if (picks === null) {
+      return null
+    }
+    // With one answer besides Cancel, the names were the whole question: that answer, with no instructions, as none
+    // were asked for.
+    const [only, ...more] = question.choices.filter((choice) => choice !== CANCEL)
+    const answer =
+      only !== undefined && more.length === 0 ? { choice: only, instructions: "" } : await askAnswer(host, question)
+
+    return { ...answer, picks: pickedNames(picking, picks) }
+  } catch {
+    return null
+  }
+}
+
+// The question's answers; instructions typed under Other are sent alone.
+async function askAnswer(host: DialogHost, question: Question): Promise<Answer> {
+  const hint = question.field
     ? ` ${question.field.otherHint}`
     : question.instructions === null
       ? ""
       : ` Instructions typed under Other go ${question.instructions}.`
-  const text = `${question.subject} — ${question.text}${detail}${instructions}`
-  try {
-    return readAnswer(
-      await host.askInEngine(text, { header: question.header, options: question.choices }),
-      question.choices
-    )
-  } catch {
-    return null
-  }
+  const said = await host.askInEngine(engineText(question, hint), {
+    header: question.header,
+    options: question.choices
+  })
+
+  return readAnswer(said, question.choices)
+}
+
+// The names: ticked where any number may be picked, the engine sending them back comma-joined; one of them chosen
+// where one is; a lone name beside Cancel, which the engine would pad with Yes and No. An answer that names no one,
+// Cancel or text typed under Other, is no answer, so a decline typed there never starts anything.
+async function askPicks(host: DialogHost, question: Question, picking: Picking): Promise<number[] | null> {
+  const isLone = picking.names.length === 1
+  const said = await host.askInEngine(engineText(question, ""), {
+    header: question.header,
+    options: isLone ? [...picking.names, CANCEL] : picking.names,
+    ...(picking.isSingle || isLone ? {} : { multiSelect: true as const })
+  })
+  const chosen = (picking.isSingle ? [said] : said.split(",")).map((each) => each.trim().toLowerCase())
+  const picks = picking.names.flatMap((name, index) => (chosen.includes(name.toLowerCase()) ? [index] : []))
+
+  return picks.length > 0 ? picks : null
+}
+
+// The question as the engine's dialog shows it, with `hint` saying where instructions typed under Other go.
+function engineText(question: Question, hint: string): string {
+  const detail = question.detail === null ? "" : ` ${question.detail}`
+
+  return `${question.subject} — ${question.text}${detail}${hint}`
 }
