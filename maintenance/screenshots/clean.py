@@ -1,7 +1,7 @@
 # Author: David Matura
 #
-# A rendered composite made ready for the plugin's assets, its pixels kept: the transparent rows a render leaves under
-# the card trimmed, the text and ICC-profile chunks dropped (as in the other screenshots), and the image data
+# A rendered card (card.py) made ready for the plugin's assets, its pixels kept: the transparent rows a render leaves
+# under the card trimmed, the text and ICC-profile chunks dropped (as in the other screenshots), and the image data
 # compressed again until no run of its bytes reads as a command the directory's scan flags. 1.0.1's compact.png spelled
 # PowerShell's `iex` and `irm`, its icon and hero `iwr` and `npx`.
 # Usage: python3 maintenance/screenshots/clean.py <render.png> <gh-prs-monitor/assets/screenshots/name.png>

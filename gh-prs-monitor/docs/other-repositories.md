@@ -4,7 +4,7 @@ Your pull requests rarely live in one repository. The pane can show another repo
 conversation, and an optional light check tells you about reviews and CI in all of them, while this folder's list goes
 on as it was.
 
-![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, then acme/web's pull requests shown with Back](../assets/screenshots/visit.gif)
+![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, and beside it acme/web's pull requests shown with Back](../assets/screenshots/visit.png)
 
 ## Showing another repository
 

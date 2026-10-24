@@ -161,7 +161,8 @@ types/index.d.ts          the state the pane reads
 ```
 
 Besides, the sounds folder holds the alert sound, and the assets folder the logo and screenshots the README shows and
-the icon the plugin's listing uses.
+the icon the plugin's listing uses. The screenshots are made with `maintenance/screenshots/` in the repository, whose
+README says how to shoot and cut one and put it on the card the README's pictures share.
 
 Work on the plugin from a clone of [the repository](https://github.com/maturada/gh-prs-monitor):
 `claude --plugin-dir gh-prs-monitor`, from the clone's root, loads this folder for that session in place of an

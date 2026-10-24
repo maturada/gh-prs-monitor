@@ -7,7 +7,7 @@ list, or hand the work to a skill.
 
 [//]: # (header end)
 
-![Claude Code in a terminal: a conversation with an alert and the pull request count, beside the /prs pane listing CI failing, conflicts and changes requested, each with its buttons](assets/screenshots/hero.png)
+![Claude Code in a terminal: an alert that #1242 is ready to merge, beside the /prs pane listing CI failing, conflicts and changes requested, each with its buttons](assets/screenshots/hero.png)
 
 CI failed, a review came in, a teammate asked for your review: gh-prs-monitor tells you in the session you are already
 in. `/prs` opens your pull requests with what needs you on top and a button for the next step: merge, re-run CI or ask
@@ -111,7 +111,7 @@ type `/prs acme/web`, `/prs ~/code/web` or a pull request's address; its buttons
 this folder's list. Turn on **Alerts from other repositories** in `/config` for alerts about reviews and CI in the
 others, and a `+3 elsewhere` count in the header. [Other repositories](docs/other-repositories.md)
 
-![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, then acme/web's pull requests shown with Back](assets/screenshots/visit.gif)
+![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, and beside it acme/web's pull requests shown with Back](assets/screenshots/visit.png)
 
 ### Your tickets, one click away
 
