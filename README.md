@@ -8,7 +8,7 @@
 
 <p align="center">
   <strong>Your GitHub pull requests, inside Claude Code.</strong><br>
-  See what needs you, know when it changes, and act on it without leaving your session.
+  See what needs you, know when it changes, and act on it from the list, or hand the work to a skill.
 </p>
 
 <p align="center">
@@ -23,32 +23,28 @@
   <a href="https://github.com/maturada/gh-prs-monitor/issues">Issues</a>
 </p>
 
-![The /prs pane in a terminal, with three alerts arriving beside it](gh-prs-monitor/assets/screenshots/hero.png)
+![Claude Code in a terminal: a conversation with an alert and the pull request count, beside the /prs pane listing CI failing, conflicts and changes requested, each with its buttons](gh-prs-monitor/assets/screenshots/hero.png)
 
-Stop switching to GitHub to check on your pull requests. gh-prs-monitor is a Claude Code plugin that keeps the ones you
-opened, and the ones waiting on your review, right where you work: the moment CI fails, a review lands or a pull
-request is ready to merge, you know. Merge it, fix it or review it from the same place, or hand the work to a skill,
-and nothing reaches GitHub without your yes.
-
-The screenshots show `/prs demo`, the plugin's example pull requests, or made-up ones like them.
+CI failed, a review came in, a teammate asked for your review: gh-prs-monitor tells you in the session you are already
+in. `/prs` opens your pull requests with what needs you on top and a button for the next step: merge, re-run CI or ask
+for a review in one press, or hand the fix to a skill. Nothing is written to GitHub without your yes. Try it on example
+data with `/prs demo`.
 
 ## What it does
 
-- **See what needs you.** Your open pull requests and review requests in one pane, one status each, sorted so the one
-  that needs you is on top.
-- **Know the moment it changes.** Alerts while you work and a count in the status line, with no pane to keep open; in
-  the terminal, system notifications too, if you want them.
-- **Act in one press.** Merge, update a branch, re-run CI, or ask for a review or a re-review, each confirmed before it
-  writes.
-- **Hand off the work.** Skills resolve review comments, fix CI, resolve conflicts, review and create pull requests,
-  and post only on your yes.
-- **Link your tickets.** Paste one ticket link with `/prs tickets`, and every pull request links its ticket in Linear,
-  Jira or whichever tracker you use, right on its row: no token, no integration to set up. Create PR and Review use it
-  too.
-- **Never lose your place.** Skills can work in a worktree of their own, dependencies installed, so your checkout and
-  your uncommitted changes stay untouched; the worktree clears itself away once nothing in it would be lost.
-- **Spend tokens only on real work.** The pane, the checks, the alerts and the status line make no model requests; only
-  a skill you start does.
+- **See what needs you.** Your pull requests and the ones waiting on your review, what needs you on top.
+- **Know when it changes.** An alert when CI fails, a review comes in or a pull request can merge, and a count in the
+  status line.
+- **Act in one press.** Merge, update a branch, re-run CI or ask for a review, each confirmed before it writes.
+- **Hand off the work.** Skills resolve review comments, fix CI, resolve conflicts, review and open pull requests; the
+  first three can work in a worktree of their own, so your checkout stays as it is.
+- **Look beyond this folder.** Show another repository in the pane, and get alerts from the others if you like.
+- **Link your tickets.** Paste one ticket link, and each pull request that names a ticket links it in Linear, Jira or
+  whichever tracker you use: no token, no integration.
+- **Light on tokens.** The pane, the checks and the alerts make no model requests; only a skill you start does.
+
+[A day with it](gh-prs-monitor/docs/a-day-with-it.md) follows a working day with the plugin, from the first session to the next
+branch.
 
 ## Get started
 
@@ -59,284 +55,195 @@ In Claude Code:
 /plugin install gh-prs-monitor@gh-prs-monitor
 ```
 
-Choose **Install for you (user scope)** and run `/reload-plugins`. Then `/prs demo` shows example pull requests, and
-`/prs`, in any folder whose git remote is on GitHub, shows your own. Esc closes the pane, and `/config` sets when it
-checks and which alerts show.
+Choose **Install for you (user scope)** and run `/reload-plugins`. `/prs demo` shows example pull requests and sends
+nothing to GitHub; `/prs`, in any folder whose git remote is on GitHub, shows your own. Esc closes the pane, and
+`/config` sets when it checks and which alerts show. The pictures on this page show `/prs demo` or other made-up data.
 
 You need the [GitHub CLI](https://cli.github.com) signed in (`gh auth login`); [Requirements](#requirements) has the
 rest. gh-prs-monitor is a Claude Code plugin, installed with `/plugin`, not a `gh` extension.
 
 ## Features
 
-### The pane
+### What needs you, on top
 
 Your pull requests are sorted by what they need: failing and conflicting first, then what waits on you, then what is
-ready to merge, then what waits on others, drafts last. The ones waiting on your review have a list of their own, and a
-last part lists what was merged or closed lately. Failing checks, conflicts and unresolved comments link to the page on
-GitHub where each is dealt with. A note under a row says what changed lately; `●` marks the pull request your session's
-branch is on. [The pane](gh-prs-monitor/docs/pane.md)
+ready to merge. The ones waiting on your review have a list of their own, and what someone else merged or closed lately
+is noted under them. Failing checks, conflicts and unresolved comments link to where you deal with them on GitHub, and a
+note under a row says what changed lately. **Compact** puts each on one line. [The pane](gh-prs-monitor/docs/pane.md)
 
-![The /prs pane in a terminal: your pull requests with their statuses and buttons, and the ones waiting on your review](gh-prs-monitor/assets/screenshots/pane.png)
+![The /prs pane in the Claude desktop app: your pull requests, what needs you on top, each with its status and buttons](gh-prs-monitor/assets/screenshots/lists.png)
 
-**Compact** keeps each pull request to its number, title and status, for a long list:
+### Alerts while you work
 
-![The compact pane, in a terminal and in the desktop app](gh-prs-monitor/assets/screenshots/compact.png)
+Alerts come while you work, with no pane to keep open: when one of yours can merge, gets a review or a comment, fails CI
+or runs into conflicts; when you are asked to review, or a pull request you reviewed without approving gets new commits;
+when someone mentions you, or someone else merges or closes one of yours or one you review.
 
-**`#` in the prompt** offers the pull requests listed, yours first: type `#` and the start of a number, or of a word
-in a title, and pick one to write its number. In the terminal: the desktop app and VS Code don't ask plugins for
-these yet.
+- **They don't cut in.** Alerts that come while Claude works wait for the turn to end, five minutes at most, and your
+  sessions share which ones they showed, so a change alerts once.
+- **Coming back.** It checks in the background, every three minutes by default: a new session sums up what changed
+  since you last looked, and the status line keeps the count.
+- **Your way.** `/config` picks the kinds; a sound and system notifications (in the terminal) are there too, off by
+  default.
 
-### Ticket links
+[Alerts and the status line](gh-prs-monitor/docs/alerts.md)
 
-Paste a link to any ticket with `/prs tickets`, once per repository, and every pull request whose branch or title names
-its key shows its ticket first in its details, `WEB-5785 ⧉`, a click away in Linear, Jira, YouTrack, Shortcut, Azure
-Boards or whichever tracker you use. There is no token to create and no integration to connect: the plugin reads that
-one link on your machine and never contacts your tracker. Create PR puts the ticket in the title, commit and body where
-your repository does, and Review, with your tracker's tool connected, weighs the change against what the ticket asks,
-for you alone. The skills are told to post a ticket's key and link at most, never what it says.
-[Ticket links](gh-prs-monitor/docs/tickets.md)
-
-![Setting up ticket links with /prs tickets, with example data: a ticket link pasted, the pull request it would link shown, saved, and the ticket on its row](gh-prs-monitor/assets/screenshots/tickets.gif)
-
-### Alerts and the status line
-
-From the moment a session starts, it checks in the background every 3 minutes. An alert says when:
-
-- one of yours can merge, is approved or gets changes requested, gets comments, fails CI or passes it again, or runs
-  into conflicts;
-- you are asked to review, or a pull request you reviewed without approving gets new commits;
-- someone mentions you, or someone else merges or closes one of yours or one you review.
-
-Alerts that come while Claude is working wait until the turn ends, and when a session starts, one alert sums up what
-changed since you last looked. **Alerts as system notifications** (off by default) also sends the pull request
-changes as a system notification, the way Claude Code sends its own. Here they arrive while the pane is open, and a
-button asks before it acts:
-
-![Alerts arriving beside the pane, then Re-Run CI asking before it re-runs the failed jobs](gh-prs-monitor/assets/screenshots/alerts.gif)
-
-With background refresh (the default), the terminal's status line keeps the count. [Alerts](gh-prs-monitor/docs/alerts.md)
-
-![The status line: 1 ready, 6 need you, 4 to review](gh-prs-monitor/assets/screenshots/status-line.png)
+![An alert that #1242 can merge arriving beside the pane, then Merge asking before it merges](gh-prs-monitor/assets/screenshots/alerts.gif)
 
 ### One press for the routine
 
-**Merge** (stacked pull requests too, with the methods the repository allows, your usual one first), **Auto-Merge**,
-**Update Branch**, **Re-Run CI** for the failed GitHub Actions jobs, **Ready For Review**, **Request Review** to ask the
-people GitHub suggests where no person is asked to review, before the first review or for more approvals, and
-**Re-Request Review** to ask those who requested changes to look again. Each first looks at the pull request as it
-stands on GitHub at the press, not as the list last read it, then asks before it writes.
-[Acting on GitHub](gh-prs-monitor/docs/actions.md)
+Each row offers the button its state calls for: **Merge** (stacked pull requests too), **Auto-Merge**,
+**Update Branch**, **Re-Run CI** for the failed jobs, **Ready For Review**, **Request Review** with the people GitHub
+suggests, and **Re-Request Review**. Each press looks at the pull request on GitHub first, offers only what your
+repository allows, and asks before it writes; a merge goes through only while the pull request's head is still the
+commit you saw. [Acting on GitHub](gh-prs-monitor/docs/actions.md)
 
 ### Skills that do the work
 
 - **Resolve Comments** sorts each unresolved comment as needs fix, debatable or already fixed, and fixes the ones you
   approve. [More](gh-prs-monitor/docs/resolve-comments.md)
-- **Fix CI** reads the failing checks' logs, tells a flaky failure from a real one, and fixes the ones you pick.
+- **Fix CI** reads the failing logs, tells a flaky failure from a real one, and fixes the ones you pick.
   [More](gh-prs-monitor/docs/fix-ci.md)
-- **Resolve Conflicts** merges the base in apart from your checkout and proposes a resolution for each conflict, for
-  you to approve. [More](gh-prs-monitor/docs/resolve-conflicts.md)
-- **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and posts
-  its inline comments only after you approve their wording. On a pull request you reviewed before, with new commits
-  since or a new request for your review, it can review only what changed since and tell you what came of your comments.
-  With ticket links, it can weigh the change against its ticket, for you alone. [More](gh-prs-monitor/docs/review.md)
-- **Create PR** runs the checks you pick, drafts the title and body in the repository's own format, with the ticket
-  where you link tickets, and remembers your choices for next time. [More](gh-prs-monitor/docs/create-pr.md)
+- **Resolve Conflicts** merges the base in apart from your checkout, reads both sides and their commit messages, and
+  proposes a resolution for each conflict, for you to approve. [More](gh-prs-monitor/docs/resolve-conflicts.md)
+- **Review** leaves out what other reviewers and bots already raised, checks each finding before it shows it, and
+  posts only the comments you approve. On a pull request you reviewed before, it can cover only what changed since and
+  tell you what came of your comments. [More](gh-prs-monitor/docs/review.md)
+- **Create PR** runs the checks you pick, drafts the title and body in your repository's own format, and remembers your
+  choices for next time. [More](gh-prs-monitor/docs/create-pr.md)
 
-### Your checkout stays yours
+Resolve Comments, Fix CI and Resolve Conflicts ask where to work: in a worktree of their own, so your checkout and your
+uncommitted changes stay as they are; in this checkout; or in a new session. A worktree comes ready, its dependencies
+installed from the project's lockfile (JavaScript, Flutter and Dart, iOS, Python, Ruby, PHP, .NET) and your `.env` and
+other ignored files copied as `.worktreeinclude` names them, and it goes once its pull request is done and nothing in it
+would be lost. Review and Create PR run here or in a new session. [Where the skills work](gh-prs-monitor/docs/working-on-a-branch.md)
 
-Resolve Comments, Fix CI and Resolve Conflicts ask where to work: in a git worktree of their own, in this session or a
-new one, where your checkout and your uncommitted changes stay as they are; or here, switching this checkout to the
-pull request's branch. A worktree gets its dependencies installed from each project's lockfile (JavaScript, Flutter and
-Dart, iOS, Python, Ruby, PHP and .NET), and the ignored files your `.worktreeinclude` names, such as a `.env`; a fork's
-pull request gets neither. Once the pull request is merged or closed, the worktree goes, when nothing in it would be
-lost. [Where the skills work](gh-prs-monitor/docs/working-on-a-branch.md)
+![Fix CI asking where to work: here, in a worktree in this session, or in a worktree in a new session](gh-prs-monitor/assets/screenshots/handoff.png)
 
-### In the desktop app
+### Your other repositories
 
-The pane sits beside the conversation, with both lists side by side when there is room, and the count in a band above
-the prompt. [Where each part shows](gh-prs-monitor/docs/pane.md#where-each-part-shows)
+Check on another repository without leaving this one. Press **Repositories** in the pane's header, beside Refresh, or
+type `/prs acme/web`, `/prs ~/code/web` or a pull request's address; its buttons work there too, and **Back** returns to
+this folder's list. Turn on **Alerts from other repositories** in `/config` for alerts about reviews and CI in the
+others, and a `+3 elsewhere` count in the header. [Other repositories](gh-prs-monitor/docs/other-repositories.md)
 
-![The /prs pane in the Claude desktop app, both lists side by side, and the summary band above the prompt](gh-prs-monitor/assets/screenshots/desktop.png)
+![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, then acme/web's pull requests shown with Back](gh-prs-monitor/assets/screenshots/visit.gif)
 
-### In VS Code
+### Your tickets, one click away
 
-In VS Code, and editors built on it such as Cursor, the Claude Code extension (2.1.299 or later) draws the pane, its
-alerts and the count above the prompt box, and New session opens a new tab of the editor. Where nothing draws what
-plugins add, as in an older extension, `/prs` prints the list instead, led by what changed since you last looked.
+Paste a link to any ticket with `/prs tickets`, once per repository, and each pull request whose branch or title names
+its key shows it on its row, `WEB-5785 ⧉`, a click away in Linear, Jira or whichever tracker you use. There is no token
+and no integration: the plugin reads that one link on your machine and never contacts your tracker itself. Create PR
+puts the ticket where your repository's pull requests do, and with your tracker's tool connected to Claude Code, Review
+weighs the change against what the ticket asks, for you alone. [Ticket links](gh-prs-monitor/docs/tickets.md)
+
+![Setting up ticket links with /prs tickets, with example data: a ticket link pasted, the pull request it would link shown, saved, and the ticket on its row](gh-prs-monitor/assets/screenshots/tickets.gif)
+
+### Terminal, desktop app and VS Code
+
+The pane opens beside the conversation in the terminal, in the Claude desktop app, and in the Claude Code extension for
+VS Code and editors built on it, with the count in the status line, or in a band above the prompt in the desktop app.
+From your phone or claude.ai over Remote Control, `/prs` prints the list in the conversation.
 [Where each part shows](gh-prs-monitor/docs/pane.md#where-each-part-shows)
 
-![The /prs pane in VS Code, each pull request a card with its buttons, and a button's question in place of the list](gh-prs-monitor/assets/screenshots/vscode.png)
+![The /prs pane in the Claude desktop app and in the VS Code extension, side by side](gh-prs-monitor/assets/screenshots/surfaces.png)
 
-### Light on tokens and rate limits
+### Light on tokens
 
-The pane, the checks, the alerts and the status line make no model requests; a skill does once you start it. The skills
-stay out of the model's context until one runs; the plugin's two tools, `create_pr_choices` and `ticket_links`, add
-their descriptions, a few hundred tokens, or only their names where Claude Code defers tools. Each check is one GitHub
-request of 5 rate-limit points, which your sessions in a repository share, in the terminal, VS Code and the desktop app
-alike: every 3 minutes, that is 2% of the 5,000 points an hour your account gets, for each repository.
-[Cost](gh-prs-monitor/docs/settings.md#cost)
+The pane, the checks, the alerts and the status line make no model requests; a skill does once you start it, and the
+skills stay out of the model's context until one runs. The plugin's two tools add their descriptions, a few hundred
+tokens. Each check is one main GitHub request, shared by your sessions in a repository: checking every 3 minutes uses 2%
+of the 5,000 points an hour GitHub gives you, for each repository. [Cost](gh-prs-monitor/docs/settings.md#cost)
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/prs` | Opens the pane. Esc closes it. Sent over Remote Control, from your phone or claude.ai, it also prints the list there. |
-| `/prs demo` | Shows example pull requests, one of each status, with their alerts. Nothing is sent to GitHub. |
-| `/prs close` | Closes the pane, for when a click does nothing. |
-| `/prs report` | Links to report a bug, with your versions filled in, or to suggest an idea. |
-| `/prs tickets` | Sets up [ticket links](gh-prs-monitor/docs/tickets.md) for this repository, from a link to any ticket you paste; once set up, shows, adds to or removes them. |
-| `/gh-prs-monitor:review <number or URL> [since] [-- <instructions>]` | Reviews a pull request; with `since`, only what changed since your last review of it. |
-| `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]` | Resolves its review comments. |
-| `/gh-prs-monitor:fix-ci [<number or URL>] [-- <instructions>]` | Fixes its failing CI. |
-| `/gh-prs-monitor:resolve-conflicts [<number or URL>] [-- <instructions>]` | Resolves its conflicts with its base. |
-| `/gh-prs-monitor:create-pr [-- <instructions>]` | Opens a pull request from the branch checked out. |
+| `/prs` | Opens the pane; Esc closes it. |
+| `/prs demo` | Shows example pull requests, one of each status, with their alerts; nothing is sent to GitHub. |
+| `/prs acme/web` | Shows another repository: `owner/name`, an address, or a clone's folder such as `~/code/web`. |
+| `/prs tickets` | Sets up [ticket links](gh-prs-monitor/docs/tickets.md) for this repository. |
+| `/prs report` | Links to report a bug with your versions filled in, or to suggest an idea. |
+| `/prs close` | Closes the pane from the prompt. |
 
-Without a number or URL, the branch skills take the pull request of the current branch. The pane's buttons start the
-same skills, and first ask where they should run: Resolve Comments, Fix CI and Resolve Conflicts here, in a worktree or
-in a new session; Review and Create PR here or in a new session, Review first asking what to cover on a pull request
-with new commits or a new request since your review. A button's question replaces the list until you answer it;
-**Cancel** (or Esc, in the terminal) leaves it.
+| Skill | What it does |
+|---|---|
+| `/gh-prs-monitor:resolve-comments` | Resolves a pull request's review comments. |
+| `/gh-prs-monitor:fix-ci` | Fixes its failing CI. |
+| `/gh-prs-monitor:resolve-conflicts` | Resolves its conflicts with its base. |
+| `/gh-prs-monitor:review` | Reviews a pull request; with `since`, only what changed since your last review. |
+| `/gh-prs-monitor:create-pr` | Opens a pull request from the branch checked out. |
+
+Resolve Comments, Fix CI and Resolve Conflicts take a pull request's number or URL, or the current branch's without
+one. Review needs a number or URL, and Create PR uses the branch checked out. Each takes instructions after `--`, as in
+`/gh-prs-monitor:review 142 since -- focus on the migration`. The pane's buttons start the same skills, first asking
+where to run.
 
 ## Requirements
 
-- **Claude Code 2.1.292 or later**: tested on 2.1.292, 2.1.295, 2.1.296 and 2.1.299 to 2.1.304, the desktop app's
-  2.1.293, and the VS Code extension's 2.1.303.
-  - **Alerts as system notifications** needs 2.1.295; before it, alerts show as toasts only.
-  - In VS Code and editors built on it, the pane needs the Claude Code extension 2.1.299 or later, in a session that
-    [fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching).
-- **The [GitHub CLI](https://cli.github.com) (`gh`) 2.53 or later**, signed in with `gh auth login`. The plugin works
-  through your `gh` account and has no token of its own, so it sees what you can see. **Update Branch** needs
-  `gh pr update-branch`, which came with 2.53. Tested with `gh` 2.97.
-- **git 2.31 or later.** The worktrees the branch skills work in, and their cleanup, use
-  `git rev-parse --path-format=absolute`; **Here, switch branch** uses `git switch`.
-- **A folder whose git remote is on GitHub:** github.com, or GitHub Enterprise Server 3.16 or later, the version whose
-  schema the list query was checked against. Anywhere else the plugin stays quiet, and `/prs` says why. With several
-  remotes, `gh` picks the repository: the one `gh repo set-default` chose, else the remote named `upstream`, `github`,
-  then `origin`.
+- **Claude Code 2.1.292 or later**; in VS Code and editors built on it, the Claude Code extension 2.1.299 or later.
+- **The [GitHub CLI](https://cli.github.com) 2.53 or later**, signed in with `gh auth login`. The plugin works through
+  your account and has no token of its own.
+- **git 2.31 or later.**
+- **A folder whose git remote is on GitHub:** github.com, or GitHub Enterprise Server 3.16 or later.
 
-If `gh` is missing or signed out, a notice tells you once, with the fix.
+The versions it is tested with, and what each setup needs:
+[Versions and setups](gh-prs-monitor/docs/troubleshooting.md#versions-and-setups).
 
 ## Updates and removal
 
-- **Updates** come as new versions. To get them as they come out, open `/plugin`, go to **Marketplaces**, select
-  `gh-prs-monitor` and choose **Enable auto-update**; otherwise choose **Update now** for the plugin on the
-  **Installed** tab. A new version loads in the next session, or after `/reload-plugins`. What each version changed:
-  [CHANGELOG](https://github.com/maturada/gh-prs-monitor/blob/main/CHANGELOG.md).
-- **From a shell:** `claude plugin marketplace add maturada/gh-prs-monitor` and
-  `claude plugin install gh-prs-monitor@gh-prs-monitor` install it, and
-  `claude plugin update gh-prs-monitor@gh-prs-monitor` updates it.
-- **To remove it**, uninstall it in `/plugin`, or run `claude plugin uninstall gh-prs-monitor@gh-prs-monitor`.
+- **Updates:** in `/plugin`, under **Marketplaces**, select `gh-prs-monitor` and choose **Enable auto-update**, or
+  **Update now** on the **Installed** tab. A new version loads in the next session, or after `/reload-plugins`.
+  What each version changed: [CHANGELOG](https://github.com/maturada/gh-prs-monitor/blob/main/CHANGELOG.md).
+- **From a shell:** `claude plugin marketplace add maturada/gh-prs-monitor`, then
+  `claude plugin install gh-prs-monitor@gh-prs-monitor`; `claude plugin update gh-prs-monitor@gh-prs-monitor`
+  updates it.
+- **To remove it:** uninstall it in `/plugin`, or run `claude plugin uninstall gh-prs-monitor@gh-prs-monitor`.
 
 ## What it runs and what it sends
 
-In short: the plugin makes no network request of its own. It works through your own `gh` and `git`, writes nothing to
-GitHub without your yes, and keeps what it remembers on your machine; the dependency installs it runs for a skill fetch
-from the project's package registries, as running them yourself would. The rest of this section says exactly what it
-runs and touches.
+The plugin makes no network request of its own. It works through your own `gh` and `git`, and the dependency installs
+it runs for a skill fetch from the project's package registries, as running them yourself would. It writes nothing to
+GitHub without your yes and keeps what it remembers on your machine. It has no server, no token of its own and no
+telemetry, and reads no credential to sign in with.
 
-It has no server, no token of its own and no telemetry, and reads no credential to sign in with: besides your `gh` and
-`git`, it uses Claude Code's own links.
+| What | How |
+|---|---|
+| Reading GitHub | `gh api`: one GraphQL request for the list at each check, and a few more for what a press, a cleanup or the list needs to see; with **Alerts from other repositories** on, one more at each check, searching your other repositories (once when the picker opens with it off); a repository you show, one more list while it shows. `gh repo view`, `gh auth status`, `gh config get` and `gh --version` besides. |
+| Writing to GitHub | `gh pr merge`, `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each after you confirm it. |
+| git | Its own commands run with hooks off: fetching a pull request's branch with gh's credentials (`gh auth git-credential`), the skills' worktrees, switching a checkout to a pull request's branch, removing branches in cleanup, a branch's upstream in git config, and a `/.claude/worktrees/` line in `.git/info/exclude`. |
+| Installs | A worktree's dependencies, and after **Here, switch branch** a changed lockfile's, with the project's own package manager: these fetch from its registries and run its install scripts. None for a fork's pull request. |
+| Files | Copies the ignored files `.worktreeinclude` names into a new worktree; leaves a `.gh-prs-monitor-lock` marker where an install succeeded; removes worktrees once their pull request is done and nothing in them would be lost; reads a few files to pick an install, and the git config of your clones and of a folder you type. |
+| The skills | Run in your conversation, through Claude Code's tools and your permission settings, and commit, push, reply and post only on your yes. A button that starts one runs only that skill's own slash command. |
+| Claude Code | Follows session and turn events and the skills' commands, reading none of the conversation but a skill command's arguments; opens a new session through Claude Code's own links; gives the skills two tools of its own. |
+| Alerts | Toasts, the status line and, if you turn them on, a sound (`afplay`, on macOS) and system notifications, all through Claude Code. The plugin's sound and images hold no code. |
+| `/prs report` | Runs `uname`, on macOS `sw_vers`, `gh --version` and `git --version` for the versions it fills in. |
 
-- **GitHub, through `gh`.** It reads with `gh api`: one GraphQL request for the list at each check, and a few more for
-  how pull requests that left the list ended, for the pull requests of your branch, for the reviewers GitHub suggests,
-  and for what a press or a cleanup needs to see; `gh repo view`, `gh config get git_protocol` and `gh --version`
-  besides. It writes with `gh pr merge`, `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each only
-  after you confirm it in its dialog. How many requests that comes to: [Cost](gh-prs-monitor/docs/settings.md#cost).
-- **git.** Every git command the plugin runs itself carries `core.hooksPath=/dev/null`, so no hook a repository carries
-  runs from it. A pull request's branch is fetched with gh's credentials (`gh auth git-credential`) in place of your own
-  credential helper, as `gh pr checkout` fetches it. The skills' commits and pushes do run the repository's hooks; on
-  someone else's pull request, the skill names them in its preview and runs them only on your yes.
-- **Installs.** In a worktree it makes for a skill, and after **Here, switch branch** for each project whose lockfile
-  changed, it installs the dependencies with the project's own package manager, from its lockfile: `npm ci`, `pnpm`,
-  `yarn`, `bun`, `flutter pub get` or `dart pub get`, `uv sync`, `poetry`, `pipenv sync`, `bundle`, `composer`,
-  `dotnet restore` or `pod install`, on Windows tried once more through `cmd`. These fetch from the project's package
-  registries and run its install scripts, as running the install yourself would. A fork's pull request gets none.
-- **Files.**
-  - A new worktree gets the ignored files the repository's `.worktreeinclude` names, copied from your checkout
-    (`mkdir` and `cp`, or `robocopy` on Windows); a fork's pull request gets none.
-  - An install in a worktree that succeeds leaves a `.gh-prs-monitor-lock` marker in the folder it filled, such as
-    `node_modules`, where git ignores it, and empties it before installing again, so the next one is skipped while the
-    lockfile and the command stay the same.
-  - With cleanup on, once a pull request is merged or closed, the worktrees made for it and the branches they hold
-    go, and so do `pr-<number>` branches that still track it, when nothing in them would be lost
-    (`git worktree remove`, `git branch -D`). A new worktree whose checkout fails goes at once, and git's entry for one
-    whose folder you deleted goes when that pull request's worktree is next needed.
-  - The plugin also reads `pubspec.yaml`, `yarn.lock` and `.yarnrc.yml` to pick an install; an Android
-    `local.properties` in a worktree before removing it, to tell one the tools wrote from one holding keys of yours;
-    its own `plugin.json` for `/prs report`; and in VS Code the editor's `product.json` for the scheme of its links
-    (**New session**, below). None of what it reads is sent anywhere, besides the version and repository
-    `/prs report` prints.
-- **Settings.** The only settings the plugin changes are git's: a `/.claude/worktrees/` line goes in the clone's
-  `.git/info/exclude` when nothing ignores that folder yet, and a pull request's branch it checks out, here or in a
-  worktree, gets its upstream in the clone's git config where it has none, as `gh pr checkout` sets it. A branch that
-  cleanup removes takes its settings with it.
-- **The skills** (Resolve Comments, Fix CI, Resolve Conflicts, Review and Create PR) work in your Claude Code
-  conversation. What they read from GitHub, the diff, the comments, the CI logs, becomes part of it like anything else
-  you show Claude. They commit, push, reply and post only on your yes. Where no pane shows, the list `/prs` prints goes
-  into the conversation too, as does what `/prs report` prints. With ticket links, Review reads a pull request's
-  ticket only through a tool for your tracker that you connected to Claude Code, in one read-only call, and the skills
-  are told to post a ticket's key and link at most, never what the ticket says. A ticket link pasted in Create PR's
-  preview goes through the conversation, as anything typed there does.
-- **Slash commands.** A button that starts a skill in this session runs that skill's own command, as typing it would, at
-  once or once the turn under way ends: `/gh-prs-monitor:resolve-comments`, `/gh-prs-monitor:fix-ci`,
-  `/gh-prs-monitor:resolve-conflicts`, `/gh-prs-monitor:review` or `/gh-prs-monitor:create-pr`. It runs no other
-  command.
-- **Claude Code's events.** The plugin follows these, passes each on unchanged, and reads none of the conversation,
-  only a skill command's arguments, which name its pull request:
-  - a session starting, and an app attaching to it: to start its checks, and to open the pane a `/prs` asked for in
-    the last ten minutes with no app to show it;
-  - a session ending in a `/clear` or a resume, and the `SessionStart` that follows: to load the list for the new
-    conversation;
-  - each turn's start and end, by the turn's id and whether a subagent runs it: to hold alerts back while one runs, to
-    let a branch switch waiting for it go on, and to see a skill's turn end. For half an hour after a skill starts, a
-    turn's end can start a check of the list, at most every half minute; nothing of the turn goes into it;
-  - the skills' commands above: to mark the row a skill works on.
+It keeps, in Claude Code's plugin store on your machine: the last list and what you have seen of it for the 20
+repositories you looked at last, the alerts shown, the answers your sessions share and which session is asking GitHub or
+cleaning up a clone right now, the view you chose, your Create PR choices and ticket links, what cleanups left, and the
+folders of the 50 clones your sessions loaded a list in last, with each one's repository. For the session alone, Claude
+Code's plugin state holds a repository you show and what **Alerts from other repositories** read.
 
-  Besides, it answers `/prs`, printing the list too where it came over Remote Control; answers its own tools; offers
-  pull requests for a word in the prompt that starts with `#`, reading that word alone; draws its pane and, in the
-  desktop app, the band above the prompt; follows the pane's scrolling and focus; and keeps the pane open when you close
-  it while it asks a question, cancelling the question instead.
-- **New session** opens a Claude Code session through Claude Code's own link, with `open`, `xdg-open` or `rundll32`
-  (after `uname`, and `reg query` on Windows, tell which). In VS Code it is the extension's link, in the scheme the
-  editor answers on (`vscode`, `cursor`, …): the editor's folder comes from `VSCODE_NLS_CONFIG`, the one environment
-  variable the plugin reads, and the scheme from that folder's `product.json`, else VS Code's is tried; where the link
-  doesn't open, the skill runs in this session.
-- **`/prs report`** runs `uname -sr`, on macOS `sw_vers`, `gh --version` and `git --version` for the versions it fills
-  in.
-- **Sound and images.** The plugin's `sounds/alert.wav` is the alert sound: with **Alert sound** on (it is off by
-  default), Claude Code plays it with `afplay` on macOS, and elsewhere plays nothing. Its `assets/` folder holds this
-  page's images and the icon `plugin.json` names for the plugin's listing. Neither holds code.
-- **System notifications.** With **Alerts as system notifications** on (it is off by default), the alerts about pull
-  request changes also go to Claude Code's own notification channel, one notification each time they show: the first
-  alert's line and how many came with it, under the repository's name. Claude Code passes it to your `Notification`
-  hooks and writes it to your terminal as its own notifications go; the plugin sends it nowhere else.
-- **Tools for the skills.** Each session gets two tools, which the plugin answers itself: `create_pr_choices`, which
-  Create PR calls to read and keep your choices for a repository, and `ticket_links`, which Create PR and Review call
-  to find a pull request's ticket, or to keep a ticket link you paste, for the session's repository alone and only once
-  you press Save in the dialog it shows. Both read and keep only these, in the plugin's store, and neither opens a
-  ticket's link.
-- **What it keeps**, in Claude Code's plugin store on this machine, never in a repository: the last list for each
-  repository, what you have seen of it, the alerts shown, the answers your sessions share, the compact view, what
-  cleanups found in each clone, Create PR's choices, and the ticket links you set up.
-
-More in [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md) and
+Every command, file and setting it touches, in full: [What it runs and what it sends](gh-prs-monitor/docs/what-it-runs.md). More in
+[Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md) and
 [Security](https://github.com/maturada/gh-prs-monitor/blob/main/SECURITY.md).
 
 ## Documentation
 
-- [A day with it](gh-prs-monitor/docs/a-day-with-it.md): a working day with the plugin, from the first session to the cleanup
+- [A day with it](gh-prs-monitor/docs/a-day-with-it.md): a working day with the plugin
 - [The pane](gh-prs-monitor/docs/pane.md): the two lists, every status, the compact view, and where each part shows
-- [Alerts and the status line](gh-prs-monitor/docs/alerts.md): what is alerted, when, and the summary
+- [Alerts and the status line](gh-prs-monitor/docs/alerts.md): what is alerted, and when
 - [Acting on GitHub](gh-prs-monitor/docs/actions.md): the buttons, and the dialog they ask in
 - [Resolve Comments](gh-prs-monitor/docs/resolve-comments.md), [Fix CI](gh-prs-monitor/docs/fix-ci.md),
-  [Resolve Conflicts](gh-prs-monitor/docs/resolve-conflicts.md), and [where they work](gh-prs-monitor/docs/working-on-a-branch.md): this folder, a
-  worktree or a new session; branches, dependencies and cleanup
-- [Review](gh-prs-monitor/docs/review.md): where it runs, since your last review, and ticket links
-- [Create PR](gh-prs-monitor/docs/create-pr.md): when it shows, what the skill does, and what it remembers
-- [Ticket links](gh-prs-monitor/docs/tickets.md): set up once per repository, where they show, and what the skills do with them
+  [Resolve Conflicts](gh-prs-monitor/docs/resolve-conflicts.md), and [where they work](gh-prs-monitor/docs/working-on-a-branch.md)
+- [Review](gh-prs-monitor/docs/review.md) and [Create PR](gh-prs-monitor/docs/create-pr.md)
+- [Other repositories](gh-prs-monitor/docs/other-repositories.md): showing another repository, and alerts from the others
+- [Ticket links](gh-prs-monitor/docs/tickets.md): set up once per repository
 - [Settings and cost](gh-prs-monitor/docs/settings.md)
+- [What it runs and what it sends](gh-prs-monitor/docs/what-it-runs.md)
 - [When something is wrong](gh-prs-monitor/docs/troubleshooting.md)
-- [Development](gh-prs-monitor/docs/development.md): the checks, the file map, and what the code relies on in Claude Code
+- [Development](gh-prs-monitor/docs/development.md): for contributors
 
 ## Contributing and license
 

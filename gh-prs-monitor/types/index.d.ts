@@ -107,10 +107,10 @@ export type PullRow = {
   // On your own: those whose change request stands though commits came after their latest review, and who aren't
   // asked to review again yet, whom Re-Request Review asks. Empty on others'.
   rerequestFrom: string[]
-  // On your own: whether no person is asked to review it, a bot asked aside (Copilot, say), and nobody requested changes
-  // or left a comment-only review yet, as its details say ("no reviewer requested", or the bot "requested"); approved
-  // but needing more approvals, whether no person is asked, whoever gave feedback. Request Review offers GitHub's
-  // suggestions then (`suggestions.ts`). False on others'.
+  // On your own: whether no person is asked to review it, a bot asked aside (Copilot, say), and nobody requested
+  // changes or left a comment-only review yet, as its details say ("no reviewer requested", or the bot "requested");
+  // approved but needing more approvals, whether no person is asked, whoever gave feedback. Request Review offers
+  // GitHub's suggestions then (`suggestions.ts`). False on others'.
   isReviewerUnrequested: boolean
   signals: PullSignals
 }
@@ -140,8 +140,8 @@ export type PullsSnapshot = {
   mentioned: { pulls: MentionedPull[]; isCut: boolean }
   mine: PullRow[]
   review: PullRow[]
-  // The viewer's own drafts left out of `mine`, with the Hide drafts setting on: how many, and their numbers, which a
-  // list kept by an earlier version lacks.
+  // The viewer's own drafts left out of `mine`, with the Hide my drafts setting on: how many, and their numbers, which
+  // a list kept by an earlier version lacks.
   hiddenDrafts: number
   hiddenDraftNumbers?: number[]
   // The repository's default branch, null for one with no commits yet; the branches of this repository that the
@@ -192,6 +192,22 @@ export type Activity = {
   ended?: { title: string }
 }
 
+// Another repository's list, shown in the pane while it is open, the folder's going on beside it (`visit.ts`): the
+// repository as GitHub writes it; its list as last read, null before the first; why the last load couldn't read it,
+// until one does; the load under way, which alone may write its answer, null while none is; the folder's repository,
+// which Back goes back to, null for a folder with none; the rows merged from it a moment ago, its own as the folder's
+// are (`merged` above); and its repository's ticket links (`TicketLinks`), read with its list, null where none are set.
+// Its rows' busy marks are kept with the folder's (`busy` above), under its repository's name.
+export type Visit = {
+  repo: { name: string; host: string }
+  snapshot: PullsSnapshot | null
+  problem: string | null
+  loadId: string | null
+  folder: string | null
+  merged: MergedPull[]
+  tickets: Record<string, string> | null
+}
+
 // A pull request merged from the pane a moment ago (`at`), shown where its row was (`index` in your own list)
 // until GitHub's search has caught up with the merge.
 export type MergedPull = { number: number; title: string; url: string; base: string; index: number; at: number }
@@ -216,8 +232,9 @@ export type Question = {
 
 // What a question offers to pick: names, any number of them or one of them always (`isSingle`), those picked as it
 // opens (`initial`, by index), whether its main answer waits for a pick (`needsPick`), and whether the keyboard starts
-// on the names or on the answers. Claude Code's own dialog asks the names in a step of their own, then the answers: where
-// the question's one text speaks of both, `steps` words each.
+// on the names or on the answers. Claude Code's own dialog asks the names in a step of their own, then the answers:
+// where the question's one text speaks of both, `steps` words each. The repository picker lists its names as rows in
+// the pane (`rows`, by index), each opened by a button of its own, which picks it and gives the main answer.
 export type Picking = {
   names: string[]
   isSingle: boolean
@@ -225,6 +242,20 @@ export type Picking = {
   needsPick: boolean
   startsOn: "names" | "answers"
   steps?: { names: QuestionText; answers: QuestionText }
+  rows?: RepoRow[]
+}
+
+// A repository as the picker's row shows it: the group it is listed under, its name, where it is on this machine (this
+// folder, or its clone's path), how many of the viewer's own wait for them and how many ask their review, whether it
+// changed since the picker was last opened, and whether it is the one shown.
+export type RepoRow = {
+  group: string
+  name: string
+  place: string | null
+  mine: number
+  requested: number
+  isNew: boolean
+  isShown: boolean
 }
 
 // What a question says: the question, and what its answers do under it.
@@ -250,10 +281,15 @@ declare module "claude-code" {
       // the desktop app does a moment after its session starts, a reload between them too; null while none waits.
       paneAskedAt: number | null
       // What is under way, by what it marks: a pull request's number, drawn in place of its buttons, or of its status
-      // in the compact view; or "create-pr", in place of Create PR.
+      // in the compact view; or "create-pr", in place of Create PR. A visit's rows' marks carry their repository
+      // (`github.com/acme/web#12`), so they are never the folder's, and they last as long as their presses and turns.
       busy: Record<string, string>
       // While /prs demo runs, the pane, the status line and the desktop app's band show example pull requests.
       isDemo: boolean
+      // Another of the examples' repositories the pane shows in place of their own list, picked during the demo, as a
+      // visit shows one (`demo.ts`); null for their own. Read only while the demo runs, and set back as each one
+      // starts.
+      demoVisit: string | null
       // Changes noticed lately, until marked seen or expired.
       activity: Activity[]
       // The branch this session's checkout was on, whose pull request the pane marks, and its commit, as last read;
@@ -269,11 +305,16 @@ declare module "claude-code" {
       isCompact: boolean
       // The question the pane shows in place of the list, until it is answered or dismissed.
       dialog: Question | null
+      // Another repository's list the pane shows in place of the folder's, while it is open; null for none.
+      visit: Visit | null
+      // What the light check of other repositories last read of each pull request (`ElsewhereState`); null before its
+      // first check. With the setting off, the picker's own check keeps one until a session starts with it off.
+      elsewhere: object | null
       // The main loop's turns under way, by id, and the alerts held for them to end: kept over a reload, as a turn
-      // that began before it ends after it, the module that saw it start gone. Which held lines are pull request
-      // changes (`changes`) is missing where a module before 1.2.0 kept them.
+      // that began before it ends after it, the module that saw it start gone. Held as batches (`AlertBatch`); a module
+      // before 1.5.0 held lines, with which of them were changes (`changes`) from 1.2.0 (`readHeld`).
       turns: string[]
-      heldAlerts: { held: string[]; heldSince: number | null; changes?: string[] }
+      heldAlerts: { held: unknown[]; heldSince: number | null; changes?: string[] }
     }
   }
 }

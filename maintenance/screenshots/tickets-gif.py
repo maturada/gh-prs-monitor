@@ -114,7 +114,7 @@ def listed(with_tickets):
     header = (
         '<div class="panel"><div><span class="b">acme/app</span> &nbsp;<span class="ok">✅</span> 1 &nbsp;'
         '<span class="bad">❗</span> 2</div><div class="dim">updated 12:44</div>'
-        '<div class="dim">[ Compact ] [ Refresh ]</div></div>'
+        '<div class="dim">[ Repositories ] [ Compact ] [ Refresh ]</div></div>'
     )
     # In the order the pane sorts them: conflicting first, then what needs you, then what can merge.
     rows = (

@@ -7,6 +7,7 @@ import { createSession } from "./session"
 import { readSettings } from "./settings"
 import {
   askSuggestions,
+  forgetListSuggestions,
   readSuggestions,
   suggestionsFor,
   suggestionsQuery,
@@ -381,11 +382,36 @@ describe("asking for them after a load", () => {
     const { host } = hostOf(() => ({ exitCode: 0, stdout: answerOf({ 12: { suggested: ["kim"] } }) }))
     await askSuggestions(host, session, REPO, LIST)
 
-    const other = { ...LIST, repo: "acme/web" }
+    const other = { ...LIST, repo: "acme/web", url: "https://github.com/acme/web" }
+    const elsewhere = { ...LIST, url: "https://ghe.example.com/acme/app" }
     expect(suggestionsFor(session, other, rowOf(other, 12))).toEqual([])
-    // A load of another repository forgets this one's, so coming back asks GitHub again.
+    expect(suggestionsFor(session, elsewhere, rowOf(elsewhere, 12))).toEqual([])
+    // A load of another repository keeps this one's: the folder's list and a visit's keep theirs side by side.
     await askSuggestions(host, session, REPO, other)
-    expect(suggestionsFor(session, LIST, rowOf(LIST, 12))).toEqual([])
+    expect(suggestionsFor(session, LIST, rowOf(LIST, 12))).toEqual(["kim"])
+  })
+
+  test("a list GitHub gave no address for keeps its answers by its name", async () => {
+    const session = sessionOf()
+    const { host } = hostOf(() => ({ exitCode: 0, stdout: answerOf({ 12: { suggested: ["kim"] } }) }))
+    const unaddressed = { ...LIST, url: "" }
+    await askSuggestions(host, session, REPO, unaddressed)
+
+    expect(suggestionsFor(session, unaddressed, rowOf(unaddressed, 12))).toEqual(["kim"])
+    expect(suggestionsFor(session, { ...unaddressed, repo: "acme/web" }, rowOf(unaddressed, 12))).toEqual([])
+  })
+
+  test("a visit ended forgets its rows' answers and keeps the folder's", async () => {
+    const session = sessionOf()
+    const { host } = hostOf(() => ({ exitCode: 0, stdout: answerOf({ 12: { suggested: ["kim"] } }) }))
+    const visit = { ...LIST, repo: "acme/web", url: "https://github.com/acme/web" }
+    await askSuggestions(host, session, REPO, LIST)
+    await askSuggestions(host, session, REPO, visit)
+
+    forgetListSuggestions(session, visit)
+
+    expect(suggestionsFor(session, visit, rowOf(visit, 12))).toEqual([])
+    expect(suggestionsFor(session, LIST, rowOf(LIST, 12))).toEqual(["kim"])
   })
 })
 

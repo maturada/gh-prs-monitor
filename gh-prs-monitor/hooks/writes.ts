@@ -5,7 +5,7 @@
 // the failed runs re-run. What each asks and says is `actions.ts`'s; the look before the question and the refresh after
 // it are `press.ts`'s.
 
-import type { PullAction, PullRow } from "../types"
+import type { PullAction, PullRow, PullsSnapshot } from "../types"
 import {
   asyncMergeDone,
   confirmQuestion,
@@ -133,7 +133,7 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
     }
     const names = unasked(suggested, look.current)
     if (names.length === 0) {
-      await askedAlready(host, session, snapshot.repo, row, suggested)
+      await askedAlready(host, session, snapshot, row, suggested)
 
       return
     }
@@ -146,7 +146,7 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
       return
     }
     if (asking.length === 0) {
-      await askedAlready(host, session, snapshot.repo, row, picks)
+      await askedAlready(host, session, snapshot, row, picks)
 
       return
     }
@@ -156,7 +156,7 @@ export async function requestReview(host: PressHost, session: Session, row: Pull
     } catch (error) {
       throw error instanceof WriteRefused ? new WriteRefused(requestRefused(error.message)) : error
     }
-    forgetSuggestions(session, snapshot.repo, row.number)
+    forgetSuggestions(session, snapshot, row.number)
     await host.notify(requestDone(row, asking), session.settings.alertMs)
     await settleAfterWrite(host)
   })
@@ -194,11 +194,11 @@ async function stillToAsk(
 async function askedAlready(
   host: PressHost,
   session: Session,
-  repo: string,
+  list: PullsSnapshot,
   row: PullRow,
   logins: readonly string[]
 ): Promise<void> {
-  forgetSuggestions(session, repo, row.number)
+  forgetSuggestions(session, list, row.number)
   await host.notify(requestedAlready(row, logins), session.settings.alertMs)
   await settleAfterWrite(host)
 }

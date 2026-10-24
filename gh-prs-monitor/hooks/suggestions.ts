@@ -8,7 +8,7 @@
 // someone was asked since, from the pane or as a press found; one that failed is asked again by the next load.
 
 import type { PullRow, PullsSnapshot } from "../types"
-import { firstLine, messageOf } from "./gh"
+import { firstLine, messageOf, repoAt, repoKey } from "./gh"
 import type { RepoRef } from "./gh"
 import { GhFailure, ghRun, graphqlArgv } from "./github"
 import type { Host } from "./machine"
@@ -32,7 +32,7 @@ export function wantsSuggestions(snapshot: PullsSnapshot, row: PullRow): boolean
 // The people GitHub suggests for a row, as kept for its head commit and reviews; none where it wants none, or none came
 // for the row as it stands yet.
 export function suggestionsFor(session: Session, snapshot: PullsSnapshot, row: PullRow): string[] {
-  const kept = session.suggestedReviewers.get(suggestionKey(snapshot.repo, row.number))
+  const kept = session.suggestedReviewers.get(suggestionKey(snapshot, row.number))
 
   return wantsSuggestions(snapshot, row) && kept?.basis === suggestionBasis(row) ? (kept.names ?? []) : []
 }
@@ -59,8 +59,19 @@ export function withRequestReview(
 // A row's suggestions forgotten once someone is asked to review it, from the pane or as a press found: they were read
 // before that, and the list drawn until the next load, or kept where that load fails, still shows nobody asked. The
 // next load asks GitHub afresh.
-export function forgetSuggestions(session: Session, repo: string, number: number): void {
-  session.suggestedReviewers.delete(suggestionKey(repo, number))
+export function forgetSuggestions(session: Session, list: ListedRepo, number: number): void {
+  session.suggestedReviewers.delete(suggestionKey(list, number))
+}
+
+// What GitHub suggested for a list's rows, all of it forgotten once the list is no longer shown, as a visit's when it
+// ends.
+export function forgetListSuggestions(session: Session, list: ListedRepo): void {
+  const own = `${listKey(list)}#`
+  for (const key of [...session.suggestedReviewers.keys()]) {
+    if (key.startsWith(own)) {
+      session.suggestedReviewers.delete(key)
+    }
+  }
 }
 
 // The suggestions a load asks for once it shows the list: for the rows that want them and have none kept for them as
@@ -75,11 +86,13 @@ export async function askSuggestions(
   const wanted = new Map(
     snapshot.mine
       .filter((row) => wantsSuggestions(snapshot, row))
-      .map((row) => [suggestionKey(snapshot.repo, row.number), row])
+      .map((row) => [suggestionKey(snapshot, row.number), row])
   )
+  // Its own repository's alone: the folder's list and a visit's keep theirs side by side.
+  const ownKeys = `${listKey(snapshot)}#`
   for (const [key, kept] of session.suggestedReviewers) {
     const row = wanted.get(key)
-    if (!row || suggestionBasis(row) !== kept.basis) {
+    if (key.startsWith(ownKeys) && (!row || suggestionBasis(row) !== kept.basis)) {
       session.suggestedReviewers.delete(key)
     }
   }
@@ -118,10 +131,21 @@ export async function askSuggestions(
   }
 }
 
-// What a row's suggestions are kept under: the repository and the pull request's number, so another repository's never
-// stand for its own; a load forgets any other repository's (`askSuggestions`).
-function suggestionKey(repo: string, number: number): string {
-  return `${repo}#${number}`
+// The repository a list is of, and its address, which names its server.
+type ListedRepo = Pick<PullsSnapshot, "repo" | "url">
+
+// What a row's suggestions are kept under: the repository, on its server, and the pull request's number, so another
+// repository's never stand for its own.
+function suggestionKey(list: ListedRepo, number: number): string {
+  return `${listKey(list)}#${number}`
+}
+
+// A list's repository, its server read from its address, as every key of a repository is written (`repoKey`); its name
+// alone where GitHub gave no address.
+function listKey(list: ListedRepo): string {
+  const repo = repoAt(list.repo, list.url)
+
+  return repo ? repoKey(repo) : list.repo.toLowerCase()
 }
 
 // What a row's suggestions are kept for: its head commit and its reviews, as GitHub's answer leaves out anyone who

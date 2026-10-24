@@ -4,9 +4,9 @@ import { describe, expect, test } from "claude-code/testing"
 
 import type { BranchPulls, PullsSnapshot, Question } from "../types"
 import { lookUpBranch } from "./branch-lookup"
-import { createSession } from "./session"
+import { sessionRepo } from "./github"
+import { createSession, FOLDER_LIST } from "./session"
 import type { Mark } from "./session"
-import { sessionRepo } from "./press"
 import { readSettings } from "./settings"
 import { createPull, installNotices, markSkillTurn, RESOLVE_COMMAND, REVIEW_COMMAND, workOnBranch } from "./skill-runs"
 import type { SkillHost } from "./skill-runs"
@@ -25,6 +25,7 @@ function skillHostOf(list: PullsSnapshot | null, ref = "refs/heads/fix/menu") {
   const host: SkillHost = {
     ...fakePressHost({ list }).host,
     ...git.host,
+    list: FOLDER_LIST,
     setBusy: async (mark, text) => {
       marks.push([mark, text])
     },
@@ -37,7 +38,9 @@ function skillHostOf(list: PullsSnapshot | null, ref = "refs/heads/fix/menu") {
     runCommand: async () => undefined,
     clearBusyIf: async () => undefined,
     isCheckingMode: async () => true,
-    editorScheme: async () => null
+    editorScheme: async () => null,
+    clones: async () => [],
+    home: async () => null
   }
 
   return { host, marks, calls: git.calls }
@@ -45,19 +48,19 @@ function skillHostOf(list: PullsSnapshot | null, ref = "refs/heads/fix/menu") {
 
 describe("a skill's turn", () => {
   test("marks the pull request typed, or a bare branch skill's on the branch; a bare Review none", async () => {
-    const session = createSession(readSettings({}))
-    session.repo = REPO
     const { host, marks } = skillHostOf(snapshotOf({ mine: [{ number: 7, headRefName: "fix/menu" }] }))
 
-    expect(await markSkillTurn(host, session, { command: RESOLVE_COMMAND, mark: null, args: "" })).toEqual({
+    expect(await markSkillTurn(host, { command: RESOLVE_COMMAND, mark: null, args: "", list: FOLDER_LIST })).toEqual({
       mark: 7,
-      label: "Resolving Comments…"
+      label: "Resolving Comments…",
+      list: FOLDER_LIST
     })
-    expect(await markSkillTurn(host, session, { command: REVIEW_COMMAND, mark: null, args: "#9" })).toEqual({
+    expect(await markSkillTurn(host, { command: REVIEW_COMMAND, mark: null, args: "#9", list: FOLDER_LIST })).toEqual({
       mark: 9,
-      label: "Reviewing…"
+      label: "Reviewing…",
+      list: FOLDER_LIST
     })
-    expect(await markSkillTurn(host, session, { command: REVIEW_COMMAND, mark: null, args: "" })).toBeNull()
+    expect(await markSkillTurn(host, { command: REVIEW_COMMAND, mark: null, args: "", list: FOLDER_LIST })).toBeNull()
     expect(marks).toEqual([
       [7, "Resolving Comments…"],
       [9, "Reviewing…"]

@@ -3,13 +3,22 @@
 // The machine the hooks module's tests run against: gh, git and the system answer from a world each test sets up,
 // and the engine's own nouns are mocked through the test kit. Shared by the *.test.tsx files beside this folder.
 
-import type { On, ProcessRunResult, PromptOrigin, RenderSurface } from "claude-code"
+import type {
+  On,
+  ProcessRunResult,
+  PromptAutocompleteInput,
+  PromptAutocompleteResult,
+  PromptOrigin,
+  RenderSurface
+} from "claude-code"
 import { mock } from "claude-code/testing"
 import type { Engine, MockClock, MockClockOptions, Mounted } from "claude-code/testing"
 
 import type { PullsSnapshot } from "../../types"
 import { readPulls, SNAPSHOT_SCHEMA } from "../pulls"
 import { MINUTE, response, snapshotOf } from "./fixtures"
+import { ghReposAnswer, pullLookAnswer, suggestionsAnswer } from "./gh-repos"
+import type { GhRepos, PullNow } from "./gh-repos"
 import type { ResponseFixture } from "./fixtures"
 import { lineOf } from "./git-host"
 import { storeDelete, storeGet, storeKeys, storeSet } from "./memory-store"
@@ -24,9 +33,17 @@ const EDITOR_APP = "/Applications/Editor.app/Contents/Resources/app"
 const EDITOR_MESSAGES = `${EDITOR_APP}/out/nls.messages.json`
 const EDITOR_PRODUCT = `${EDITOR_APP}/product.json`
 
-export type World = StoreWorld & {
+export type World = StoreWorld & GhRepos & WorldState
+
+// What a test sets for its machine, besides its store and the other repositories GitHub has (`gh-repos.ts`).
+type WorldState = {
   // What the next GraphQL query answers; swapped by a test to move GitHub on.
   github: ResponseFixture
+  // While set, the light check of other repositories waits for it before GitHub answers, so a test can act while one
+  // is under way.
+  elsewhereGate?: Promise<void>
+  // The environment's variables a test sets or takes away (undefined), over the person's home, /Users/me.
+  env?: Record<string, string | undefined>
   branch: string
   // The commit the checkout is on; one of its own unless given, as a pull request's head is `head-<number>`.
   head?: string
@@ -56,6 +73,10 @@ export type World = StoreWorld & {
   isPaneOpen?: boolean
   // Which apps draw the session; the terminal unless a test stands for another.
   surfaces?: RenderSurface[]
+  // The git config of each folder a repository is cloned in on this machine, by the folder's path; and other files on
+  // it the plugin reads, by their path, as a worktree's `.git` file.
+  gitConfigs?: Record<string, string>
+  files?: Record<string, string>
   // False where the attached app places no panes, as an older desktop app.
   placesPanes?: boolean
   // True while another pane is in front of the plugin's, which is then a tab behind it.
@@ -63,7 +84,8 @@ export type World = StoreWorld & {
   answer?: string
   // Instructions the person types in the pane's field before pressing the answer.
   instructions?: string
-  // The names the person picks in the pane before pressing the answer, where the question offers some.
+  // The names the person picks in the pane before pressing the answer, where the question offers some; in the
+  // repository picker, the row named so is opened, which answers.
   picks?: string[]
   // Claude Code's own dialog answered in steps, one answer each, in order; `answer` once these run out.
   engineAnswers?: string[]
@@ -77,6 +99,8 @@ export type World = StoreWorld & {
   subject?: string
   detail?: string
   choices?: string[]
+  // The repository picker's rows as drawn, the words of each.
+  rows?: string[]
   // How long the person takes to answer the dialog.
   slowDialogMs?: number
   // What `uname -s` answers: macOS unless a test stands for another system.
@@ -116,20 +140,7 @@ export type World = StoreWorld & {
   // True while GitHub can't be asked how a pull request stands now.
   isLookupFailing?: boolean
   // How a pull request stands on GitHub now, where it moved on since the list was read.
-  current?: Record<
-    number,
-    {
-      state?: "open" | "merged" | "closed"
-      isDraft?: boolean
-      head?: string
-      base?: string
-      requested?: string[]
-      isAutoMerge?: boolean
-      isConflicting?: boolean
-      // Commits its base has that its head lacks; behind unless given, as a row offering Update Branch is.
-      behindBase?: number
-    }
-  >
+  current?: Record<number, PullNow>
   asyncMerge?: string[]
   asyncLooks?: number
   // How long GitHub takes to answer each look at an asynchronous merge.
@@ -248,6 +259,9 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
     if (world.slowRepoViewMs && clock && line.startsWith("gh repo view")) {
       await clock.sleep(world.slowRepoViewMs)
     }
+    if (world.elsewhereGate && line.includes("archived:false")) {
+      await world.elsewhereGate
+    }
     if (world.isListHanging && line.startsWith("gh api graphql") && line.includes("$mine")) {
       throw new Error("timed out after 30000 ms")
     }
@@ -269,7 +283,7 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
         throw new Error("gh timed out")
       }
     }
-    if (world.slowPullMs && clock && /^gh api repos\/acme\/app\/pulls\/\d+ --hostname /.test(line)) {
+    if (world.slowPullMs && clock && /^gh api repos\/[^/]+\/[^/]+\/pulls\/\d+ --hostname /.test(line)) {
       await clock.sleep(world.slowPullMs)
     }
     if (world.slowBranchPullsMs && clock && line.includes("pullRequests(headRefName")) {
@@ -291,18 +305,36 @@ export function machine($: Engine, on: On, world: World, clock?: MockClock): See
 
     return { value }
   })
-  // The environment is an editor's extension host's where a test stands for one, and never the one the tests run in.
-  mock.env(on, world.editor ? { VSCODE_NLS_CONFIG: JSON.stringify({ defaultMessagesFile: EDITOR_MESSAGES }) } : {})
-  // Only then, as a test may answer files of its own and `fs.read` takes one hook.
+  // The environment is an editor's extension host's where a test stands for one, and never the one the tests run in;
+  // its home is the person's, /Users/me.
+  const env: Record<string, string | undefined> = {
+    HOME: "/Users/me",
+    ...(world.editor ? { VSCODE_NLS_CONFIG: JSON.stringify({ defaultMessagesFile: EDITOR_MESSAGES }) } : {}),
+    ...world.env
+  }
+  mock.env(
+    on,
+    Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined))
+  )
+  // Only then, as a test may answer files of its own and `fs.read` takes one hook: the editor's product file, and the
+  // git config of each folder the world clones a repository in. Where the world answers files, a clone's git metadata
+  // is the world's alone, so no test reads this machine's.
   const editor = world.editor
-  if (editor) {
+  const configs = world.gitConfigs
+  const files = world.files
+  if (editor || configs || files) {
     on("fs.read", async (_, e, next) => {
-      if (e.path !== EDITOR_PRODUCT) {
-        return next(e)
-      }
-      editor.reads = (editor.reads ?? 0) + 1
+      if (editor && e.path === EDITOR_PRODUCT) {
+        editor.reads = (editor.reads ?? 0) + 1
 
-      return { value: JSON.stringify({ urlProtocol: editor.scheme }) }
+        return { value: JSON.stringify({ urlProtocol: editor.scheme }) }
+      }
+      const text = files?.[e.path] ?? (e.path.endsWith("/.git/config") ? configs?.[e.path.slice(0, -12)] : undefined)
+      if (text !== undefined) {
+        return { value: text }
+      }
+
+      return /\/(\.git|\.git\/config|commondir)$/.test(e.path) ? { deny: `no file ${e.path}` } : next(e)
     })
   }
   on("fs.list", async () => ({ value: [] }))
@@ -482,6 +514,8 @@ async function answerDialog($: Engine, world: World, clock?: MockClock): Promise
   world.question = texts[2]
   world.detail = next?.type === "Text" && next.props?.dimColor ? (next.children?.[0] as string) : undefined
   world.choices = choices
+  const rows = repoRowsIn(await pane.drawn())
+  world.rows = rows.length > 0 ? rows.map((row) => wordsIn(drawnNodes(row))) : undefined
   if (world.slowDialogMs && clock) {
     await clock.sleep(world.slowDialogMs)
   }
@@ -499,6 +533,15 @@ async function answerDialog($: Engine, world: World, clock?: MockClock): Promise
         String(node.props?.key).startsWith(`${kind}-`)
     )?.props?.key
   for (const name of world.picks ?? []) {
+    // A row's Open answers, so the first row named is the last press.
+    const row = rows.find((each) =>
+      drawnNodes(each).some((node) => node.type === "Text" && node.children?.[0] === name)
+    )
+    if (row) {
+      await pane.press({ key: String(drawnNodes(row).find((node) => node.type === "Button")?.props?.key) })
+
+      return
+    }
     await pane.press({ key: String(keyOf(name, "pick")) })
   }
   const answer = keyOf(world.answer, "answer")
@@ -510,6 +553,11 @@ async function answerDialog($: Engine, world: World, clock?: MockClock): Promise
   } else {
     await pane.input({ key: fieldKey(nodes), text: world.answer })
   }
+}
+
+// The repository picker's rows, each the part of the drawing its key names.
+function repoRowsIn(node: unknown): Drawn[] {
+  return drawnNodes(node).filter((each) => String(each.props?.key ?? "").startsWith("repo-row-"))
 }
 
 // The key the dialog's field for instructions is drawn under, new for each question.
@@ -560,26 +608,8 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
       world.stack && index >= 0
         ? { number: world.stack.number, position: index + 1, size: world.stack.pulls.length }
         : null
-    const listed = [...(world.github.mine ?? []), ...(world.github.requested ?? [])].find(
-      (pull) => pull.number === number
-    )
-    const now = world.current?.[number]
-    const state = now?.state === "merged" || now?.state === "closed" ? "closed" : "open"
 
-    return ok(
-      JSON.stringify({
-        number,
-        state,
-        merged: now?.state === "merged",
-        draft: now?.isDraft ?? listed?.isDraft ?? false,
-        head: { sha: now?.head ?? listed?.headRefOid ?? `head-${number}` },
-        base: { ref: now?.base ?? "main" },
-        stack,
-        requested_reviewers: (now?.requested ?? listed?.requested ?? []).map((login) => ({ login })),
-        auto_merge: now?.isAutoMerge ? { merge_method: "merge" } : null,
-        mergeable: !(now?.isConflicting ?? listed?.mergeable === "CONFLICTING")
-      })
-    )
+    return ok(pullLookAnswer(world.github, number, world.current?.[number], stack))
   }
   if (world.stack && line.startsWith(`gh api repos/acme/app/stacks/${world.stack.number} `)) {
     const { number, base, pulls } = world.stack
@@ -599,40 +629,21 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
 
     return ok(look)
   }
+  const visited = ghReposAnswer(
+    world,
+    `${new URL(world.repoUrl ?? "https://github.com").host}/${world.repoName ?? "acme/app"}`,
+    line
+  )
+  if (visited) {
+    return visited
+  }
   if (line.startsWith("gh repo view")) {
     return world.repoViewFailure
       ? failed(world.repoViewFailure)
       : ok(`${world.repoName ?? "acme/app"} ${world.repoUrl ?? `https://github.com/${world.repoName ?? "acme/app"}`}\n`)
   }
   if (line.startsWith("gh api graphql") && line.includes("suggestedReviewers")) {
-    const numbers = [...line.matchAll(/pull(\d+): pullRequest/g)].map((match) => Number(match[1]))
-    const repository = Object.fromEntries(
-      numbers.map((number) => {
-        const listed = world.github.mine?.find((pull) => pull.number === number)
-        const requested = world.current?.[number]?.requested ?? listed?.requested ?? []
-        // GitHub's latest verdicts, as the list fixture's own (`verdicts`, else those among `reviews`).
-        const approved = (listed?.verdicts ?? listed?.reviews ?? []).filter((review) => review.state === "APPROVED")
-
-        return [
-          `pull${number}`,
-          {
-            author: { login: listed?.author ?? "me" },
-            // As GitHub marks a suggestion from past commits, as nearly all are.
-            suggestedReviewers: (world.suggested?.[number] ?? []).map((login) => ({
-              isAuthor: true,
-              isCommenter: false,
-              reviewer: { login }
-            })),
-            reviewRequests: { nodes: requested.map((login) => ({ requestedReviewer: { login } })) },
-            latestOpinionatedReviews: {
-              nodes: approved.map((review) => ({ state: "APPROVED", author: { login: review.login } }))
-            }
-          }
-        ]
-      })
-    )
-
-    return ok(JSON.stringify({ data: { repository } }))
+    return ok(suggestionsAnswer(world.github, world.suggested, line, (number) => world.current?.[number]?.requested))
   }
   if (line.startsWith("gh api graphql") && line.includes("pullRequests(headRefName") && world.isBranchPullsFailing) {
     return failed("error connecting to api.github.com")
@@ -888,6 +899,23 @@ export function skillTurnEnd(turnId: string, reason = "answer"): never {
   return { answer: "", durationMs: 1, isAborted: reason === "aborted", reason, turnId } as never
 }
 
+// The prompt box asking for rows for the token at the end of `text`, each by its label; the kit's types have no call
+// for it.
+export async function typeahead($: Engine, text: string): Promise<string[]> {
+  const token = text.slice(text.lastIndexOf(" ") + 1)
+  const prompt = $.prompt as unknown as {
+    autocomplete: (e: PromptAutocompleteInput) => Promise<PromptAutocompleteResult>
+  }
+  const { suggestions } = await prompt.autocomplete({
+    text,
+    cursor: text.length,
+    token,
+    start: text.length - token.length
+  })
+
+  return suggestions.map((row) => row.label ?? row.text)
+}
+
 // A command as the person types it, or as it came over Remote Control (`bridge`); the test kit raises the raw event,
 // which carries where it came from as the engine stamps it.
 export function runPrs($: Engine, args: string, origin: PromptOrigin = { kind: "composer" }) {
@@ -904,12 +932,21 @@ export function keptOverReload(
   on: On,
   kept: Partial<
     Record<
-      "snapshot" | "checkout" | "branchPulls" | "busy" | "module" | "paneAskedAt" | "turns" | "heldAlerts",
+      | "snapshot"
+      | "checkout"
+      | "branchPulls"
+      | "busy"
+      | "module"
+      | "paneAskedAt"
+      | "turns"
+      | "heldAlerts"
+      | "visit"
+      | "elsewhere",
       unknown
     >
   >
 ): void {
-  const keys = /^(snapshot|checkout|branchPulls|busy|module|paneAskedAt|turns|heldAlerts)$/
+  const keys = /^(snapshot|checkout|branchPulls|busy|module|paneAskedAt|turns|heldAlerts|visit|elsewhere)$/
   const unwritten = new Set<string>(Object.keys(kept))
   on("state.set", { plugin: PLUGIN, key: keys }, async (_, e, next) => {
     unwritten.delete(e.key)
@@ -1015,6 +1052,24 @@ export async function pressDrawn(clock: MockClock, ui: Pick<Mounted, "find" | "p
 }
 
 const SETTLE_ROUNDS = 20
+
+// The desktop app's band above the prompt, drawn by the plugin; `hasSurvey`: a survey of Claude Code's own holds the
+// space.
+export async function mountBand($: Engine, surface: RenderSurface, hasSurvey = false) {
+  return $.ui.mount({
+    plugin: PLUGIN,
+    surface,
+    component: "AbovePrompt",
+    props: {
+      hasSurvey,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 100,
+      scroll: { offset: 0, bodyRows: 3 },
+      view: {}
+    } as never
+  })
+}
 
 // `offset`: the row the pane's window shows first, as the terminal's drawing says.
 export async function mountPane<P extends RenderSurface>(

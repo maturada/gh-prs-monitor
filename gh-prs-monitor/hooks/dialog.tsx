@@ -5,13 +5,14 @@ import type { RenderElement } from "claude-code"
 import type { Answer, Question } from "../types"
 import { pickerActions, pickerView } from "./picker"
 import { isPickingQuestion, isPickReady, pickedNames } from "./picking"
-import { answerRow, questionField, questionFrame } from "./question-frame"
-import type { InstructionsField, QuestionKit, QuestionSite } from "./question-frame"
+import { repoRowsView } from "./repo-rows"
+import { answerRow, mainLookWhile, problemLine, questionField, questionFrame } from "./question-frame"
+import type { InstructionsField, QuestionKit, QuestionSite, QuestionState } from "./question-frame"
 import type { Session } from "./session"
 
 // The open question as the pane draws it in place of the list, from what the session keeps of it (`session.asking`):
-// one that offers names by the picker, drawn again (`redraw`) as a press changes the picks; any other by the plugin's
-// dialog.
+// one that offers names by the picker, drawn again (`redraw`) as a press changes the picks, the repository picker's as
+// rows; any other by the plugin's dialog.
 export function questionView(
   kit: QuestionKit,
   session: Session,
@@ -21,13 +22,17 @@ export function questionView(
 ): RenderElement {
   const field = instructionsField(session)
   const answer = answerOpen(session)
+  const state = { checking: session.asking?.checking ?? null, problem: session.asking?.problem ?? null }
   if (isPickingQuestion(question)) {
-    const actions = { ...pickerActions(session, redraw), answer }
+    const actions = pickerActions(session, redraw, answer)
+    const rows = question.picking.rows
 
-    return pickerView(kit, question, session.asking?.picks ?? [], actions, field, site)
+    return rows
+      ? repoRowsView(kit, question, rows, actions, field, site, state)
+      : pickerView(kit, question, session.asking?.picks ?? [], actions, field, site, state)
   }
 
-  return dialogView(kit, question, answer, field, site)
+  return dialogView(kit, question, answer, field, site, state)
 }
 
 // Every answer the pane takes, the dialog's and the picker's alike, given to the question open at the press
@@ -50,19 +55,21 @@ export function answerOpen(session: Session): (answer: Answer) => void {
   }
 }
 
-// The plugin's dialog, in the frame every question is drawn in (`questionFrame`): its field (`questionField`), and a
-// button per answer (`answerRow`), the main one the primary. A button sends the instructions typed along with its
-// choice; Enter sends them alone.
+// The plugin's dialog, in the frame every question is drawn in (`questionFrame`): its field (`questionField`), what
+// kept the last answer from being carried out, and a button per answer (`answerRow`), the main one the primary. A
+// button sends the instructions typed along with its choice; Enter sends them alone.
 function dialogView(
   kit: QuestionKit,
   question: Question,
   answer: (answer: Answer) => void,
   field: InstructionsField,
-  site: QuestionSite
+  site: QuestionSite,
+  state: QuestionState
 ): RenderElement {
   return questionFrame(kit, question, site, [
-    questionField(kit, question, field, answer),
-    answerRow(kit, question, field, site, { variant: "primary" }, answer)
+    questionField(kit, question, field, answer, state.checking !== null),
+    problemLine(kit, site, state.problem),
+    answerRow(kit, question, field, site, mainLookWhile({ variant: "primary" }, state), answer)
   ])
 }
 

@@ -1,8 +1,11 @@
 // Author: David Matura
 
-import type { Activity, EndedPull, PullRow, PullSignals, PullsSnapshot, PullStack } from "../types"
+import type { Activity, CiState, EndedPull, PullRow, PullSignals, PullsSnapshot, PullStack, ReviewMark } from "../types"
 import type { ClosedState } from "./ended"
+import { isRepo, pullKey } from "./gh"
+import type { RepoRef } from "./gh"
 import { isCiFailing, isCiRunning } from "./pull-status"
+import { rowsOf } from "./pulls"
 import { lookedAt } from "./when"
 
 // The kinds a person turns on and off, one setting each.
@@ -29,6 +32,31 @@ export type Alert = {
   by: string | null
   symbol: string
   event: string
+}
+
+// What the person is told, a batch at a time, each of one repository: a change, as a pull request's events, told by the
+// folder's list or by the light check of other repositories (`elsewhere.ts`), whose toasts name the repository; or a
+// line that is no change (the summary of what changed while away, a cleanup's note, or the light check's first summary,
+// `from: "check"`), which no system notification carries. Each says when it was raised (`raisedAt`) once it is
+// announced, as one held for a turn shows later. 1.4.0 held its alerts as lines alone, of no repository (`readHeld`).
+export type AlertBatch = (
+  | { kind: "events"; from: "list" | "check"; repo: RepoRef; events: Alert[] }
+  | { kind: "line"; repo: RepoRef | null; line: string; from?: "check" }
+) & { raisedAt?: number }
+
+// The folder's changes, as its list tells them, a batch per pull request.
+export function batchesOf(repo: RepoRef, changes: readonly Alert[]): AlertBatch[] {
+  return groupByPull(changes).map((events) => ({ kind: "events", from: "list", repo, events }))
+}
+
+// What a batch says: a line per pull request, or its line.
+export function batchLines(batch: AlertBatch): string[] {
+  return batch.kind === "events" ? alertLines(batch.events) : [batch.line]
+}
+
+// What a batch says as toasts: a change the light check told names its repository, and how to see its list.
+export function toastLines(batch: AlertBatch): string[] {
+  return batch.kind === "events" && batch.from === "check" ? alertLines(batch.events, batch.repo) : batchLines(batch)
 }
 
 // What changed between two refreshes that is worth interrupting for. The first refresh of a session, and one
@@ -99,9 +127,9 @@ export function vanishedPulls(before: PullsSnapshot | null, after: PullsSnapshot
   if (!isComparable(before, after)) {
     return []
   }
-  const present = new Set([...after.mine, ...after.review].map((row) => row.number))
+  const present = new Set(rowsOf(after).map((row) => row.number))
 
-  return [...before.mine, ...before.review].filter((row) => !present.has(row.number))
+  return rowsOf(before).filter((row) => !present.has(row.number))
 }
 
 // A pull request merged or closed by someone else; the viewer's own merge or close is no news, and one still
@@ -147,17 +175,19 @@ export function closedAlerts(
 }
 
 // One line per pull request, so a reviewer's approval and comment are one toast: the first change's symbol, then
-// each change in turn.
-export function alertLines(alerts: readonly Alert[]): string[] {
+// each change in turn. Another repository's (`elsewhere`) names it, and says how to see its list.
+export function alertLines(alerts: readonly Alert[], elsewhere: RepoRef | null = null): string[] {
   return groupByPull(alerts).map((group) => {
     const [first] = group
-
-    return alertLine(
+    const line = alertLine(
       first!.symbol,
       first!,
       group.map((alert) => alert.event).join(", "),
-      group.find((alert) => alert.by)?.by ?? undefined
+      group.find((alert) => alert.by)?.by ?? undefined,
+      elsewhere?.name
     )
+
+    return elsewhere ? `${line} · /prs ${elsewhere.name}` : line
   })
 }
 
@@ -267,11 +297,9 @@ function mineAlerts(before: PullRow[], after: PullRow[], viewer: string): Alert[
       add("ready", "✓", "ready to merge")
     }
 
-    // Passing counts after running, or after failing, as a re-run that ran from start to end between two refreshes.
-    if (isCiFailing(now.ci) && !isCiFailing(was.ci)) {
-      add("ci", "✗", "CI failed")
-    } else if (now.ci === "SUCCESS" && (isCiRunning(was.ci) || isCiFailing(was.ci))) {
-      add("ci", "✓", "CI passed")
+    const ci = ciEvent(was.ci, now.ci)
+    if (ci) {
+      add("ci", ci.symbol, ci.event)
     }
     // Unknown mergeability in between is skipped by what was known before it, so a recompute after a base push
     // does not alert again, and a conflict that push brought does.
@@ -280,12 +308,8 @@ function mineAlerts(before: PullRow[], after: PullRow[], viewer: string): Alert[
       add("conflicts", "⚠", "merge conflicts")
     }
 
-    const newReviews = Object.entries(now.reviews).filter(([login, mark]) => was.reviews[login]?.at !== mark.at)
-    for (const [login, mark] of newReviews) {
-      const verdict = REVIEW_VERDICTS[mark.state]
-      if (verdict && !mark.isBot) {
-        add("reviews", verdict.symbol, `${verdict.verb} by ${login}`)
-      }
+    for (const review of reviewEvents(was.reviews, now.reviews)) {
+      add("reviews", review.symbol, review.event)
     }
 
     // The new comments among the latest read that people wrote after the viewer's own last reply, which says they
@@ -331,7 +355,7 @@ function reviewAlerts(
   return after.flatMap((row): Alert[] => {
     const was = previous.get(row.number)?.signals ?? closed.get(row.number)
     const pull = { number: row.number, title: row.title }
-    if (row.signals.isRequested && !was?.isRequested && (was !== undefined || !isRequestsCut)) {
+    if (isNewRequest(was, row.signals.isRequested, isRequestsCut)) {
       return [{ kind: "reviewRequests", ...pull, by: row.author, symbol: "⌕", event: "review requested" }]
     }
     if (was && row.signals.hasCommitsSinceMyReview && !was.hasCommitsSinceMyReview) {
@@ -340,6 +364,42 @@ function reviewAlerts(
 
     return []
   })
+}
+
+// --- The rules both lists judge a change by ---
+
+// The full list and the light check of other repositories (`elsewhere.ts`) tell the same change in the same words, so
+// a session that told it from one leaves it out from the other (`freshAlerts`).
+export type Event = { symbol: string; event: string }
+
+// CI failing now and not before; or passing after running or failing, as a re-run that ran from start to end between
+// two refreshes.
+export function ciEvent(was: CiState, now: CiState): Event | null {
+  if (isCiFailing(now) && !isCiFailing(was)) {
+    return { symbol: "✗", event: "CI failed" }
+  }
+
+  return now === "SUCCESS" && (isCiRunning(was) || isCiFailing(was)) ? { symbol: "✓", event: "CI passed" } : null
+}
+
+// Each person's review with a time it didn't have before, by its verdict; a bot's is no news.
+export function reviewEvents(
+  was: Readonly<Record<string, ReviewMark>>,
+  now: Readonly<Record<string, ReviewMark>>
+): Event[] {
+  return Object.entries(now).flatMap(([login, mark]) => {
+    const verdict = REVIEW_VERDICTS[mark.state]
+
+    return was[login]?.at !== mark.at && verdict && !mark.isBot
+      ? [{ symbol: verdict.symbol, event: `${verdict.verb} by ${login}` }]
+      : []
+  })
+}
+
+// A review request the viewer didn't have: of a pull request known before (`was`), or new where the search before
+// wasn't cut short, as one cut at 30 can't tell a new request from an old one coming back into its first 30.
+export function isNewRequest(was: { isRequested: boolean } | undefined, isRequested: boolean, isCut: boolean): boolean {
+  return isRequested && !was?.isRequested && (was !== undefined || !isCut)
 }
 
 const REVIEW_VERDICTS: Readonly<Record<string, { symbol: string; verb: string }>> = {
@@ -365,26 +425,27 @@ export type RefreshKind = {
   isListShown: boolean
 }
 
-// What a refresh announces. Coming back, what changed while the person was away is told once, pointing to the pane
-// that lists it, even by a refresh that would alert: an alert per change would bury them; with the pane open, its
-// marks tell it. Otherwise only the refreshes nobody asked for interrupt, a line per pull request. Null announces
+// What a refresh of `repo` announces. Coming back, what changed while the person was away is told once, pointing to
+// the pane that lists it, even by a refresh that would alert: an alert per change would bury them; with the pane open,
+// its marks tell it. Otherwise only the refreshes nobody asked for interrupt, a batch per pull request. Null announces
 // nothing; an empty list announces nothing new but lets alerts held back for a turn through.
 export function refreshAlerts(
   changes: readonly Alert[],
   before: PullsSnapshot | null,
   after: PullsSnapshot,
-  kind: RefreshKind
-): string[] | null {
+  kind: RefreshKind,
+  repo: RepoRef
+): AlertBatch[] | null {
   if (kind.isReturning) {
     if (!before || changes.length === 0 || kind.isListShown) {
       return null
     }
     const pullCount = new Set(changes.map((change) => change.number)).size
 
-    return [awayLine(pullCount, lookedAt(before.fetchedAt, after.fetchedAt))]
+    return [{ kind: "line", repo, line: awayLine(pullCount, lookedAt(before.fetchedAt, after.fetchedAt)) }]
   }
 
-  return kind.isAlerting ? alertLines(changes) : null
+  return kind.isAlerting ? batchesOf(repo, changes) : null
 }
 
 // One line: the symbol of the kind of change, the pull request, and what happened. The title is there so a number
@@ -393,11 +454,12 @@ export function alertLine(
   symbol: string,
   pull: { number: number; title: string },
   event: string,
-  author?: string
+  author?: string,
+  repoName = ""
 ): string {
   const by = author ? ` (${author})` : ""
 
-  return `${symbol} #${pull.number} ${shortTitle(pull.title)}${by} — ${event}`
+  return `${symbol} ${repoName}#${pull.number} ${shortTitle(pull.title)}${by} — ${event}`
 }
 
 // Counted in what reads as one character, so an emoji, a flag or an accented letter is never cut in half.
@@ -423,15 +485,30 @@ export function byNumber(rows: PullRow[]): Map<number, PullRow> {
   return new Map(rows.map((row) => [row.number, row]))
 }
 
-// The toast stack draws only its newest few, so a refresh never sends more than three toasts: past that, two
-// alerts and a count of the rest, which the pane lists.
-export function toastsFor(alerts: readonly string[], limit = 3): string[] {
-  if (alerts.length <= limit) {
-    return [...alerts]
-  }
-  const shown = alerts.slice(0, limit - 1)
+// A line a toast shows, and the other repository it is of (`elsewhere`), none for this folder's.
+export type ToastLine = { text: string; elsewhere: string | null }
 
-  return [...shown, `${alerts.length - shown.length} more pull request changes, see /prs`]
+// The toast stack draws only its newest few, so a showing never sends more than three toasts: past that, two alerts
+// and a count of the rest, which the pane lists for this folder; other repositories' changes, which no list here shows,
+// are counted apart and named.
+export function toastsFor(alerts: readonly ToastLine[], limit = 3): string[] {
+  if (alerts.length <= limit) {
+    return alerts.map((alert) => alert.text)
+  }
+  const shown = alerts.slice(0, limit - 1).map((alert) => alert.text)
+  const rest = alerts.slice(limit - 1)
+  const own = rest.filter((alert) => alert.elsewhere === null).length
+  const others = rest.length - own
+  const names = [...new Set(rest.flatMap((alert) => (alert.elsewhere === null ? [] : [alert.elsewhere])))].sort()
+  const ownText = `${own} more pull request ${own === 1 ? "change" : "changes"}, see /prs`
+  const count =
+    others === 0
+      ? ownText
+      : own === 0
+        ? `${others} more changes in ${names.join(", ")}`
+        : `${ownText}; ${others} more in ${names.join(", ")}`
+
+  return [...shown, count]
 }
 
 // A showing of alerts as one system notification: its first alert, and how many came with it, which the toasts and the
@@ -442,67 +519,110 @@ export function systemNotificationText(alerts: readonly string[]): string {
   return rest.length === 0 ? first : `${first} (${rest.length} more)`
 }
 
-// Should a turn's end never be heard, held alerts still show after this long.
-const HOLD_LIMIT_MS = 15 * 60_000
+// Should a turn's end never be heard, held alerts still show after this long (`holdDue`).
+const HOLD_LIMIT_MS = 5 * 60_000
 
-// Alerts waiting for the running turns to end, from when the first of them waited, and which of them are pull request
-// changes: the only ones a system notification carries, not a session's first summary or a cleanup's note.
-export type HeldAlerts = { held: string[]; heldSince: number | null; changes: string[] }
+// Alerts waiting for the running turns to end, and from when the first of them waited.
+export type HeldAlerts = { held: AlertBatch[]; heldSince: number | null }
 
 export function nothingHeld(): HeldAlerts {
-  return { held: [], heldSince: null, changes: [] }
+  return { held: [], heldSince: null }
+}
+
+// The alerts held as a module before a reload kept them: this version's batches as they are; 1.4.0's lines, and
+// 1.2.0's, as lines of no repository, told once more without a system notification.
+export function readHeld(value: unknown): HeldAlerts {
+  const kept = value as { held?: unknown; heldSince?: unknown } | null
+  const heldSince = typeof kept?.heldSince === "number" ? kept.heldSince : null
+  // One that says not when it was raised was raised while the hold began, at the latest.
+  const raised = (batch: AlertBatch): AlertBatch =>
+    typeof batch.raisedAt === "number" || heldSince === null ? batch : { ...batch, raisedAt: heldSince }
+  const held = (Array.isArray(kept?.held) ? kept.held : []).flatMap((each: unknown): AlertBatch[] =>
+    typeof each === "string" ? [{ kind: "line", repo: null, line: each }] : isBatch(each) ? [raised(each)] : []
+  )
+
+  return held.length > 0 ? { held, heldSince } : nothingHeld()
+}
+
+function isBatch(value: unknown): value is AlertBatch {
+  const batch = value as Partial<{ kind: unknown; from: unknown; repo: unknown; events: unknown; line: unknown }> | null
+  if (batch?.kind === "line") {
+    return typeof batch.line === "string" && (batch.repo === null || isRepo(batch.repo))
+  }
+
+  return (
+    batch?.kind === "events" &&
+    (batch.from === "list" || batch.from === "check") &&
+    isRepo(batch.repo) &&
+    Array.isArray(batch.events)
+  )
+}
+
+// How long the alerts held may wait still before they show, from `now`; none where none are held.
+export function holdDue(waiting: HeldAlerts, now: number): number | null {
+  return waiting.heldSince === null ? null : Math.max(0, waiting.heldSince + HOLD_LIMIT_MS - now)
 }
 
 // While a turn runs, alerts wait for it to finish, so they do not cover what is being read; then they show together.
-// Held this long, they show now, and holding starts over: a long turn holds what comes later too, a quarter of an hour
-// at a time.
+// Held this long, they show now, and holding starts over: a long turn holds what comes later too, five minutes at a
+// time.
 export function holdAlerts(
   waiting: HeldAlerts,
-  lines: readonly string[],
+  batches: readonly AlertBatch[],
   now: number,
-  isHolding: boolean,
-  areChanges: boolean
-): { shown: string[]; changes: string[]; waiting: HeldAlerts } {
-  const changes = areChanges ? lines : []
+  isHolding: boolean
+): { shown: AlertBatch[]; waiting: HeldAlerts } {
   if (isHolding && now - (waiting.heldSince ?? now) < HOLD_LIMIT_MS) {
-    const held = {
-      held: [...waiting.held, ...lines],
-      heldSince: waiting.heldSince ?? now,
-      changes: [...waiting.changes, ...changes]
-    }
+    const held = { held: [...waiting.held, ...batches], heldSince: waiting.heldSince ?? now }
 
-    return { shown: [], changes: [], waiting: lines.length > 0 ? held : waiting }
+    return { shown: [], waiting: batches.length > 0 ? held : waiting }
   }
 
-  return {
-    shown: [...waiting.held, ...lines],
-    changes: [...waiting.changes, ...changes],
-    waiting: nothingHeld()
-  }
+  return { shown: [...waiting.held, ...batches], waiting: nothingHeld() }
 }
 
-// Who showed an alert line, and when.
+// Who showed an event or a line, and when.
 export type ShownMark = { at: number; by: string }
 
-// Sessions in one repository (worktrees side by side, say) each notice the same change. The first to show it marks
-// it in the store they share, and the others leave it out for a while; a session repeats its own freely. One record
-// holds every repository's marks, each gone once its while passes, so the store never grows.
+// Sessions each notice the same change: those in one repository (worktrees side by side, say) by their lists, and any
+// other by its light check of other repositories. The first to show an event marks it in the store they share, as
+// `host/owner/name#12 event`, so another that groups it with other events, or tells it from another list, leaves it
+// out; a session repeats its own freely. A mark counts for a while before the change was raised (each batch's
+// `raisedAt`, else now), and from then on, so one held for a long turn still leaves out what another session showed
+// meanwhile, and a repeat raised later in the same hold is weighed from its own time; it is kept as long as that may
+// take. A line is marked whole, as 1.4.0 marked it, and one of no repository not at all. One record holds
+// every repository's marks, each gone once its while passes, so the store never grows.
 export function freshAlerts(
   stored: unknown,
-  lines: readonly string[],
-  shown: { repo: string; by: string; at: number; pollMs: number }
-): { fresh: string[]; marks: Record<string, ShownMark> } {
+  batches: readonly AlertBatch[],
+  shown: { by: string; at: number; pollMs: number }
+): { fresh: AlertBatch[]; marks: Record<string, ShownMark> } {
   const window = Math.max(10 * 60_000, 2 * shown.pollMs)
-  const markOf = (line: string): string => `${shown.repo} ${line}`
-  const marks = Object.fromEntries(Object.entries(shownMarks(stored)).filter(([, mark]) => shown.at - mark.at < window))
-  const fresh = lines.filter((line) => {
-    const mark = marks[markOf(line)]
+  const marks = Object.fromEntries(
+    Object.entries(shownMarks(stored)).filter(([, mark]) => shown.at - mark.at < window + HOLD_LIMIT_MS)
+  )
+  // Shown by no other session since a while before it was raised (`since`); marked as this one's now.
+  const isUnshown = (key: string, since: number): boolean => {
+    const mark = marks[key]
+    if (mark !== undefined && mark.by !== shown.by && mark.at > since - window) {
+      return false
+    }
+    marks[key] = { at: shown.at, by: shown.by }
 
-    return mark === undefined || mark.by === shown.by
-  })
-  for (const line of fresh) {
-    marks[markOf(line)] = { at: shown.at, by: shown.by }
+    return true
   }
+  const fresh = batches.flatMap((batch): AlertBatch[] => {
+    const since = batch.raisedAt ?? shown.at
+    if (batch.kind === "line") {
+      // A line's mark is 1.4.0's, its repository as written, so a session of either version leaves the other's out.
+      return !batch.repo || isUnshown(`${batch.repo.host}/${batch.repo.name} ${batch.line}`, since) ? [batch] : []
+    }
+    const events = batch.events.filter((alert) =>
+      isUnshown(`${pullKey(batch.repo, alert.number)} ${alert.event}`, since)
+    )
+
+    return events.length > 0 ? [{ ...batch, events }] : []
+  })
 
   return { fresh, marks }
 }

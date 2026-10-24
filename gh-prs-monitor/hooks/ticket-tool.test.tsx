@@ -185,6 +185,17 @@ describe("the skills' ticket tool", () => {
     expect(world.store?.["tickets:github.com/acme/other"]).toBeUndefined()
   })
 
+  test("asked about another repository's pull request, as a Review on a visit is, it gives that repository's ticket", async ($, on) => {
+    await sessionWith($, on, { "tickets:github.com/acme/web": { "WEB-": LINEAR } })
+
+    expect(
+      JSON.parse(String((await call($, { repo: "github.com/acme/web", branch: "feature/WEB-12-checkout" })).result))
+    ).toEqual({
+      key: "WEB-12",
+      url: "https://linear.app/acme/issue/WEB-12"
+    })
+  })
+
   test("a link it can't use is refused with why, and keeps nothing", async ($, on) => {
     const { world } = await sessionWith($, on, {})
 

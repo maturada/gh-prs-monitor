@@ -78,7 +78,8 @@ export function rawPull(
   pull: PullFixture,
   merging: MergingFixture,
   fragment: Fragment,
-  viewer: string
+  viewer: string,
+  repo = "acme/app"
 ): Record<string, unknown> {
   const head = pull.headRefOid ?? `head-${pull.number}`
   const reviews = pull.reviews ?? []
@@ -89,7 +90,7 @@ export function rawPull(
   const shared = {
     number: pull.number,
     title: pull.title ?? `Pull request ${pull.number}`,
-    url: `https://github.com/acme/app/pull/${pull.number}`,
+    url: `https://github.com/${repo}/pull/${pull.number}`,
     isDraft: pull.isDraft ?? false,
     headRefName: pull.headRefName ?? `feature/branch-${pull.number}`,
     headRefOid: head,
@@ -194,7 +195,7 @@ export function response(fixture: ResponseFixture): string {
   const viewer = fixture.viewer ?? "me"
   const group = (fragment: Fragment, pulls: PullFixture[] = [], total?: number): unknown => ({
     issueCount: total ?? pulls.length,
-    nodes: pulls.map((pull) => rawPull(pull, fixture.merging ?? {}, fragment, viewer))
+    nodes: pulls.map((pull) => rawPull(pull, fixture.merging ?? {}, fragment, viewer, fixture.nameWithOwner))
   })
 
   return JSON.stringify({

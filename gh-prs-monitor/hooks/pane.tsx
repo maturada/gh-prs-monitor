@@ -4,12 +4,12 @@ import type { BoxProps, ButtonProps, ElementConstructor, LinkProps, RenderElemen
 
 import type { Activity, Badge, CiMark, MergedPull, PullAction, PullRow, PullsSnapshot } from "../types"
 import { ACTION_LABELS } from "./actions"
-import { isOnBranch, stackText } from "./pulls"
+import { isOnBranch, rowsOf, stackText } from "./pulls"
 import { CREATE_PR } from "./create-flow"
 import type { PullToOpen } from "./create-flow"
 import { noteEvents } from "./alerts"
 import { ago, checkingAgain, elapsed, lookedAt } from "./when"
-import { BACK_MARK, buttonKey, rowKey } from "./keys"
+import { BACK_MARK, buttonKey, PICK_KEY, rowKey } from "./keys"
 import {
   buttonGaps,
   buttonsApart,
@@ -35,6 +35,7 @@ import {
   ownEntries
 } from "./list"
 import type { ListEntry } from "./list"
+import { card, CHANGED_MARK, panelTitle, rule } from "./panels"
 import { markedStatus, MARKS, markText, summaryCounts, summaryMarks, summaryParts } from "./summary"
 import type { SummaryCounts, SummaryMark } from "./summary"
 import { detailsWithTicket } from "./tickets"
@@ -74,6 +75,14 @@ export type PaneView = {
   surface: string
   // The repository's ticket links where rows show them: a row's ticket leads its facts; null where they don't.
   tickets: TicketLinks | null
+  // A visit's list, another repository's (`visit.ts`): that repository, named before its list comes, and the folder's,
+  // which Back goes to, null where the folder has none. Null for the folder's own list.
+  visit: { repo: string; folder: string | null } | null
+  // What waits for the viewer in other repositories than the folder's and the one visited, as the light check of other
+  // repositories last read it (`elsewhereCount`); 0 for none, or with it off.
+  elsewhere?: number
+  // The repository picker getting ready, which its buttons say until it asks (`askPick`).
+  isPreparingPicker?: boolean
 }
 
 // A row's press names its pull request by number: a button drawn again unchanged keeps its first closure
@@ -85,6 +94,11 @@ export type PaneActions = {
   // Marks what changed on the pull request as seen, which takes its note away.
   markSeen: (pullNumber: number) => void
   toggleCompact: () => void
+  // From a visit, back to the folder's list.
+  back?: () => void
+  // The repository picker, which the header's Repositories button and the problem box open (`repo-picker.ts`), from the
+  // button pressed (its key); none where the pane offers it not.
+  pick?: (pressed: string) => void
 }
 
 // Wide enough for two panels of readable rows next to each other, as a pane inline at full width is; a pane
@@ -170,8 +184,16 @@ function problemBox(kit: Kit, problem: string, view: PaneView, actions: PaneActi
           </Text>
         ) : null}
       </Box>
-      <Box>
+      <Box {...buttonGaps(view.surface)} flexWrap="wrap">
         <Button key="retry" label="Retry" variant="primary" onPress={actions.refresh} />
+        {/* With no list at all, as in a folder that is no GitHub repository, another repository's can show. */}
+        {actions.pick && !view.snapshot ? (
+          <Button
+            key="pick-repo"
+            label={view.isPreparingPicker ? PREPARING_LABEL : "Show Another Repository"}
+            onPress={() => actions.pick?.("pick-repo")}
+          />
+        ) : null}
       </Box>
     </Box>
   )
@@ -183,10 +205,17 @@ const BUTTON_CHROME = 4
 const HEADER_GAP = 2
 const WHEN_COLUMNS = "updated 00:00".length
 const REFRESH_LABEL = "Refresh"
+// The repository picker's button, which shows another repository's pull requests; and what it, or the problem box's,
+// says while the picker gets ready.
+const PICK_LABEL = "Repositories"
+const PREPARING_LABEL = "Loading…"
+// What a visit's header says beside the time.
+const VISIT_NOTE = "Not this session's folder"
 
-// The repository (a link to its pull requests), the status line's counts, when the list was read, the switch
-// between the full and the compact view, and Refresh, which `r` presses while the pane has the keyboard, in a box
-// of their own above the panels.
+// The repository (a link to its pull requests), the status line's counts, and what waits elsewhere; when the list
+// was read; the repository picker where the pane offers it, the switch between the full and the compact view, and
+// Refresh, which `r` presses while the pane has the keyboard, in a box of their own above the panels. A visit says it
+// isn't the session's folder, with Back to the folder's list.
 function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
   const { Box, Text, Button, Link } = kit
   const { snapshot } = view
@@ -198,19 +227,39 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
   const counts = snapshot ? summaryCounts(snapshot) : null
   const marks = counts ? summaryMarks(counts) : []
 
-  const name = snapshot?.repo ?? "Pull Requests"
+  const name = snapshot?.repo ?? view.visit?.repo ?? "Pull Requests"
   const viewLabel = view.isCompact ? "Full" : "Compact"
-  const buttonsWidth = [viewLabel, REFRESH_LABEL].reduce(
-    (sum, label) => sum + label.length + BUTTON_CHROME,
-    buttonGaps(view.surface).columnGap
-  )
+  // The buttons keep to one line where they can: Back names the folder's repository only where the whole row then fits
+  // the pane, else it is plain Back; a pane narrower still wraps them. Repositories is measured as the wider of itself
+  // and Loading…, so the header keeps its shape while it reads that.
+  const widthOf = (labels: readonly string[]): number =>
+    labels.reduce(
+      (sum, label) => sum + label.length + BUTTON_CHROME,
+      buttonGaps(view.surface).columnGap * (labels.length - 1)
+    )
+  const pickMeasure = PICK_LABEL.length >= PREPARING_LABEL.length ? PICK_LABEL : PREPARING_LABEL
+  const measured = (back: string | null): string[] => [
+    ...(back ? [back] : []),
+    ...(actions.pick ? [pickMeasure] : []),
+    viewLabel,
+    REFRESH_LABEL
+  ]
+  const room = view.columns - BOX_CHROME
+  const backs = view.visit && actions.back ? [backTo(view.visit.folder), backTo(null)] : [null]
+  const backLabel = backs.find((each) => widthOf(measured(each)) <= room) ?? backs[backs.length - 1]!
+  const back = backLabel && actions.back ? { label: backLabel, press: actions.back } : null
+  const pickLabel = view.isPreparingPicker ? PREPARING_LABEL : PICK_LABEL
+  const buttonsWidth = widthOf(measured(backLabel))
   // The counts are one piece, never parted, as a narrow layout would leave a count alone; the name wraps, and where
   // the two don't fit side by side the counts go under it whole. The time may go under them. Where the name and
   // counts, or the time, don't fit whole beside the buttons, the buttons go on a line of their own under them. The
   // time as its widest, so the header keeps its shape while "refreshing…" stands in for it.
+  const elsewhere = view.elsewhere ? `+${view.elsewhere} elsewhere` : ""
   const countsWidth = columnsOf(marks.map(markText).join("  "))
-  const titleWidth = name.length + (marks.length > 0 ? 2 + countsWidth : 0)
-  const infoWidth = Math.max(titleWidth, WHEN_COLUMNS, updated.length)
+  const titleWidth = name.length + (marks.length > 0 ? 2 + countsWidth : 0) + (elsewhere ? 2 + columnsOf(elsewhere) : 0)
+  // The time's line holds a visit's note beside it.
+  const whenWidth = Math.max(WHEN_COLUMNS, updated.length) + (view.visit ? 2 + VISIT_NOTE.length : 0)
+  const infoWidth = Math.max(titleWidth, whenWidth)
   const isStacked = view.columns < BOX_CHROME + infoWidth + HEADER_GAP + buttonsWidth
 
   return (
@@ -224,7 +273,7 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
       paddingX={1}
       {...framePadding(view.surface)}
     >
-      <Box columnGap={2} flexWrap="wrap" flexShrink={1}>
+      <Box columnGap={2} flexWrap="wrap" flexShrink={1} minWidth={0}>
         <Box key="header-title" columnGap={2} flexWrap="wrap" flexShrink={1} minWidth={0}>
           <Box flexShrink={1} minWidth={0}>
             <Text bold wrap="wrap">
@@ -236,8 +285,14 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
               <Text>{marks.flatMap((mark, index) => [index > 0 ? "  " : "", ...boldCount(kit, mark)])}</Text>
             </Box>
           ) : null}
+          {elsewhere ? <Text dimColor>{elsewhere}</Text> : null}
         </Box>
         {when ? <Text dimColor>{when}</Text> : null}
+        {view.visit ? (
+          <Text key="visit" dimColor>
+            {VISIT_NOTE}
+          </Text>
+        ) : null}
       </Box>
       <Box
         key="header-buttons"
@@ -246,11 +301,20 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
         flexWrap="wrap"
         {...(isStacked && !spacesByRows(view.surface) ? { marginTop: 1 } : {})}
       >
+        {back ? <Button key="back" label={back.label} onPress={back.press} /> : null}
+        {actions.pick ? (
+          <Button key={PICK_KEY} label={pickLabel} dimColor onPress={() => actions.pick?.(PICK_KEY)} />
+        ) : null}
         <Button key="view" label={viewLabel} dimColor onPress={actions.toggleCompact} />
         <Button key="refresh" label={REFRESH_LABEL} hotkey="r" dimColor onPress={actions.refresh} />
       </Box>
     </Box>
   )
+}
+
+// Back's label: the folder's repository it goes back to, where the folder has one.
+function backTo(folder: string | null): string {
+  return folder ? `Back to ${folder}` : "Back"
 }
 
 // Two panels, or, with nothing in either and Create PR neither offered nor at work, one line that says so, centred
@@ -279,7 +343,7 @@ function body(kit: Kit, snapshot: PullsSnapshot, view: PaneView, actions: PaneAc
 // go as notes go. One that came back into a list is noted on its row instead.
 function endedNotes(kit: Kit, snapshot: PullsSnapshot, view: PaneView, actions: PaneActions): RenderElement | null {
   const { Box, Text, Button, Link } = kit
-  const listed = new Set([...snapshot.mine, ...snapshot.review].map((row) => row.number))
+  const listed = new Set(rowsOf(snapshot).map((row) => row.number))
   const byPull = new Map<number, Activity[]>()
   for (const entry of view.activity) {
     if (entry.ended && !listed.has(entry.number)) {
@@ -383,23 +447,11 @@ function emptyPanel(
       justifyContent="space-between"
     >
       <Box columnGap={2} flexWrap="wrap" flexShrink={1}>
-        {panelTitle(kit, group, 0)}
+        {panelTitle(kit, LIST_TITLES[group], 0)}
         {/* Drafts the setting hides are open pull requests of yours: the panel says they are hidden instead. */}
         <Text dimColor>{hidden ?? EMPTY_LISTS[group]}</Text>
       </Box>
       {group === "mine" ? createButton(kit, view, actions) : null}
-    </Box>
-  )
-}
-
-// A panel's title and how many it holds.
-function panelTitle(kit: Kit, group: Group, count: number): RenderElement {
-  const { Box, Text } = kit
-
-  return (
-    <Box gap={1}>
-      <Text bold>{LIST_TITLES[group]}</Text>
-      <Text dimColor>{String(count)}</Text>
     </Box>
   )
 }
@@ -446,20 +498,22 @@ function panel(
         flexWrap="wrap"
         justifyContent="space-between"
       >
-        {panelTitle(kit, group, rows.length)}
+        {panelTitle(kit, LIST_TITLES[group], rows.length)}
         {group === "mine" ? createButton(kit, view, actions) : null}
       </Box>
-      {rule(kit, "rule-title", view)}
+      {rule(kit, "rule-title", view.surface, view.columns)}
       {entries.flatMap((entry, index) => [
         // Compact rows, a line or two each, need nothing between them.
-        ...(index > 0 && frame.layout === "full" ? [rule(kit, `rule-${entryNumber(entry)}`, view)] : []),
+        ...(index > 0 && frame.layout === "full"
+          ? [rule(kit, `rule-${entryNumber(entry)}`, view.surface, view.columns)]
+          : []),
         entry.kind === "open"
           ? pullRow(kit, group, entry.row, frame, view, actions)
           : mergedRow(kit, entry.pull, frame, view)
       ])}
       {snapshot.isCut[group] && snapshot.url
         ? [
-            rule(kit, "rule-cut", view),
+            rule(kit, "rule-cut", view.surface, view.columns),
             <Box key="cut" columnGap={1} flexWrap="wrap">
               <Text dimColor>{CUT_NOTE}</Text>
               <Link href={fullListUrl(snapshot.url, group)} label="More on GitHub" />
@@ -537,22 +591,6 @@ function columnsOf(text: string): number {
   return [...text].length + Object.values(MARKS).filter((mark) => text.includes(mark)).length
 }
 
-// The line under a panel's title and between its rows. Boxes draw only whole borders, so the terminal gets a run of
-// rule characters as wide as the pane, clipped to the panel's width. An app neither clips the run (the desktop app
-// wraps it onto a second line) nor draws an empty bordered box as a line, so there the rows are spaced apart, each a
-// card.
-function rule(kit: Kit, key: string, view: PaneView): RenderElement {
-  const { Box, Text } = kit
-
-  return isTerminal(view.surface) ? (
-    <Box key={key} height={1} overflow="hidden">
-      <Text dimColor>{"─".repeat(view.columns)}</Text>
-    </Box>
-  ) : (
-    <Box key={key} marginTop={1} />
-  )
-}
-
 // A row: the title line, its status, the facts under it, its buttons, and what changed lately. A compact row keeps
 // the title and the status (`compactRow`): a dot after the title says something changed, a stacked one's stack shows
 // before the status, and what is under way shows in place of the status.
@@ -589,8 +627,8 @@ function pullRow(
 
   return card(
     kit,
-    view,
-    row.number,
+    view.surface,
+    `card-${row.number}`,
     <Box key={rowKey(row.number)} flexDirection="column" hover={{ scope: rowKey(row.number) }}>
       {titleLine(kit, titleParts, frame, null)}
       <Box key="status" paddingLeft={indent}>
@@ -647,8 +685,8 @@ function mergedRow(kit: Kit, pull: MergedPull, frame: RowFrame, view: PaneView):
 
   return card(
     kit,
-    view,
-    pull.number,
+    view.surface,
+    `card-${pull.number}`,
     <Box key={rowKey(pull.number)} flexDirection="column" hover={{ scope: rowKey(pull.number) }}>
       {titleLine(kit, titleParts, frame, null)}
       <Box key="status" paddingLeft={frame.indent} gap={1}>
@@ -741,30 +779,8 @@ function titleLine(kit: Kit, parts: TitleParts, frame: RowFrame, status: RenderE
   )
 }
 
-// As a mail app marks what is unread: the row changed lately (`isChanged`). With the no-break space before it, which
-// keeps it on the title's last line.
-const CHANGED_MARK = "•"
+// The changed mark (`CHANGED_MARK`) with the no-break space before it.
 const CHANGED_COLUMNS = 2
-
-// In an app, where no line can part the rows (`rule`), each is a card of its own.
-function card(kit: Kit, view: PaneView, number: number, content: RenderElement): RenderElement {
-  const { Box } = kit
-
-  return isTerminal(view.surface) ? (
-    content
-  ) : (
-    <Box
-      key={`card-${number}`}
-      flexDirection="column"
-      borderStyle="round"
-      borderDimColor
-      paddingX={1}
-      {...framePadding(view.surface)}
-    >
-      {content}
-    </Box>
-  )
-}
 
 const ACTIVITY_EVENTS = 4
 const SEEN_LABEL = "✕"

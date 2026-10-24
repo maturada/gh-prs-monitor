@@ -1,33 +1,88 @@
 # Where the branch skills work
 
-[Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md) and [Resolve Conflicts](resolve-conflicts.md) work on the
-pull request's branch, and ask where to, also when this folder is on that branch already, as another session may be
-working in it.
+[Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md) and [Resolve Conflicts](resolve-conflicts.md) change
+code on the pull request's branch. Before they start, they ask where to work, also when this folder is on that branch
+already, as another session may be working in it.
 
-If you aren't sure, pick a worktree: the skill gets a folder of its own with the pull request checked out and, unless
-it comes from a fork, its dependencies installed, and your checkout, with its uncommitted changes, stays exactly as it
-is. Switching here is quickest when this folder has nothing in progress. Either way nothing is committed or pushed
-without your yes, and the worktree goes afterwards only when nothing in it would be lost.
+If you aren't sure, pick a worktree: a separate folder of its own, with the pull request checked out. Your checkout's
+files and branch, with its uncommitted changes, stay as they are. Switching here is quickest when this folder has
+nothing in progress.
+
+Either way nothing is committed or pushed without your yes, and the worktree goes afterwards only when nothing in it
+would be lost. A worktree gets the pull request's dependencies installed too, unless it comes from a fork.
+
+All of this is for pull requests of this folder's repository. The three skills on a pull request of
+[another repository](other-repositories.md) work in a clone of that one, and offer to open a new session there:
+[Other repositories](other-repositories.md#buttons-on-its-rows).
 
 ## The choices
 
 - **Here, on this branch** — when this folder is on the pull request's branch already: the skill works in it as it
   is, with any changes you have in it.
-- **Here, switch branch** — when this folder is not on the pull request's branch: checks it out here, for this session,
-  as a new one would share the folder with the conversation you are in. The question says what it costs: uncommitted
-  changes go along to the pull request's branch; from no branch, commits made there are left behind, found again only
-  through `git reflog`. [How the switch works](#here-switch-branch-in-detail).
-- **Worktree, this session** — a git worktree at `<repository>/.claude/worktrees/pr-<number>`, with the pull request
-  checked out on a branch of its own, `pr-<number>`, fetched and set up as `gh pr checkout` does, forks included, by the
-  same checkout as above. A branch of the head's name stays free for you to switch to in any folder. Your current
-  branch and changes are not touched, and no folder you work in is used. [More on the worktree](#the-worktree).
+- **Here, switch branch** — when this folder is not on the pull request's branch: checks it out here,
+  for this session, as a new one would share the folder with the conversation you are in.
+- **Worktree, this session** — a git worktree (a second folder of the same repository, on a branch of its own) at
+  `<repository>/.claude/worktrees/pr-<number>`, with the pull request checked out on a branch of its own,
+  `pr-<number>`, fetched and set up as `gh pr checkout` does, forks included, by the same checkout as above. A branch
+  of the head's name stays free for you to switch to in any folder.
 - **Worktree, new session** — the worktree above, prepared here, and a new Claude Code session opened for it with
   the skill's command and the pull request's URL typed in, for you to send, the way [Review](review.md) opens one; this
-  conversation goes on undisturbed. Offered from the terminal, the desktop app and VS Code. The terminal opens the
-  session in the worktree. The desktop app takes a worktree's folder for its repository and then starts a session in a
-  scratch folder of its own, so there the session opens at the repository's root, the command carries `--worktree`,
-  and the skill moves into the worktree itself; VS Code opens its tab at the window's folder, so there too.
+  conversation goes on undisturbed. Offered from the terminal, the desktop app and VS Code.
 - **Cancel**.
+
+### What happens to your checkout
+
+- **Here, on this branch** changes nothing about the folder: the skill sees your changes.
+- **Here, switch branch** moves this folder. The question says what it costs: uncommitted changes go along to the
+  pull request's branch; from no branch, commits made there are left behind, found again only through `git reflog`.
+  [How the switch works](#here-switch-branch-in-detail).
+- **Worktree, this session** leaves your current branch and changes untouched, and no folder you work in is used.
+  [More on the worktree](#the-worktree).
+- **Worktree, new session** also leaves them untouched. The terminal opens the session in the worktree. The desktop app
+  takes a worktree's folder for its repository and then starts a session in a scratch folder of its own, so there the
+  session opens at the repository's root, the command carries `--worktree`, and the skill moves into the worktree
+  itself; VS Code opens its tab at the window's folder, so there too.
+
+## Instructions
+
+Instructions typed in the dialog's field, for example "only the naming comments", go to the skill wherever the answer
+you then press has it work, or Enter sends them alone to a worktree in this session. Sent alone, a "cancel", "no
+thanks" or "never mind" cancels, while an instruction that merely starts with "no" is passed on.
+
+## Cleanup
+
+Once the pull request is merged or closed, its worktree goes, with its local branch, when nothing in it would be lost:
+
+- no files changed or added;
+- no files that git ignores, except what tools make again (installed dependencies, build output and caches, in the
+  usual folders of the common languages: `node_modules`, `.venv`, `vendor`, `Pods`, `target`, `dist`, `__pycache__`
+  and the like, Flutter's `.symlinks` and `ephemeral`, Yarn's Plug'n'Play files, an Android `local.properties` holding
+  only the SDK's and Flutter's own settings) and files the main checkout holds the same, as a copy `.worktreeinclude`
+  made (one changed in the worktree keeps it, even among what tools make again where the file names it);
+- its commit on GitHub.
+
+What goes and what stays:
+
+- Only a worktree holding the pull request's branch is removed. A worktree Claude Code itself made in the same folder,
+  or one on a branch another open pull request comes from, is left alone.
+- One that holds work is kept, and said so once: not again in later sessions in the same clone until why it stays
+  changes.
+- The one your session is working in stays until you leave it. A worktree another session works in can still go (only
+  when nothing in it would be lost); that session then loses its folder.
+- A `pr-<number>` branch that **Here, switch branch** left in your folder goes the same way, once no folder has it
+  checked out, it still tracks that pull request, and its commit is on GitHub. One with commits GitHub lacks is kept,
+  and said so once, as a worktree is.
+- A branch of that name that tracks the pull request is taken for /prs's, even one you made yourself. One that tracks
+  something else, or nothing, or that an open pull request comes from, is never touched, and no other branch of yours
+  is ever deleted.
+
+This is checked when a session starts and whenever a pull request leaves the lists, unless the **Clean up worktrees and
+branches** setting is off. One session of a clone checks at a time: one that finds another cleaning up leaves it to
+that one and looks again next time.
+
+## Reference
+
+How the choices work in detail.
 
 ### Here, switch branch, in detail
 
@@ -87,13 +142,7 @@ as Claude Code's own worktrees get them: a `.env`, Android's `local.properties`,
 - An alert names the first file it could not copy and how many more; where git can't list them whole, none is copied,
   and the alert says so.
 
-## Instructions
-
-Instructions typed in the dialog's field, for example "only the naming comments", go to the skill wherever the answer
-you then press has it work, or Enter sends them alone to a worktree in this session. Sent alone, a "cancel", "no
-thanks" or "never mind" cancels, while an instruction that merely starts with "no" is passed on.
-
-## Dependencies
+### Dependencies
 
 A new worktree gets its own dependencies, installed from each project's lockfile so they match the pull request exactly:
 the repository root's projects first, then those in folders up to three down (`ios`, `apps/web`, `apps/mobile/ios`),
@@ -134,7 +183,13 @@ told its commands can run. `requirements.txt` is no lockfile, and gets nothing.
   incomplete.
 - **On Windows**, a package manager Claude Code can't start is tried once more through `cmd`.
 
-## Your branches stay yours
+### A checkout behind GitHub's
+
+Before the skills change anything, they check that the checkout is on the pull request's commit and has no unexpected
+changes. A checkout behind GitHub's, or left behind by a rebase there, can be brought up to date first: in /prs's
+worktree on your yes, in your own folder with a command the skill gives you.
+
+### Your branches stay yours
 
 The pane never resets or rewrites a branch you work in.
 
@@ -161,33 +216,9 @@ They push to the pull request's own branch, whatever the local one is called. Fo
 fork (yours, or an organisation's you write to), or when it lets maintainers edit and you may push to the repository;
 otherwise they offer to commit only.
 
-## Cleanup
+## Where to go next
 
-Once the pull request is merged or closed, its worktree goes, with its local branch, when nothing in it would be lost:
-
-- no files changed or added;
-- no files that git ignores, except what tools make again (installed dependencies, build output and caches, in the
-  usual folders of the common languages: `node_modules`, `.venv`, `vendor`, `Pods`, `target`, `dist`, `__pycache__`
-  and the like, Flutter's `.symlinks` and `ephemeral`, Yarn's Plug'n'Play files, an Android `local.properties` holding
-  only the SDK's and Flutter's own settings) and files the main checkout holds the same, as a copy `.worktreeinclude`
-  made (one changed in the worktree keeps it, even among what tools make again where the file names it);
-- its commit on GitHub.
-
-What goes and what stays:
-
-- Only a worktree holding the pull request's branch is removed. A worktree Claude Code itself made in the same folder,
-  or one on a branch another open pull request comes from, is left alone.
-- One that holds work is kept, and said so once: not again in later sessions in the same clone until why it stays
-  changes.
-- The one your session is working in stays until you leave it. A worktree another session works in can still go (only
-  when nothing in it would be lost); that session then loses its folder.
-- A `pr-<number>` branch that **Here, switch branch** left in your folder goes the same way, once no folder has it
-  checked out, it still tracks that pull request, and its commit is on GitHub. One with commits GitHub lacks is kept,
-  and said so once, as a worktree is.
-- A branch of that name that tracks the pull request is taken for /prs's, even one you made yourself. One that tracks
-  something else, or nothing, or that an open pull request comes from, is never touched, and no other branch of yours
-  is ever deleted.
-
-This is checked when a session starts and whenever a pull request leaves the lists, unless the **Clean up worktrees and
-branches** setting is off. One session of a clone checks at a time: one that finds another cleaning up leaves it to
-that one and looks again next time.
+- [Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md) and [Resolve Conflicts](resolve-conflicts.md): what
+  each skill does once it works.
+- [Settings](settings.md#worktrees-and-branches): the **Clean up worktrees and branches** setting.
+- [What it runs](what-it-runs.md): the commands the plugin runs, installs included.

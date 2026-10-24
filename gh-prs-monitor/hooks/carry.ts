@@ -7,6 +7,7 @@
 import type { EndedPull, PullHead, PullsSnapshot } from "../types"
 import { byNumber, isComparable, vanishedPulls } from "./alerts"
 import type { ClosedState } from "./ended"
+import { rowsOf } from "./pulls"
 
 // The list a load shows: what GitHub listed, with what was known of each pull request in the list it is compared with
 // (`before`), and the heads and pull requests that ended, as GitHub said (`states`), carried from the list as it
@@ -117,7 +118,7 @@ export function carryEndedPulls(
   if (!isComparable(source, after)) {
     return after
   }
-  const rows = new Set([...after.mine, ...after.review].map((pull) => pull.number))
+  const rows = new Set(rowsOf(after).map((pull) => pull.number))
   const listed = new Set([...rows, ...after.mentioned.pulls.map((pull) => pull.number)])
   const base = isComparable(told, after) ? told : null
   const reviewed = byNumber(base?.review ?? [])
@@ -177,7 +178,7 @@ export function leftToAsk(
   limit: number
 ): number[] {
   const open = new Set([
-    ...[...after.mine, ...after.review, ...after.mentioned.pulls].map((pull) => pull.number),
+    ...[...rowsOf(after), ...after.mentioned.pulls].map((pull) => pull.number),
     ...stillOpen(after)
   ])
   const sinceSource = isComparable(source, after)

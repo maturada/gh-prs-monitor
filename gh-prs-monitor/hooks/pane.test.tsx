@@ -188,18 +188,47 @@ describe("the pane", () => {
     expect((await editor.find({ type: "Text", text: /^✗$/ }))?.props.color).toBe("error")
   })
 
-  test("the header links the repository, counts like the status line, and r refreshes", async ($, on) => {
-    const clock = clockOf(on)
-    machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
-    await startSession($)
-    await clock.settle()
+  for (const surface of ["terminal", "desktop", "vscode"] as const) {
+    test(`the header links the repository, counts like the status line, offers the picker, and r refreshes (${surface})`, async ($, on) => {
+      const clock = clockOf(on)
+      machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
+      await startSession($)
+      await clock.settle()
 
-    const ui = await mountPane($, "terminal")
+      const ui = await mountPane($, surface)
 
-    expect((await ui.find({ type: "Link", text: "acme/app" }))?.props.href).toBe("https://github.com/acme/app/pulls")
-    expect(await ui.find({ type: "Text", text: "✅ 1  ❗ 1  🔍 1" })).toBeDefined()
-    expect((await ui.find({ key: "refresh" }))?.props.hotkey).toBe("r")
-  })
+      expect((await ui.find({ type: "Link", text: "acme/app" }))?.props.href).toBe("https://github.com/acme/app/pulls")
+      expect((await ui.find({ key: "repo" }))?.props.label).toBe("Repositories")
+      expect(await ui.find({ type: "Text", text: "✅ 1  ❗ 1  🔍 1" })).toBeDefined()
+      expect((await ui.find({ key: "refresh" }))?.props.hotkey).toBe("r")
+    })
+  }
+
+  test(
+    "+N elsewhere counts what waits for you in other repositories, where the light check is on",
+    { options: { alertOtherRepos: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      machine($, on, {
+        github: GITHUB,
+        branch: "main",
+        uncommitted: 0,
+        elsewhere: {
+          mine: [{ repo: "acme/web", number: 12, ci: "FAILURE" }],
+          requested: [
+            { repo: "acme/admin", number: 3 },
+            { repo: "acme/admin", number: 4 }
+          ]
+        }
+      })
+      await startSession($)
+      await clock.settle()
+
+      const ui = await mountPane($, "terminal")
+
+      expect(await ui.find({ type: "Text", text: "+3 elsewhere" })).toBeDefined()
+    }
+  )
 
   test("a row's status has a line of its own, the facts the next, wherever a narrow pane breaks them", async ($, on) => {
     const clock = clockOf(on)
@@ -558,6 +587,22 @@ describe("the pane", () => {
     }
   })
 
+  test("in a narrow pane Repositories stays spelled out, the buttons wrapping where one line won't hold them", async ($, on) => {
+    const clock = clockOf(on)
+    machine($, on, { github: GITHUB, branch: "fix/menu", uncommitted: 0 })
+    await startSession($)
+    await clock.settle()
+
+    for (const [columns, label] of [
+      [40, "Repositories"],
+      [52, "Repositories"]
+    ] as const) {
+      const ui = await mountPane($, "terminal", columns)
+      expect((await ui.find({ key: "repo" }))?.props.label).toBe(label)
+      await ui.unmount()
+    }
+  })
+
   test("the branch mark sits in a gutter its panel's rows share, and takes nothing from the title", async ($, on) => {
     const clock = clockOf(on)
     machine($, on, { github: GITHUB, branch: "fix/menu", uncommitted: 0 })
@@ -675,9 +720,9 @@ describe("the pane", () => {
       return header?.props.flexDirection
     }
 
-    // The buttons a cell apart are part of the width: one column less and they no longer fit.
-    expect(await direction(42)).toBe("column")
-    expect(await direction(43)).toBe("row")
+    // The buttons a cell apart are part of the width, Repositories too: one column less and they no longer fit.
+    expect(await direction(59)).toBe("column")
+    expect(await direction(60)).toBe("row")
   })
 
   test("the name wraps, and the counts go under it whole where both don't fit side by side", async ($, on) => {
@@ -729,8 +774,8 @@ describe("the pane", () => {
     await startSession($)
     await clock.settle()
 
-    // At 41 columns "updated 01:00" no longer fits beside the buttons, though "refreshing…" would.
-    const ui = await mountPane($, "terminal", 41)
+    // At 58 columns "updated 01:00" no longer fits beside the buttons, though "refreshing…" would.
+    const ui = await mountPane($, "terminal", 58)
     expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe("column")
     world.slowGithubMs = 20_000
     await ui.press({ key: "refresh" })
@@ -766,18 +811,27 @@ describe("the pane", () => {
     }
   )
 
-  test("the header makes room for a day in its time", { options: { refresh: "on-demand" } }, async ($, on) => {
-    clockOf(on, { now: new Date(2026, 9, 13, 9, 0).getTime() })
-    const github = { mine: [GITHUB.mine![1]!] }
-    machine($, on, { github, branch: "main", uncommitted: 0 })
-    keptOverReload(on, { snapshot: { ...keptList(github)!, fetchedAt: new Date(2026, 9, 12, 17, 40).getTime() } })
-    await startSession($)
+  // At 65 columns "updated 08:50" fits beside the buttons, and "updated yesterday 17:40" doesn't.
+  for (const [fetchedAt, time, direction] of [
+    [new Date(2026, 9, 12, 17, 40).getTime(), "updated yesterday 17:40", "column"],
+    [new Date(2026, 9, 13, 8, 50).getTime(), "updated 08:50", "row"]
+  ] as const) {
+    test(
+      `the header makes room for a day in its time: ${time}`,
+      { options: { refresh: "on-demand" } },
+      async ($, on) => {
+        clockOf(on, { now: new Date(2026, 9, 13, 9, 0).getTime() })
+        const github = { mine: [GITHUB.mine![1]!] }
+        machine($, on, { github, branch: "main", uncommitted: 0 })
+        keptOverReload(on, { snapshot: { ...keptList(github)!, fetchedAt } })
+        await startSession($)
 
-    // At 45 columns "updated 17:40" fits beside the buttons, and "updated yesterday 17:40" doesn't.
-    const ui = await mountPane($, "terminal", 45)
-    expect(await ui.find({ type: "Text", text: "updated yesterday 17:40" })).toBeDefined()
-    expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe("column")
-  })
+        const ui = await mountPane($, "terminal", 65)
+        expect(await ui.find({ type: "Text", text: time })).toBeDefined()
+        expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe(direction)
+      }
+    )
+  }
 
   test("the line between rows runs the pane's width, clipped to its panel's", async ($, on) => {
     const clock = clockOf(on)
@@ -1033,7 +1087,9 @@ describe("/prs close", () => {
     await clock.settle()
     const asked = seen.runs.length
 
-    expect((await runPrs($, " clsoe ")).text).toBe('/prs takes nothing, demo, close, report or tickets, not "clsoe".')
+    expect((await runPrs($, " clsoe ")).text).toBe(
+      `/prs takes nothing, demo, close, report, tickets or a repository (owner/name, an address or a folder's path), not "clsoe".`
+    )
     expect(world.isPaneOpen).toBe(undefined)
     expect(seen.runs.length).toBe(asked)
   })

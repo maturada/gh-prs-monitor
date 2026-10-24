@@ -7,3 +7,13 @@ export async function promisesRun(turns = 100): Promise<void> {
     await Promise.resolve()
   }
 }
+
+// A promise held until the test opens it, as a request kept under way while the test acts.
+export function held(): { gate: Promise<void>; open: () => void } {
+  let open = () => {}
+  const gate = new Promise<void>((resolve) => {
+    open = resolve
+  })
+
+  return { gate, open }
+}

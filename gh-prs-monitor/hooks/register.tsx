@@ -8,15 +8,17 @@
 import { atom, read, update } from "claude-code"
 import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOpenResult } from "claude-code"
 
-import type { Activity, CheckoutAt, PullAction, PullRow, PullsSnapshot, Question } from "../types"
+import type { Activity, CheckoutAt, PullAction, PullRow, PullsSnapshot, Question, Visit } from "../types"
 import { ACTION_LABELS } from "./actions"
-import { nextNoteExpiry, nothingHeld, recentNotes } from "./alerts"
-import { pullSuggestions } from "./autocomplete"
+import { nextNoteExpiry, nothingHeld, readHeld, recentNotes } from "./alerts"
+// TBD: with `#` in the prompt, off for now (`prompt.autocomplete` below).
+// import { pullSuggestions } from "./autocomplete"
 import { checkingAgain } from "./when"
-import { focusMoved, forgetWindow, windowMoved } from "./back-to-row"
+import { focusMoved, forgetWindow, topAndFocus, windowMoved } from "./back-to-row"
 import { lookUpBranch } from "./branch-lookup"
 import type { BranchLookupHost } from "./branch-lookup"
 import { checkedOut, newerCheckout } from "./checkout"
+import { noteOwnClone, stillCloned } from "./clones"
 import type { Host } from "./machine"
 import { cleanUp } from "./cleanup"
 import type { CleanupHost } from "./cleanup"
@@ -27,28 +29,34 @@ import {
   demoAnswerNote,
   demoNotification,
   DEMO_SEEN_NOTE,
+  demoList,
+  demoPicked,
+  demoPicker,
   demoQuestion,
-  demoSnapshot,
   demoStartNote,
   DEMO_TOAST_GAP_MS,
   demoCounts,
+  demoElsewhereAlerts,
   demoText,
   demoView,
   DEMO_TO_OPEN
 } from "./demo"
 import { questionView } from "./dialog"
-import { ask, askInEngineDialog, closeAsked, drawnQuestion, isQuestionOpen } from "./dialog-flow"
+import { ask, askInEngineDialog, closeAsked, drawnQuestion, dropAsked, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
-import { messageOf, SETUP_NOTE_MS } from "./gh"
+import { askElsewhere, checkElsewhere, pollElsewhere, readElsewhereState, withPickedAt } from "./elsewhere"
+import type { ElsewhereHost, ElsewhereTimerHost } from "./elsewhere"
+import { messageOf, repoAt, sameRepo, SETUP_NOTE_MS } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
+import { sessionRepo } from "./github"
 import { drawsToasts, isTerminal } from "./layout"
 import { linksOf, listText } from "./list"
 import { canOpenSession, editorScheme } from "./new-session"
-import { buttonKey } from "./keys"
+import { buttonKey, PICK_KEY } from "./keys"
 import { drawBand, drawPane } from "./pane"
-import { claimedBusy, resumeMerged, withBusy, withoutBusyIf } from "./press"
+import { claimedBusy, markKey, marksOfVisit, namedOn, resumeMerged, withBusy, withoutBusyIf } from "./press"
 import type { PressHost } from "./press"
-import { rowOf, storedSnapshot } from "./pulls"
+import { rowOf, rowsOf, storedSnapshot } from "./pulls"
 import { reportFacts, reportText } from "./report"
 import type { ReportHost } from "./report"
 import {
@@ -63,11 +71,13 @@ import {
   retryMinutes
 } from "./refresh"
 import type { RefreshHost } from "./refresh"
-import { createSession, randomId } from "./session"
-import type { Mark, Session, SkillStart } from "./session"
+import { createSession, FOLDER_LIST, followFrom, randomId } from "./session"
+import type { ListRef, Mark, Session, SkillStart } from "./session"
 import { readSettings } from "./settings"
-import { createPull, review, SKILLS, skillTurnEnded, skillTurnStarted, workOnBranch } from "./skill-runs"
+import { createPull, openClone, review, SKILLS, skillTurnEnded, skillTurnStarted, workOnBranch } from "./skill-runs"
 import type { SkillHost } from "./skill-runs"
+import { askPick, elsewhereCount } from "./repo-picker"
+import type { PickerHost } from "./repo-picker"
 import { stableButtons } from "./stable-buttons"
 import {
   claimCleanup,
@@ -78,7 +88,7 @@ import {
   keepKept,
   keepTickets,
   keepView,
-  notShownElsewhere,
+  notShownByOtherSessions,
   recallChoices,
   recallClaim,
   recallCleanup,
@@ -100,8 +110,25 @@ import { ticketsKey } from "./tickets"
 import type { TicketLinks } from "./tickets"
 import { ticketsFlow, ticketsText } from "./tickets-flow"
 import type { TicketsHost } from "./tickets-flow"
-import { announce, release } from "./toasts"
+import { announce, limitHold, release } from "./toasts"
 import type { ToastHost } from "./toasts"
+import {
+  backToFolder,
+  endVisit,
+  endVisitWithoutPane,
+  folderOf,
+  loadVisit,
+  readRepoInput,
+  reloadVisit,
+  repoAtFolder,
+  resumeVisit,
+  // TBD: with `#` in the prompt, off for now (`prompt.autocomplete` below).
+  // shownVisitList,
+  showRepo,
+  visitCommand,
+  visitSite
+} from "./visit"
+import type { VisitHost } from "./visit"
 import { markReady, merge, requestReview, rerequestReview, rerun, updateBranch } from "./writes"
 
 type Engine = EngineInterface
@@ -111,6 +138,8 @@ const LOADED = randomId()
 
 const PANE = "gh-prs-monitor"
 const PANE_TITLE = "Pull Requests"
+// What /prs takes besides a repository.
+const PRS_WORDS = ["", "demo", "close", "report", "tickets"]
 
 const snapshotState = atom({ plugin: "gh-prs-monitor", key: "snapshot" } as const, null)
 const moduleState = atom({ plugin: "gh-prs-monitor", key: "module" } as const, null)
@@ -118,6 +147,7 @@ const problemState = atom({ plugin: "gh-prs-monitor", key: "problem" } as const,
 const busyState = atom({ plugin: "gh-prs-monitor", key: "busy" } as const, {})
 const dialogState = atom({ plugin: "gh-prs-monitor", key: "dialog" } as const, null)
 const demoState = atom({ plugin: "gh-prs-monitor", key: "isDemo" } as const, false)
+const demoVisitState = atom({ plugin: "gh-prs-monitor", key: "demoVisit" } as const, null)
 const activityState = atom({ plugin: "gh-prs-monitor", key: "activity" } as const, [])
 const checkoutState = atom({ plugin: "gh-prs-monitor", key: "checkout" } as const, null)
 const branchPullsState = atom({ plugin: "gh-prs-monitor", key: "branchPulls" } as const, null)
@@ -126,6 +156,8 @@ const compactState = atom({ plugin: "gh-prs-monitor", key: "isCompact" } as cons
 const paneAskedState = atom({ plugin: "gh-prs-monitor", key: "paneAskedAt" } as const, null)
 const turnsState = atom({ plugin: "gh-prs-monitor", key: "turns" } as const, [])
 const heldAlertsState = atom({ plugin: "gh-prs-monitor", key: "heldAlerts" } as const, nothingHeld())
+const visitState = atom({ plugin: "gh-prs-monitor", key: "visit" } as const, null)
+const elsewhereState = atom({ plugin: "gh-prs-monitor", key: "elsewhere" } as const, null)
 
 export const register: Register = (on, options) => {
   const session = createSession(readSettings(options))
@@ -155,19 +187,31 @@ export const register: Register = (on, options) => {
     // A reload during a turn: the turn goes on, and so do the alerts held for it.
     session.runningTurns = new Set(await read($, turnsState))
     session.fromBefore = new Set(session.runningTurns)
-    // A module before 1.2.0 kept no `changes`: what it held shows, as none of it notifies.
-    const kept = await read($, heldAlertsState)
-    session.alerts = { ...kept, changes: kept.changes ?? [] }
+    // What a module before 1.5.0 held shows as lines, as none of it notifies (`readHeld`).
+    session.alerts = readHeld(await read($, heldAlertsState))
+    await limitHold(toastHostOf($, session), session)
+    // Turned off, the light check forgets what it read, so turned on again its first check says what waits again.
+    if (!session.settings.isAlertingElsewhere && (await read($, elsewhereState)) !== null) {
+      await update($, elsewhereState, () => null)
+    }
     // A reload mid-demo puts the person's own summary back. Any reload leaves the status line as the module before
     // set it, as when a /config change turned the summary off: over a list kept, it is put as the settings now say.
     await endDemo($, session)
-    if (storedSnapshot(await read($, snapshotState))) {
+    const list = storedSnapshot(await read($, snapshotState))
+    if (list) {
       await showStatus($, session)
+      // Its rows' ticket links, which the replaced module held, read again now rather than at the next load.
+      await refreshTicketLinks($, session, repoAt(list.repo, list.url))
     }
     await clearLeftovers($)
     await resumeMerged(pressHostOf($, session), session)
     background($, expireNotes($, session))
     await restoreView($)
+    await resumeVisit(visitHostOf($, session), session, true)
+    const visit = await read($, visitState)
+    if (visit) {
+      await resumeMerged(pressHostOf($, session, { kind: "visit", repo: visit.repo }), session)
+    }
     // A list kept over a reload from a version that kept the checkout apart has none to be drawn with until a load.
     if (storedSnapshot(await read($, snapshotState)) && (await read($, checkoutState)) === null) {
       background(
@@ -185,6 +229,7 @@ export const register: Register = (on, options) => {
       // A pane left open over a reload with no list it can draw, as after an update, is checked once in any mode.
       await loadMissingList($, session)
       background($, ensurePolling(refreshHostOf($, session), session))
+      pollElsewhere(elsewhereTimerOf($, session), session)
     }
 
     return started
@@ -194,6 +239,7 @@ export const register: Register = (on, options) => {
   on("session.end", async ($, e, next) => {
     if (e.reason === "clear" || e.reason === "resume") {
       session.isStateEmptied = true
+      await endVisit(visitHostOf($, session), session)
     }
 
     return next(e)
@@ -214,6 +260,7 @@ export const register: Register = (on, options) => {
   // Attaching again after the window closed comes back to what changed meanwhile, as a new session would.
   on("session.attach", async ($, e, next) => {
     const attached = await next(e)
+    await resumeVisit(visitHostOf($, session), session, false)
     const askedAt = await read($, paneAskedState)
     if (askedAt !== null) {
       await update($, paneAskedState, () => null)
@@ -233,17 +280,32 @@ export const register: Register = (on, options) => {
     const host = refreshHostOf($, session)
     if (await isCheckingMode(host, session)) {
       background($, refresh(host, session, false))
+      askElsewhere(elsewhereTimerOf($, session), session)
     }
     background($, ensurePolling(host, session))
+    pollElsewhere(elsewhereTimerOf($, session), session)
 
     return attached
   })
 
   on("command.run", { command: "prs" }, async ($, e) => {
-    const args = e.args.trim().toLowerCase()
+    const said = e.args.trim()
+    const args = said.toLowerCase()
+    const isWord = PRS_WORDS.includes(args)
+    // Read as typed, as a repository's name keeps its letter case until GitHub writes it.
+    const asked = isWord ? null : readRepoInput(said)
     // Anything else, as a mistyped close, changes nothing.
-    if (!["", "close", "demo", "report", "tickets"].includes(args)) {
-      return { text: `/prs takes nothing, demo, close, report or tickets, not "${e.args.trim()}".` }
+    if (!isWord && asked === null) {
+      const words = ["nothing", ...PRS_WORDS.filter((word) => word !== "")].join(", ")
+
+      return {
+        text: `/prs takes ${words} or a repository (owner/name, an address or a folder's path), not "${said}".`
+      }
+    }
+    // A folder's path names the repository its git config names.
+    const named = asked && "path" in asked ? await repoAtPath($, session, asked.path) : asked
+    if (named && "problem" in named) {
+      return { text: named.problem }
     }
     // Text for the person and the conversation alike, whatever the pane shows.
     if (args === "report") {
@@ -273,11 +335,26 @@ export const register: Register = (on, options) => {
     if (args === "tickets") {
       return { text: await ticketsCommand($, session, isDrawn && e.origin?.kind !== "bridge") }
     }
+    // A repository: a visit, unless it is the folder's own, which /prs alone shows as below. Once the pane shows
+    // another list than it did, a question asked over the old one gives way; a name that shows nothing leaves it.
+    if (named) {
+      const before = await read($, visitState)
+      const visited = await visitCommand(visitHostOf($, session), session, named, isDrawn && !isSentFromAfar)
+      if (isDrawn && !isSentFromAfar && (await read($, visitState))?.loadId !== before?.loadId) {
+        await giveWay($, session)
+      }
+      if (visited !== null) {
+        return { text: visited }
+      }
+    }
     if (args === "demo") {
+      await endVisit(visitHostOf($, session), session)
       if (!isDrawn) {
         return { text: demoText(await $.clock.now(), "unattached", session.settings.isShowingTickets) }
       }
-      // An app that places no panes still shows the alerts, and gets the list as text.
+      // An app that places no panes still shows the alerts, and gets the list as text. The examples take the pane's
+      // place of what it showed, a question there with it.
+      await giveWay($, session)
       const isPlaced = await showDemo($, session)
 
       return {
@@ -288,6 +365,7 @@ export const register: Register = (on, options) => {
             : "Showing example pull requests, their alerts and summary until you close the pane."
       }
     }
+    // A visit the pane shows stays: /prs alone opens the pane as it is, and Back or the folder's own name leave it.
     // Sent from afar, the pane opens only after the list is printed: the load opening it starts would take the last
     // look, which the printed list leads with.
     if (isDrawn && !isSentFromAfar && (await openPane($, session)).isPlaced) {
@@ -305,12 +383,15 @@ export const register: Register = (on, options) => {
     return { text }
   })
 
-  on("prompt.autocomplete", { token: /^#/ }, async ($, e, next) => {
-    const snapshot = storedSnapshot(await read($, snapshotState))
-    const rows = snapshot ? pullSuggestions(snapshot, e.token) : []
-
-    return { suggestions: [...(await next(e)).suggestions, ...rows] }
-  })
+  // TBD: `#` in the prompt offers pull requests again once its issue on the public listing is resolved. Until then its
+  // entry point stays off; `autocomplete.ts` and its tests are kept as they are, for turning it on again.
+  // on("prompt.autocomplete", { token: /^#/ }, async ($, e, next) => {
+  //   const snapshot = storedSnapshot(await read($, snapshotState))
+  //   const visited = await shownVisitList(visitHostOf($, session))
+  //   const rows = snapshot || visited ? pullSuggestions(snapshot, e.token, visited) : []
+  //
+  //   return { suggestions: [...(await next(e)).suggestions, ...rows] }
+  // })
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const isDemo = await read($, demoState)
@@ -328,7 +409,7 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:band`, Button), Link }
 
-    return drawBand(kit, counts, () => background($, openPane($, session)))
+    return drawBand(kit, counts, () => background($, showFolderList($, session)))
   })
 
   // Closing the pane is having seen what it showed: the changes it marked, and the list itself as the last look;
@@ -346,10 +427,16 @@ export const register: Register = (on, options) => {
     if (e.id === PANE && (await read($, demoState))) {
       await endDemo($, session)
     } else if (e.id === PANE) {
-      await update($, activityState, () => [])
-      const shown = storedSnapshot(await read($, snapshotState))
-      if (session.repo && shown) {
-        await rememberLook(storeOf($), session.repo, shown)
+      const wasVisit = (await read($, visitState)) !== null
+      // A visit ends with its pane, as does a repository picked a moment before and still looked up (`startVisit`).
+      await endVisit(visitHostOf($, session), session)
+      // A visit covered the folder's list, so closing it is no look at that: its notes and last look wait.
+      if (!wasVisit) {
+        await update($, activityState, () => [])
+        const shown = storedSnapshot(await read($, snapshotState))
+        if (session.repo && shown) {
+          await rememberLook(storeOf($), session.repo, shown)
+        }
       }
     }
 
@@ -361,11 +448,11 @@ export const register: Register = (on, options) => {
   // its own hooks by, so this sees only the typed ones; `runSkill` marks the pressed.
   for (const command of Object.keys(SKILLS)) {
     on("command.run", { command }, async ($, e, next) => {
-      const starting: SkillStart = { command, mark: null, args: e.args }
+      const starting: SkillStart = { command, mark: null, args: e.args, list: FOLDER_LIST }
       session.skills.starting.push(starting)
       try {
         const ran = await next(e)
-        session.skills.startedAt = await $.clock.now()
+        followFrom(session, FOLDER_LIST, await $.clock.now())
 
         return ran
       } catch (error) {
@@ -388,7 +475,7 @@ export const register: Register = (on, options) => {
     session.fromBefore.clear()
     session.runningTurns.add(e.turnId)
     keepTurns($, session)
-    skillTurnStarted(skillHostOf($, session), session, e.turnId)
+    skillTurnStarted((list) => skillHostOf($, session, list), session, e.turnId)
 
     return started
   })
@@ -405,7 +492,7 @@ export const register: Register = (on, options) => {
         }
       }
       keepTurns($, session)
-      skillTurnEnded(skillHostOf($, session), session, e.turnId, e.agentId === undefined)
+      skillTurnEnded((list) => skillHostOf($, session, list), session, e.turnId, e.agentId === undefined)
     }
   })
 
@@ -426,7 +513,9 @@ export const register: Register = (on, options) => {
     // A question takes the list's place until it is answered (`ask`).
     const question = drawnQuestion(session, await read($, dialogState))
     if (question !== null) {
-      return drawQuestion(session, e, question, $.ui.resolve(e), () => $.ui.invalidate("ui.render"))
+      const isCompact = await read($, compactState)
+
+      return drawQuestion(session, e, question, isCompact, $.ui.resolve(e), () => $.ui.invalidate("ui.render"))
     }
     // Where the window stands over the list, for a question to put it back there (`backToRow`): the terminal's drawing
     // says; elsewhere the drawing carries what the app last sent, and the `ui.scroll` hook keeps it as each move lands.
@@ -434,7 +523,12 @@ export const register: Register = (on, options) => {
       session.listOffset = e.props.scroll.offset
     }
 
-    return (await read($, demoState)) ? drawDemo($, session, e) : drawList($, session, e)
+    if (await read($, demoState)) {
+      return drawDemo($, session, e)
+    }
+    const visit = await read($, visitState)
+
+    return visit ? drawVisit($, session, e, visit) : drawList($, session, e)
   })
 }
 
@@ -443,6 +537,7 @@ function drawQuestion(
   session: Session,
   e: RenderInput<"Pane">,
   question: Question,
+  isCompact: boolean,
   elements: ReturnType<Engine["ui"]["resolve"]>,
   redraw: () => void
 ): RenderElement {
@@ -458,32 +553,44 @@ function drawQuestion(
   // Escape cancels where the pane holds the keyboard; at the prompt it may stop Claude's turn instead.
   const isEscapable = e.surface === "terminal" && e.props.isFocused
 
-  return questionView(kit, session, question, { surface: e.surface, isEscapable }, redraw)
+  return questionView(
+    kit,
+    session,
+    question,
+    { surface: e.surface, isEscapable, columns: e.props.bodyColumns, isCompact },
+    redraw
+  )
 }
 
-// The examples' list. Its buttons write nothing; Refresh leaves it for the person's own list. They keep buttons of
-// their own, as one drawn alike in the list would carry the list's closure.
+// The examples' list, or another of their repositories' as a visit shows it. Their buttons write nothing; Refresh
+// leaves them for the person's own list. They keep buttons of their own, each repository's apart, as one drawn alike
+// in the list would carry the list's closure.
 async function drawDemo($: Engine, session: Session, e: RenderInput<"Pane">): Promise<RenderElement> {
   const { Box, Text, Button, Link } = $.ui.resolve(e)
-  const isCompact = await read($, compactState)
-  const demo = demoView(
-    await $.clock.now(),
-    e.props.bodyColumns,
-    e.surface,
-    isCompact,
-    session.settings.isShowingTickets
-  )
-  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:pane:demo`, Button), Link }
+  const visited = await read($, demoVisitState)
+  const demo = demoView(await paneFrame($, e), {
+    isShowingTickets: session.settings.isShowingTickets,
+    isCountingElsewhere: session.settings.isAlertingElsewhere,
+    visited
+  })
+  const site = `${e.surface}:pane:demo${visited === null ? "" : `:${visited}`}`
+  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, site, Button), Link }
 
   return drawPane(
     kit,
     demo,
     {
       refresh: () => background($, leaveDemo($, session)),
-      act: (action, pullNumber) => background($, askInDemo($, session, action, pullNumber, e.surface)),
+      act: (action, pullNumber) => background($, askInDemo($, session, visited, action, pullNumber, e.surface)),
       create: () => background($, askCreateInDemo($, session, e.surface)),
       markSeen: () => background($, notify($, DEMO_SEEN_NOTE, session.settings.alertMs)),
-      toggleCompact: () => background($, toggleView($))
+      toggleCompact: () => background($, toggleView($)),
+      back: () =>
+        background(
+          $,
+          backToExamples($).then(() => leftVisit($, session))
+        ),
+      pick: (pressed) => background($, askPickInDemo($, session, visited, pressed))
     },
     session.goingBack?.offset ?? null
   )
@@ -501,17 +608,17 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     snapshot,
     problem: await read($, problemState),
     retryMinutes: retryMinutes(session),
-    now: await $.clock.now(),
+    ...(await paneFrame($, e)),
     isLoading: (await read($, moduleState))?.isLoading === true,
     busy: await read($, busyState),
     activity: await read($, activityState),
     branch,
     toOpen: pullToOpen(snapshot, branch, head, await read($, branchPullsState)),
     merged: await read($, mergedState),
-    isCompact: await read($, compactState),
-    columns: e.props.bodyColumns,
-    surface: e.surface,
-    tickets: shownTickets(session)
+    tickets: shownTickets(session),
+    visit: null,
+    isPreparingPicker: session.isPreparingPicker,
+    elsewhere: await elsewhereOf($, session, null)
   }
   const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:pane`, Button), Link }
 
@@ -519,14 +626,134 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     kit,
     view,
     {
-      refresh: () => background($, retry(refreshHostOf($, session), session)),
-      act: (action, pullNumber) => background($, actOn($, session, action, pullNumber, e.surface)),
+      refresh: () => {
+        background($, retry(refreshHostOf($, session), session))
+        askElsewhere(elsewhereTimerOf($, session), session)
+      },
+      act: (action, pullNumber) => background($, actOn($, session, FOLDER_LIST, action, pullNumber, e.surface)),
       create: () => background($, createPull(skillHostOf($, session), session, e.surface)),
       markSeen: (pullNumber) => background($, markSeen($, pullNumber)),
-      toggleCompact: () => background($, toggleView($))
+      toggleCompact: () => background($, toggleView($)),
+      pick: (pressed) => background($, askPick(pickerHostOf($, session), session, pressed))
     },
     session.goingBack?.offset ?? null
   )
+}
+
+// What every list's drawing takes alike: the time, the view the person picked, and the room and surface it draws in.
+async function paneFrame(
+  $: Engine,
+  e: RenderInput<"Pane">
+): Promise<{ now: number; isCompact: boolean; columns: number; surface: string }> {
+  return {
+    now: await $.clock.now(),
+    isCompact: await read($, compactState),
+    columns: e.props.bodyColumns,
+    surface: e.surface
+  }
+}
+
+// A visit's list: nothing of the folder's on it, no branch marked, no Create PR, no notes; its rows' marks, merged rows
+// and ticket links its own, and its buttons kept apart from every other list's, by repository.
+async function drawVisit($: Engine, session: Session, e: RenderInput<"Pane">, visit: Visit): Promise<RenderElement> {
+  const { Box, Text, Button, Link } = $.ui.resolve(e)
+  const snapshot = storedSnapshot(visit.snapshot)
+  const view = {
+    ...(await paneFrame($, e)),
+    snapshot: listAsDrawn(session, snapshot),
+    problem: visit.problem,
+    retryMinutes: session.visitTimer ? session.settings.pollMs / 60_000 : null,
+    isLoading: visit.loadId !== null,
+    busy: marksOfVisit(await read($, busyState), visit.repo),
+    activity: [],
+    branch: null,
+    toOpen: null,
+    merged: visit.merged,
+    tickets: session.settings.isShowingTickets ? visit.tickets : null,
+    visit: { repo: visit.repo.name, folder: visit.folder },
+    isPreparingPicker: session.isPreparingPicker,
+    elsewhere: await elsewhereOf($, session, visit.repo)
+  }
+  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, visitSite(e.surface, visit.repo), Button), Link }
+  const host = visitHostOf($, session)
+
+  return drawPane(
+    kit,
+    view,
+    {
+      refresh: () => {
+        background($, loadVisit(host, session))
+        askElsewhere(elsewhereTimerOf($, session), session)
+      },
+      act: (action, pullNumber) =>
+        background($, actOn($, session, { kind: "visit", repo: visit.repo }, action, pullNumber, e.surface)),
+      create: () => {},
+      // A visit's rows carry no notes of what changed.
+      markSeen: () => {},
+      toggleCompact: () => background($, toggleView($)),
+      back: () =>
+        background(
+          $,
+          backToFolder(host, session).then(() => leftVisit($, session))
+        ),
+      pick: (pressed) => background($, askPick(pickerHostOf($, session), session, pressed))
+    },
+    session.goingBack?.offset ?? null
+  )
+}
+
+// "+N elsewhere" beside the name, with the light check of other repositories on: what waits for the viewer outside the
+// folder's repository and the one visited (`visit`).
+async function elsewhereOf($: Engine, session: Session, visit: RepoRef | null): Promise<number> {
+  return session.settings.isAlertingElsewhere
+    ? elsewhereCount(readElsewhereState(await read($, elsewhereState)), session.repo, visit)
+    : 0
+}
+
+// What the repository picker reaches (`repo-picker.ts`).
+function pickerHostOf($: Engine, session: Session): PickerHost {
+  const visits = visitHostOf($, session)
+
+  return {
+    checkQuietly: () => checkElsewhere({ ...elsewhereHostOf($, session), announce: async () => {} }, session),
+    elsewhere: async () => readElsewhereState(await read($, elsewhereState)),
+    markPicked: async (at) => {
+      await update($, elsewhereState, (state) => withPickedAt(state, at))
+    },
+    clones: () => stillCloned(hostOf($), storeOf($)),
+    folder: () => folderOf(visits, session),
+    visited: async () => (await read($, visitState))?.repo ?? null,
+    isPlaced: () => isPaneOpen($),
+    home: () => homeOf($),
+    now: () => $.clock.now(),
+    isAsking: () => isQuestionOpen(dialogHostOf($), session),
+    ask: (question, pressed, check) => ask(dialogHostOf($), session, question, pressed, check),
+    repoAtPath: (path) => repoAtPath($, session, path),
+    isDemo: () => read($, demoState),
+    show: (asked, isWanted) => showRepo(visits, session, asked, isWanted),
+    notify: (text) => notify($, text, session.settings.alertMs),
+    redraw: () => $.ui.invalidate("ui.render")
+  }
+}
+
+// The repository a folder's path names (`repoAtFolder`), from the home folder and the session's; an SSH alias on the
+// folder's server, its repository looked up where no load found it yet.
+async function repoAtPath($: Engine, session: Session, path: string): Promise<RepoRef | { problem: string }> {
+  const folder = await folderOf(visitHostOf($, session), session)
+
+  return repoAtFolder(hostOf($), path, await homeOf($), await $.session.cwd(), folder)
+}
+
+// The home folder, which a path typed from `~` starts in: `HOME`, or on Windows `USERPROFILE`; none where the
+// environment names neither.
+async function homeOf($: Engine): Promise<string | null> {
+  return (await $.env.get("HOME")) || (await $.env.get("USERPROFILE")) || null
+}
+
+// The band counts the folder's pull requests, so pressing it shows the folder's list, ending a visit.
+async function showFolderList($: Engine, session: Session): Promise<void> {
+  await endVisit(visitHostOf($, session), session)
+  await openPane($, session)
 }
 
 // --- The pane, the band and the status line ---
@@ -537,14 +764,22 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
 async function openPane(
   $: Engine,
   session: Session,
-  { isLoaded = false, isTakingKeys = false }: { isLoaded?: boolean; isTakingKeys?: boolean } = {}
+  {
+    isLoaded = false,
+    isTakingKeys = false,
+    isVisit = false
+  }: { isLoaded?: boolean; isTakingKeys?: boolean; isVisit?: boolean } = {}
 ): Promise<UiOpenResult> {
   await endDemo($, session)
+  // A visit's own opening (`isVisit`) keeps it, and reads nothing of the folder's.
+  if (!isVisit) {
+    await endVisitWithoutPane(visitHostOf($, session), session)
+  }
   // The load under way, and its state written, before the pane draws, so its first drawing says it is checking rather
   // than to press Refresh; the timer after, as while-open mode polls only once the pane is open. The drawing reads
   // state alone: a write redraws only the drawings that read it.
   const host = refreshHostOf($, session)
-  if (!isLoaded) {
+  if (!isLoaded && !isVisit) {
     checkAgain(host, session)
     await session.checks.marking?.catch(() => undefined)
   }
@@ -555,6 +790,8 @@ async function openPane(
     ...(isTakingKeys ? { focus: true } : {})
   })
   await ensurePolling(host, session)
+  pollElsewhere(elsewhereTimerOf($, session), session)
+  askElsewhere(elsewhereTimerOf($, session), session)
 
   return opened
 }
@@ -657,11 +894,16 @@ async function toggleView($: Engine): Promise<void> {
 
 // The examples take over the pane, the status line and the desktop app's band until the pane closes, Refresh is
 // pressed or /prs runs, while every example alert shows, one at a time so each is the newest on the stack while it
-// shows. An app that places no panes gets the alerts alone, and the list as text: nothing there could end the rest.
+// shows; with the alerts from other repositories on, theirs too. An app that places no panes gets the alerts alone,
+// and the list as text: nothing there could end the rest.
 async function showDemo($: Engine, session: Session): Promise<boolean> {
   cancelDemoToasts(session)
+  session.demo.run += 1
   const timeoutMs = session.settings.alertMs
-  session.demo.toasts = DEMO_ALERTS.flatMap((alert, index) => {
+  const elsewhere = session.settings.isAlertingElsewhere
+    ? demoElsewhereAlerts(await $.clock.now())
+    : { toasts: [], notifications: [] }
+  session.demo.toasts = [...DEMO_ALERTS, ...elsewhere.toasts].flatMap((alert, index) => {
     if (index === 0) {
       background($, notify($, alert, timeoutMs))
 
@@ -674,10 +916,12 @@ async function showDemo($: Engine, session: Session): Promise<boolean> {
     background($, $.audio.play({ asset: ALERT_SOUND }))
   }
   if (session.settings.isSendingSystemNotification) {
-    const { title, text } = demoNotification()
-    background($, notifySystem($, title, text))
+    for (const { title, text } of [demoNotification(), ...elsewhere.notifications]) {
+      background($, notifySystem($, title, text))
+    }
   }
-  // Set before the pane opens, so its first drawing is of the examples.
+  // Set before the pane opens, so its first drawing is of the examples, their own list.
+  await update($, demoVisitState, () => null)
   await update($, demoState, () => true)
   const isPlaced = (await $.ui.open({ id: PANE, title: PANE_TITLE, closeOnEscape: true })).isPlaced
   if (isPlaced) {
@@ -696,8 +940,10 @@ function cancelDemoToasts(session: Session): void {
   session.demo.toasts = []
 }
 
+// The examples' Refresh: the person's own list, read again as the list's own Refresh reads it, other repositories too.
 async function leaveDemo($: Engine, session: Session): Promise<void> {
   await endDemo($, session)
+  askElsewhere(elsewhereTimerOf($, session), session)
   await retry(refreshHostOf($, session), session)
 }
 
@@ -707,6 +953,7 @@ async function endDemo($: Engine, session: Session): Promise<void> {
     return
   }
   cancelDemoToasts(session)
+  session.demo.run += 1
   await update($, demoState, () => false)
   await showStatus($, session)
 }
@@ -720,37 +967,74 @@ async function showStatus($: Engine, session: Session): Promise<void> {
 }
 
 // An example's button asks what the real one asks about it, and sends nothing: an answer is told as what it would do
-// in the person's own list.
+// in the person's own list. Another repository's example (`visited`) is named with it.
 async function askInDemo(
   $: Engine,
   session: Session,
+  visited: string | null,
   action: PullAction,
   pullNumber: number,
   surface: string
 ): Promise<void> {
-  const snapshot = demoSnapshot(await $.clock.now())
+  const snapshot = demoList(await $.clock.now(), visited)
   const row = rowOf(snapshot, pullNumber)
   if (!snapshot || !row) {
     return
   }
-  const question = demoQuestion(action, row, snapshot, canOpenSession(surface))
+  const example = `${visited ?? ""}#${pullNumber}`
+  const question = demoQuestion(action, row, snapshot, { surface, visited, isWorking: session.runningTurns.size > 0 })
   const note =
     question === null
-      ? demoStartNote(`#${pullNumber}`, ACTION_LABELS[action])
-      : demoAnswerNote(
-          `#${pullNumber}`,
-          question,
-          await ask(dialogHostOf($), session, question, buttonKey(action, pullNumber))
-        )
+      ? demoStartNote(example, ACTION_LABELS[action])
+      : demoAnswerNote(example, question, await ask(dialogHostOf($), session, question, buttonKey(action, pullNumber)))
   if (note) {
     await notify($, note, session.settings.alertMs)
   }
 }
 
+// From another of the examples' repositories, back to their own list.
+async function backToExamples($: Engine): Promise<void> {
+  await update($, demoVisitState, () => null)
+}
+
+// The question the pane asks gives way to what /prs shows there instead (`dropAsked`), put away before that shows.
+async function giveWay($: Engine, session: Session): Promise<void> {
+  if (dropAsked(session)) {
+    await update($, dialogState, () => null)
+  }
+}
+
+// Back pressed on a visit: the list it went back to starts at its top, no window going back to a row of the visit's,
+// and the keyboard on Repositories, beside where Back was.
+async function leftVisit($: Engine, session: Session): Promise<void> {
+  forgetWindow(session)
+  await topAndFocus(dialogHostOf($), PICK_KEY)
+}
+
+// The repository picker over the examples' repositories, as the real one offers them, none of it read from GitHub or
+// kept: what is picked shows, unless that demo ended meanwhile, and what names none of them is said in the picker,
+// which stays open.
+async function askPickInDemo($: Engine, session: Session, visited: string | null, pressed: string): Promise<void> {
+  const run = session.demo.run
+  const { question, choices } = demoPicker(await $.clock.now(), visited)
+  await ask(dialogHostOf($), session, question, pressed, async (answer, isWanted) => {
+    const picked = demoPicked(answer, choices, { home: await homeOf($), cwd: await $.session.cwd() })
+    if (!picked || session.demo.run !== run || !isWanted()) {
+      return { isChanged: false }
+    }
+    if ("note" in picked) {
+      return { problem: picked.note }
+    }
+    await update($, demoVisitState, () => picked.visited)
+
+    return { isChanged: true }
+  })
+}
+
 // Create PR's example asks what the real button asks, about the example's branch, and sends nothing; where no new
 // session can be opened, the real one asks nothing, and neither does the example.
 async function askCreateInDemo($: Engine, session: Session, surface: string): Promise<void> {
-  const question = createPlaceQuestion(DEMO_TO_OPEN.branch, DEMO_TO_OPEN.base, false)
+  const question = createPlaceQuestion(DEMO_TO_OPEN.branch, DEMO_TO_OPEN.base, session.runningTurns.size > 0)
   const note = canOpenSession(surface)
     ? demoAnswerNote(DEMO_TO_OPEN.branch, question, await ask(dialogHostOf($), session, question, CREATE_PR))
     : demoStartNote(DEMO_TO_OPEN.branch, "Create PR")
@@ -782,6 +1066,8 @@ async function ticketsCommand($: Engine, session: Session, isAskedInPane: boolea
   // The load waited for draws as it is, unless a problem stopped the checks, which the pane's opening lifts, as /prs's.
   const isFresh = isWaiting && !session.checks.isStopped
   if (isAskedInPane && (await openPane($, session, { isLoaded: isFresh, isTakingKeys: true })).isPlaced) {
+    // Its question takes the pane's place of one asked there, as the examples or a repository do.
+    await giveWay($, session)
     background($, ticketsFlow(ticketsHostOf($, session), repo, session.settings.isShowingTickets))
 
     return "Asking about ticket links in the pane."
@@ -817,10 +1103,6 @@ async function listedRows($: Engine, session: Session): Promise<readonly PullRow
   return rowsOf(listed)
 }
 
-function rowsOf(listed: ReturnType<typeof storedSnapshot>): readonly PullRow[] {
-  return listed ? [...listed.mine, ...listed.review] : []
-}
-
 // The links the rows show: the repository's, where Ticket links on rows is on.
 function shownTickets(session: Session): TicketLinks | null {
   return session.settings.isShowingTickets ? session.ticketLinks : null
@@ -828,15 +1110,24 @@ function shownTickets(session: Session): TicketLinks | null {
 
 // The repository's links as the store holds them, for its rows; one that can't be read leaves those read before, and
 // says so in the debug log.
-async function refreshTicketLinks($: Engine, session: Session): Promise<void> {
-  if (!session.repo) {
-    return
+async function refreshTicketLinks($: Engine, session: Session, repo = session.repo): Promise<void> {
+  const read = repo ? await keptTicketLinks($, repo) : null
+  if (read) {
+    session.ticketLinks = read.links
   }
+}
+
+// A repository's ticket links as the store keeps them, none where none are set or they are off; null where the store
+// couldn't be read, which leaves those known as they are.
+async function keptTicketLinks($: Engine, repo: RepoRef): Promise<{ links: TicketLinks | null } | null> {
   try {
-    const kept = await recallTickets(storeOf($), session.repo)
-    session.ticketLinks = kept === "off" ? null : kept
+    const kept = await recallTickets(storeOf($), repo)
+
+    return { links: kept === "off" ? null : kept }
   } catch (error) {
     logDebug($, `gh-prs-monitor: ticket links could not be read: ${messageOf(error)}`)
+
+    return null
   }
 }
 
@@ -901,11 +1192,14 @@ function toastHostOf($: Engine, session: Session): ToastHost {
         $,
         update($, heldAlertsState, () => session.alerts)
       ),
+    after: (ms, fire) => {
+      $.clock.after(ms, () => background($, fire()))
+    },
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
     playSound: () => background($, $.audio.play({ asset: ALERT_SOUND })),
     notifySystem: (title, text) => background($, notifySystem($, title, text)),
-    notShownElsewhere: (repo, lines) =>
-      notShownElsewhere(storeOf($), repo, lines, { by: session.id, pollMs: session.settings.pollMs })
+    notShownByOtherSessions: (batches) =>
+      notShownByOtherSessions(storeOf($), batches, { by: session.id, pollMs: session.settings.pollMs })
   }
 }
 
@@ -949,7 +1243,12 @@ function cleanupHostOf($: Engine, session: Session): CleanupHost {
     log: (line) => logDebug($, line),
     storedList: () => read($, snapshotState),
     // A cleanup's notes are no pull request changes: they notify nothing.
-    announce: (repo, lines) => announce(toastHostOf($, session), session, repo, lines, false),
+    announce: (repo, lines) =>
+      announce(
+        toastHostOf($, session),
+        session,
+        lines.map((line) => ({ kind: "line", repo, line }))
+      ),
     now: () => $.clock.now(),
     recallKept: (repo, root) => recallKept(storeOf($), repo, root),
     keepKept: (repo, root, kept) => keepKept(storeOf($), repo, root, kept),
@@ -962,8 +1261,8 @@ function cleanupHostOf($: Engine, session: Session): CleanupHost {
 // --- A press on a pull request's row ---
 
 // What a press reaches beyond git and gh (`press.ts`).
-function pressHostOf($: Engine, session: Session): PressHost {
-  return {
+function pressHostOf($: Engine, session: Session, list: ListRef = FOLDER_LIST): PressHost {
+  const folder: PressHost = {
     ...hostOf($),
     now: () => $.clock.now(),
     after: (ms, fire) => $.clock.after(ms, fire),
@@ -972,6 +1271,10 @@ function pressHostOf($: Engine, session: Session): PressHost {
     log: (line) => logDebug($, line),
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
     notifyProblem: (problem) => notifyProblem($, session, problem),
+    repo: () => sessionRepo(hostOf($), session),
+    settled: async () => {
+      await session.checks.inFlight?.done.catch(() => undefined)
+    },
     storedList: () => read($, snapshotState),
     keepList: (change) => update($, snapshotState, change),
     merged: () => read($, mergedState),
@@ -987,20 +1290,74 @@ function pressHostOf($: Engine, session: Session): PressHost {
     refreshAfterWrite: () => refreshInTurn(refreshHostOf($, session), session),
     cleanUp: (repo, known) => cleanUp(cleanupHostOf($, session), session, repo, known)
   }
+
+  return list.kind === "folder" ? folder : visitPressHost($, session, list.repo, folder)
 }
 
-// The row a press names, as the list holds it now: a button drawn again unchanged keeps the closure it was first drawn
+// A press on a visit's row: the same press, on the visit's list, merged rows and marks, its questions and toasts naming
+// the repository (`acme/web#12`). The folder's status line and cleanup are none of its own, and once the visit has
+// ended or moved on to another repository, it finds no list, asks nothing and changes nothing.
+function visitPressHost($: Engine, session: Session, repo: RepoRef, folder: PressHost): PressHost {
+  const list: ListRef = { kind: "visit", repo }
+  const visitNow = (): Promise<Visit | null> => visitOf($, repo)
+  const change = (each: (visit: Visit) => Visit): Promise<Visit | null> => changeVisitOf($, repo, each)
+  const reload = (): Promise<void> => reloadVisit(visitHostOf($, session), session, repo)
+
+  return {
+    ...folder,
+    notify: (text, timeoutMs) => notify($, namedOn(list, text), timeoutMs),
+    repo: async () =>
+      (await visitNow())
+        ? { repo }
+        : { problem: { message: `The visit to ${repo.name} has ended.`, isPermanent: false } },
+    // A visit's load takes its merged rows out as it writes (`loadVisit`), so a press waits for none.
+    settled: async () => {},
+    storedList: async () => (await visitNow())?.snapshot ?? null,
+    keepList: async (each) =>
+      (await change((visit) => ({ ...visit, snapshot: each(visit.snapshot) })))?.snapshot ?? null,
+    merged: async () => (await visitNow())?.merged ?? [],
+    keepMerged: async (each) => (await change((visit) => ({ ...visit, merged: each(visit.merged) })))?.merged ?? [],
+    problem: async () => (await visitNow())?.problem ?? null,
+    setStatus: async () => {},
+    claimBusy: (mark, text) => claimBusy($, markKey(list, mark), text),
+    setBusy: (mark, text) => setBusy($, markKey(list, mark), text),
+    // Asked only while the visit is there: one ended while the press looked at GitHub asks nothing.
+    ask: async (question, pressed) =>
+      (await visitNow())
+        ? ask(dialogHostOf($), session, { ...question, subject: namedOn(list, question.subject) }, pressed)
+        : null,
+    refresh: reload,
+    refreshAfterWrite: reload,
+    cleanUp: async () => {}
+  }
+}
+
+// The visit, where it is of `repo`; and a change to it written only then, which gives back the visit written.
+async function visitOf($: Engine, repo: RepoRef): Promise<Visit | null> {
+  const visit = await read($, visitState)
+
+  return visit && sameRepo(visit.repo, repo) ? visit : null
+}
+
+async function changeVisitOf($: Engine, repo: RepoRef, each: (visit: Visit) => Visit): Promise<Visit | null> {
+  const written = await update($, visitState, (visit) => (visit && sameRepo(visit.repo, repo) ? each(visit) : visit))
+
+  return written && sameRepo(written.repo, repo) ? written : null
+}
+
+// The row a press names, as its list holds it now: a button drawn again unchanged keeps the closure it was first drawn
 // with, so it carries only the number. One that has left the list meanwhile is left alone.
 async function actOn(
   $: Engine,
   session: Session,
+  list: ListRef,
   action: PullAction,
   pullNumber: number,
   surface: string
 ): Promise<void> {
-  const row = rowOf(listAsDrawn(session, await read($, snapshotState)), pullNumber)
+  const row = rowOf(listAsDrawn(session, storedSnapshot(await pressHostOf($, session, list).storedList())), pullNumber)
   if (row?.actions.includes(action)) {
-    act($, session, action, row, surface)
+    act($, session, list, action, row, surface)
   }
 }
 
@@ -1038,28 +1395,38 @@ async function markSeen($: Engine, pullNumber: number): Promise<void> {
   await update($, activityState, (all) => all.filter((entry) => entry.number !== pullNumber))
 }
 
-function act($: Engine, session: Session, action: PullAction, row: PullRow, surface: string): void {
-  background($, markSeen($, row.number))
+function act($: Engine, session: Session, list: ListRef, action: PullAction, row: PullRow, surface: string): void {
+  const press = pressHostOf($, session, list)
+  const skills = skillHostOf($, session, list)
+  // A visit's rows carry no notes; the folder's #12 note is its own.
+  if (list.kind === "folder") {
+    background($, markSeen($, row.number))
+  }
   switch (action) {
     case "resolve":
     case "fixCi":
     case "resolveConflicts":
-      return background($, workOnBranch(skillHostOf($, session), session, action, row, surface))
+      return background(
+        $,
+        list.kind === "folder"
+          ? workOnBranch(skills, session, action, row, surface)
+          : openClone(skills, session, action, row, list.repo, surface)
+      )
     case "review":
-      return background($, review(skillHostOf($, session), session, row, surface))
+      return background($, review(skills, session, row, surface))
     case "merge":
     case "autoMerge":
-      return background($, merge(pressHostOf($, session), session, row, action === "autoMerge"))
+      return background($, merge(press, session, row, action === "autoMerge"))
     case "updateBranch":
-      return background($, updateBranch(pressHostOf($, session), session, row))
+      return background($, updateBranch(press, session, row))
     case "ready":
-      return background($, markReady(pressHostOf($, session), session, row))
+      return background($, markReady(press, session, row))
     case "rerequest":
-      return background($, rerequestReview(pressHostOf($, session), session, row))
+      return background($, rerequestReview(press, session, row))
     case "requestReview":
-      return background($, requestReview(pressHostOf($, session), session, row))
+      return background($, requestReview(press, session, row))
     case "rerun":
-      return background($, rerun(pressHostOf($, session), session, row))
+      return background($, rerun(press, session, row))
     default:
       action satisfies never
   }
@@ -1095,18 +1462,21 @@ function branchPullsStateOf($: Engine): Pick<BranchLookupHost, "branchPulls" | "
 }
 
 // What a skill's run reaches beyond a press's (`skill-runs.ts`).
-function skillHostOf($: Engine, session: Session): SkillHost {
+function skillHostOf($: Engine, session: Session, list: ListRef = FOLDER_LIST): SkillHost {
   return {
-    ...pressHostOf($, session),
+    ...pressHostOf($, session, list),
     ...branchPullsStateOf($),
+    list,
     checkoutNow: () => checkoutNow($),
     keepCheckout: (checkout) => keepCheckout($, checkout),
     cwd: () => $.session.cwd(),
-    inConversation: (line) => $.ui.log(line),
+    inConversation: (line) => $.ui.log(namedOn(list, line)),
     runCommand: (command, args) => $.command.run({ command, args }),
-    clearBusyIf: (mark, label) => update($, busyState, (all) => withoutBusyIf(all, mark, label)),
+    clearBusyIf: (mark, label) => update($, busyState, (all) => withoutBusyIf(all, markKey(list, mark), label)),
     isCheckingMode: () => isCheckingMode(refreshHostOf($, session), session),
-    editorScheme: () => editorSchemeOf($, session)
+    editorScheme: () => editorSchemeOf($, session),
+    clones: () => stillCloned(hostOf($), storeOf($)),
+    home: () => homeOf($)
   }
 }
 
@@ -1124,7 +1494,7 @@ function editorSchemeOf($: Engine, session: Session): Promise<string | null> {
 // --- A row's busy mark ---
 
 // Checks and marks in one write (`claimedBusy`).
-async function claimBusy($: Engine, mark: Mark, text: string): Promise<boolean> {
+async function claimBusy($: Engine, mark: Mark | string, text: string): Promise<boolean> {
   let isClaimed = false
   await update($, busyState, (all) => {
     const claimed = claimedBusy(all, mark, text)
@@ -1136,7 +1506,7 @@ async function claimBusy($: Engine, mark: Mark, text: string): Promise<boolean> 
   return isClaimed
 }
 
-async function setBusy($: Engine, mark: Mark, text: string | null): Promise<void> {
+async function setBusy($: Engine, mark: Mark | string, text: string | null): Promise<void> {
   await update($, busyState, (all) => withBusy(all, mark, text))
 }
 
@@ -1200,7 +1570,7 @@ async function registerCommand($: Engine): Promise<void> {
     await $.command.register({
       name: "prs",
       description: "Your open pull requests and the ones waiting on your review",
-      argumentHint: "[demo|close|report|tickets]",
+      argumentHint: "[demo|close|report|tickets|owner/name]",
       immediate: true
     })
   } catch (error) {
@@ -1254,6 +1624,57 @@ async function isReplaced($: Engine): Promise<boolean> {
   return current !== null && current.id !== LOADED
 }
 
+// What a visit reaches through the engine and the session's state (`visit.ts`).
+function visitHostOf($: Engine, session: Session): VisitHost {
+  return {
+    ...hostOf($),
+    now: () => $.clock.now(),
+    every: (ms, tick) => $.clock.every(ms, tick),
+    background: (work) => background($, work),
+    log: (line) => logDebug($, line),
+    visit: () => read($, visitState),
+    changeVisit: (change) => update($, visitState, change),
+    pane: async () => (await $.ui.panes()).find((pane) => pane.id === PANE),
+    isReplaced: () => isReplaced($),
+    ticketLinks: (repo) => keptTicketLinks($, repo),
+    suggestReviewers: (repo, snapshot) => askSuggestions(suggestionsHostOf($), session, repo, snapshot),
+    folderList: async () => storedSnapshot(await read($, snapshotState)),
+    refreshFolder: () => refresh(refreshHostOf($, session), session, false),
+    openPane: () => openPane($, session, { isVisit: true })
+  }
+}
+
+// When the light check of other repositories runs (`elsewhere.ts`).
+function elsewhereTimerOf($: Engine, session: Session): ElsewhereTimerHost {
+  return {
+    every: (ms, tick) => $.clock.every(ms, tick),
+    background: (work) => background($, work),
+    isDrawn: async () => (await $.session.surfaces()).length > 0,
+    isCheckingMode: () => isCheckingMode(refreshHostOf($, session), session),
+    check: () => checkElsewhere(elsewhereHostOf($, session), session)
+  }
+}
+
+function elsewhereHostOf($: Engine, session: Session): ElsewhereHost {
+  return {
+    ...hostOf($),
+    now: () => $.clock.now(),
+    log: (line) => logDebug($, line),
+    state: async () => readElsewhereState(await read($, elsewhereState)),
+    // A check the replaced module began writes nothing and tells nothing, as the new module may have turned it off.
+    changeState: async (change) => {
+      if (!(await isReplaced($))) {
+        await update($, elsewhereState, (current) => change(readElsewhereState(current)))
+      }
+    },
+    announce: async (batches) => {
+      if (!(await isReplaced($))) {
+        await announce(toastHostOf($, session), session, batches)
+      }
+    }
+  }
+}
+
 // What refreshing reaches through the engine and the session's state (`refresh.ts`).
 function refreshHostOf($: Engine, session: Session): RefreshHost {
   return {
@@ -1282,11 +1703,11 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
         await update($, problemState, () => message)
       }
     },
-    // The mark is the module's own, written only while the module is the session's: a newer one that took over
-    // between the read and the write keeps its mark. After `/clear`, which empties the session's state and starts no
-    // session again, the record is null, and the load that saw the end writes the mark under its id, once
-    // (`isStateEmptied`). Every refresh joins a load until it ends, the end mark included: one Claude Code never answers
-    // would keep the list from loading again for the rest of the session, so it is waited for a moment at most.
+    // The mark is the module's own, written only while the module is the session's: a newer one that took over between
+    // the read and the write keeps its mark. After `/clear`, which empties the session's state and starts no session
+    // again, the record is null, and the load that saw the end writes the mark under its id, once (`isStateEmptied`).
+    // Every refresh joins a load until it ends, the end mark included: one Claude Code never answers would keep the
+    // list from loading again for the rest of the session, so it is waited for a moment at most.
     markLoading: async (isLoading) => {
       if (await isReplaced($)) {
         session.isStateEmptied = false
@@ -1306,9 +1727,11 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
     isDemo: () => read($, demoState),
     recall: (repo) => recallLook(storeOf($), repo),
     remember: (repo, snapshot) => rememberLook(storeOf($), repo, snapshot),
+    noteFolder: async (repo) => noteOwnClone(hostOf($), storeOf($), repo, await $.clock.now()),
     isDrawn: async () => (await $.session.surfaces()).length > 0,
     isPaneOpen: () => isPaneOpen($),
     isPaneShown: () => isPaneShown($),
+    isVisiting: async () => (await read($, visitState)) !== null,
     setStatus: (text) => setStatus($, text),
     clearStatus: async () => {
       if (!(await isReplaced($))) {
@@ -1316,7 +1739,7 @@ function refreshHostOf($: Engine, session: Session): RefreshHost {
       }
     },
     notify: (text, timeoutMs) => notify($, text, timeoutMs),
-    announce: (repo, lines, areChanges) => announce(toastHostOf($, session), session, repo, lines, areChanges),
+    announce: (batches) => announce(toastHostOf($, session), session, batches),
     lookUpBranch: (repo, branch, head) => lookUpBranch(branchLookupHostOf($), session, repo, branch, head, false),
     suggestReviewers: (repo, snapshot) => askSuggestions(suggestionsHostOf($), session, repo, snapshot),
     cleanUp: (repo, known) => cleanUp(cleanupHostOf($, session), session, repo, known),

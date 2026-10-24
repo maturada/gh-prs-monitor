@@ -2,6 +2,46 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.5.0 (24.10.2026)
+
+- **Other repositories in the pane**: the header's **Repositories** button, or `/prs` with `owner/name`, an address or
+  a folder such as `~/code/web`, shows another repository's pull requests, with **Back** to this folder's list. The
+  picker lists this folder's repository, the clones on this machine where a session loaded its list, and the
+  repositories where something waits for you, each a row with what waits there and **Open**; a repository typed in it
+  is looked up before it closes, and what keeps it from showing is said there. The buttons work there as on your own
+  list; Resolve Comments, Fix CI and Resolve Conflicts offer to open a new session in its clone. The status line, the
+  band and this folder's alerts carry on as before.
+  [Other repositories](gh-prs-monitor/docs/other-repositories.md)
+- **Alerts from other repositories**, a new setting, off by default, alerts a review asked of you in your other
+  repositories on the folder's GitHub server, and on your own pull requests there each review given and CI failing or
+  passing. It costs one light request at each check, 1 point of the 5,000 an hour GitHub gives you. Each alert names
+  its repository and how to show it, `· /prs acme/web`; the first check of a session says what waits where, and the
+  pane's header counts it, `+3 elsewhere`.
+  [Other repositories](gh-prs-monitor/docs/other-repositories.md#alerts-from-other-repositories)
+- **`/prs demo`** shows both: its Repositories button offers three example repositories, one as if cloned at
+  `~/code/web`, and shows each; with Alerts from other repositories on, its header counts what waits there and one of
+  them alerts.
+- **`#` in the prompt** offers no pull requests in this version; its suggestions come back in a later one.
+- **`/prs demo`, `/prs tickets`, or `/prs` with a repository, while the pane asks a question** cancels the question and
+  shows what you asked for; before, the question stayed over it, and the pane seemed not to change.
+- **Another session's alerts** are now matched change by change rather than line by line, so a change shown in one
+  session isn't shown again in another that words it with a different change beside it. A 1.4.0 session open beside a
+  1.5.0 one may still show a change twice, until it updates too.
+- **An alert held while Claude worked longer than ten minutes** could show again after another session had shown it
+  meanwhile; it now shows once.
+- **Alerts held while Claude works** show at most five minutes late in a long turn, where they waited up to a quarter
+  of an hour, and also where no check runs then (the pane closed in while-open mode, or on demand), where they waited
+  for the turn to end.
+- **The ticket links on rows** showed again only at the next check after the plugin reloaded; they now show at once.
+- **`/prs demo`'s buttons** asked as if this session were idle while Claude worked; they now ask as the real ones do
+  then.
+- **Two settings read more plainly** in `/config`: **Change notes last (minutes)**, which was Recent changes expire
+  after, and **Hide my drafts**, which was Hide drafts. What you set carries over.
+- **A shorter README, and docs that read more easily**: the README tours what the plugin does, each feature linking to
+  its page; other repositories have a page of their own, and so does everything the plugin runs and sends.
+- **The plugin notes the folder of each clone a session loads its list in**, with its repository's name, the 50
+  latest, only to offer them when you show another repository; [PRIVACY.md](PRIVACY.md) says what it keeps.
+
 ## 1.4.0 (22.10.2026)
 
 - **Request Review**, a new button on your own pull requests that no person is asked to review (a bot such as Copilot

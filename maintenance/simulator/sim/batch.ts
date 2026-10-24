@@ -16,6 +16,7 @@ async function batch(name: string, seeds: number, make: (seed: number) => Scenar
   let stepBacks = 0
   let stepBackRuns = 0
   let duplicates = 0
+  let toldTwice = 0
   let lost = 0
   let events = 0
   let errors = 0
@@ -61,14 +62,18 @@ async function batch(name: string, seeds: number, make: (seed: number) => Scenar
       if (examples.length < 3) examples.push(`seed ${seed} stepBack ${JSON.stringify(out.stepBacks[0])}`)
     }
     duplicates += out.duplicates.length
+    toldTwice += out.toldTwice.length
     if (out.duplicates.length && examples.length < 6) examples.push(`seed ${seed} dup ${JSON.stringify(out.duplicates[0])}`)
     lost += out.lost.length
     events += out.events.length
     errors += out.errors.length
     aborted += out.aborted
     const expected = scenario.isSharing === false ? "180000" : "20000+180000"
-    badTimers += out.timers.filter((t) => t !== expected && t !== "gone").length
-    if (out.timers.some((t) => t !== expected && t !== "gone") && examples.length < 8) examples.push(`seed ${seed} timers ${out.timers}`)
+    // A session with the light check runs its timer too.
+    const light = `${expected}+${expected.split("+").at(-1)}`
+    const isBad = (t: string) => t !== expected && t !== "gone" && !(scenario.lightCheck && t === light)
+    badTimers += out.timers.filter(isBad).length
+    if (out.timers.some(isBad) && examples.length < 8) examples.push(`seed ${seed} timers ${out.timers}`)
     unfinished += out.unfinishedLoads.length + out.inFlight.length
     lockFailures += out.lockFailures
     unanswered += out.unanswered.length
@@ -96,6 +101,8 @@ async function batch(name: string, seeds: number, make: (seed: number) => Scenar
     stepBacks,
     stepBackRuns,
     duplicates,
+    // Only where the light check runs, so the other rows compare with the baselines made before it was counted.
+    ...(make(1).lightCheck ? { toldTwice } : {}),
     lost: `${lost}/${events}`,
     errors,
     // Only where a reload ended runs, so rows without one compare with the baselines made before it was counted.
@@ -206,6 +213,19 @@ if (which === "dups") {
   ] as const) {
     await batch(`dups: ${label}, fetches 1-8 s, n=4${tag}`, seeds, (seed) =>
       both({ seed, sessions: 4, fetchMs: fast, storeReadMs: read, storeWriteMs: write })
+    )
+  }
+}
+if (which === "elsewhere") {
+  for (const [label, mode] of [
+    ["background", "background"],
+    ["while-open", "while-open"]
+  ] as const) {
+    await batch(`light check: half the sessions in another folder, ${label}, n=4${tag}`, seeds, (seed) =>
+      both({ seed, sessions: 4, lightCheck: true, mode, fetchMs: fast })
+    )
+    await batch(`light check, detach/attach 3/h and turns 4/h, ${label}, n=4${tag}`, seeds, (seed) =>
+      both({ seed, sessions: 4, lightCheck: true, mode, fetchMs: fast, detachesPerHour: 3, turnsPerHour: 4 })
     )
   }
 }

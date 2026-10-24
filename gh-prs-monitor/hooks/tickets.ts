@@ -1,8 +1,8 @@
 // Author: David Matura
 
-// Ticket links: a pull request's ticket (`WEB-5761` in Linear, Jira and the like), found by its key in the branch or the
-// title and linked to the address its tracker has for it. They are set up by pasting a link to any ticket, read here
-// by code alone: the key in the link's path, or the number some trackers use, and the address around it.
+// Ticket links: a pull request's ticket (`WEB-5761` in Linear, Jira and the like), found by its key in the branch or
+// the title and linked to the address its tracker has for it. They are set up by pasting a link to any ticket, read
+// here by code alone: the key in the link's path, or the number some trackers use, and the address around it.
 
 import type { Badge, PullRow } from "../types"
 import type { RepoRef } from "./gh"

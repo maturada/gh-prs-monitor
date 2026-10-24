@@ -9,14 +9,14 @@ import type { Timer } from "claude-code"
 import type { Activity, CheckoutAt, MergedPull, PullsSnapshot } from "../types"
 import {
   activityAfter,
-  alertLines,
+  batchesOf,
   changesBetween,
   closedAlerts,
   refreshAlerts,
   sinceLastLook,
   vanishedPulls
 } from "./alerts"
-import type { Alert, RefreshKind, SinceLastLook } from "./alerts"
+import type { Alert, AlertBatch, RefreshKind, SinceLastLook } from "./alerts"
 import { leftHeads, leftToAsk, listAfter, rowsGone } from "./carry"
 import { checkedOut } from "./checkout"
 import type { Host } from "./machine"
@@ -24,8 +24,8 @@ import { addStates, numbersToAsk } from "./ended"
 import type { ClosedState } from "./ended"
 import { messageOf, SETUP_NOTE_MS } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
-import { CLOSED_LOOKUP_LIMIT, pullStates, queryPulls, viewRepo } from "./github"
-import { isStackless, readPulls, storedSnapshot, withoutMerged } from "./pulls"
+import { askPulls, CLOSED_LOOKUP_LIMIT, pullStates, viewRepo } from "./github"
+import { readPulls, rowsOf, storedSnapshot, withoutMerged } from "./pulls"
 import type { Checks, Session } from "./session"
 import {
   answerToShare,
@@ -64,15 +64,19 @@ export type RefreshHost = Host & {
   // The last look at a repository, which the store keeps across sessions.
   recall: (repo: RepoRef) => Promise<PullsSnapshot | null>
   remember: (repo: RepoRef, snapshot: PullsSnapshot) => Promise<void>
+  // Notes the session's folder as a clone of `repo`, its main checkout's root, for the visits of other sessions.
+  noteFolder: (repo: RepoRef) => Promise<void>
   // What the person sees: whether anything is drawn, the pane, the status line, toasts and alerts.
   isDrawn: () => Promise<boolean>
   isPaneOpen: () => Promise<boolean>
   isPaneShown: () => Promise<boolean>
+  // Whether the pane shows a visit, which covers the list.
+  isVisiting: () => Promise<boolean>
   setStatus: (text: string | undefined) => Promise<void>
   clearStatus: () => Promise<void>
   notify: (text: string, timeoutMs: number) => Promise<void>
-  // `areChanges`: pull request changes, which a system notification may carry; a session's first summary is not one.
-  announce: (repo: RepoRef, lines: readonly string[], areChanges: boolean) => Promise<void>
+  // What a load tells: its changes as events, the summary of what changed while away as a line (`AlertBatch`).
+  announce: (batches: readonly AlertBatch[]) => Promise<void>
   // What a load sets off: the lookup Create PR waits on, the people GitHub suggests where Request Review would offer
   // them (`suggestions.ts`), and the cleanup of pull requests that left the lists, with what the load found of how
   // they ended (`known`), which it asks GitHub no more.
@@ -331,7 +335,7 @@ function startLoad(host: RefreshHost, session: Session, shared: SharedAnswer | n
 function endLoad(host: RefreshHost, session: Session): void {
   const held = session.checks.heldBack
   if (held && session.checks.isAlertWanted) {
-    host.background(host.announce(held.repo, held.lines, true))
+    host.background(host.announce(held.batches))
   }
   session.checks.inFlight = null
   session.checks.isAlertWanted = false
@@ -346,10 +350,10 @@ async function tellAway(host: RefreshHost, session: Session): Promise<void> {
   }
 }
 
-// A load of the caller's own, in turn after any under way, which another may have started. After a write: the load under
-// way began before it, and would bring the row back as it was. For a command: its reads of the session's state show one
-// moment (`state.get`), its own writes and no other's after it, so the list, its problem and the checkout it prints come
-// from its own load.
+// A load of the caller's own, in turn after any under way, which another may have started. After a write: the load
+// under way began before it, and would bring the row back as it was. For a command: its reads of the session's state
+// show one moment (`state.get`), its own writes and no other's after it, so the list, its problem and the checkout it
+// prints come from its own load.
 export async function refreshInTurn(host: RefreshHost, session: Session): Promise<void> {
   await session.checks.inFlight?.done.catch(() => undefined)
   await refresh(host, session, false)
@@ -423,6 +427,11 @@ async function load(host: RefreshHost, session: Session, shared: SharedAnswer | 
   // Shared once this session marked its toasts shown, so a session that takes the answer leaves them out.
   if (isSharing) {
     share(host, session, repo, answer, result.snapshot.viewer, claimed)
+  }
+  // Once a session, its first list found the folder's repository on GitHub.
+  if (!session.isFolderNoted) {
+    session.isFolderNoted = true
+    host.background(host.noteFolder(repo))
   }
 }
 
@@ -505,8 +514,8 @@ async function present(
   await host.keepActivity((kept) => activityAfter(kept, changes, before, snapshot, session.settings.changesMs))
   // The last look is what the pane put in front of the person, for a /prs where nothing is drawn and for the next
   // session's first load; a toast nobody may have seen is not one, nor a pane in a tab behind another, nor a list the
-  // demo's examples cover.
-  const isListShown = (await host.isPaneShown()) && !(await host.isDemo())
+  // demo's examples or a visit cover.
+  const isListShown = (await host.isPaneShown()) && !(await host.isDemo()) && !(await host.isVisiting())
   if (isListShown) {
     await host.remember(repo, snapshot)
   }
@@ -514,10 +523,10 @@ async function present(
   // joins it later gets those it holds back as it ends (`endLoad`).
   const kind = takeKind(session.checks, previous, isListShown)
   // On demand nothing alerts, a list come back after a start or a `/clear` behind another tab neither.
-  const lines = session.settings.refresh === "on-demand" ? null : refreshAlerts(changes, before, snapshot, kind)
-  session.checks.heldBack = kind.isAlerting || kind.isReturning ? null : { repo, lines: alertLines(changes) }
-  if (lines) {
-    await host.announce(repo, lines, !kind.isReturning)
+  const batches = session.settings.refresh === "on-demand" ? null : refreshAlerts(changes, before, snapshot, kind, repo)
+  session.checks.heldBack = kind.isAlerting || kind.isReturning ? null : { batches: batchesOf(repo, changes) }
+  if (batches) {
+    await host.announce(batches)
   }
 }
 
@@ -527,13 +536,7 @@ async function fetchList(host: RefreshHost, session: Session, repo: RepoRef): Pr
   if (session.checks.inFlight) {
     session.checks.inFlight.requestedAt = requestedAt
   }
-  // A server without stacked pull requests, once it said so, is asked without them for the rest of the session.
-  const withStacks = !session.stacklessHosts.has(repo.host)
-  let asked = await queryPulls(host, repo, withStacks)
-  if (withStacks && asked.ran && isStackless(asked.ran.stdout)) {
-    session.stacklessHosts.add(repo.host)
-    asked = await queryPulls(host, repo, false)
-  }
+  const asked = await askPulls(host, repo, session.stacklessHosts)
   if ("problem" in asked) {
     if (asked.said !== "" && asked.said !== asked.problem.message) {
       host.log(`The list of ${repo.name} could not be read: ${asked.said}`)
@@ -745,7 +748,5 @@ function closedSince(
   after: PullsSnapshot,
   states: readonly ClosedState[] | null
 ): Alert[] {
-  return states
-    ? closedAlerts(vanishedPulls(before, after), states, after.viewer, [...after.mine, ...after.review])
-    : []
+  return states ? closedAlerts(vanishedPulls(before, after), states, after.viewer, rowsOf(after)) : []
 }

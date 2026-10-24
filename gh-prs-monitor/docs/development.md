@@ -1,5 +1,7 @@
 # Development
 
+For contributors: how the code is organised. If you only use the plugin, you can skip this page.
+
 The engine follows `$`, and the names of the session's state, only within the hooks module itself. So every call into
 the engine lives in `hooks/register.tsx`, and everything else lives in the modules it imports: what decides and parses
 is tested on its own, the drawing through the hooks module's tests. A module whose steps need the engine takes what it
@@ -7,7 +9,8 @@ needs as plain functions the hooks module hands in, its host: `RefreshHost` for 
 press and the writes, `SkillHost` for a skill's run, `BranchLookupHost`, `SuggestionsHost` for GitHub's suggested
 reviewers, `DialogHost`, `BackHost` for the window going back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for
 the create-pr skill's choices, `TicketsHost` for `/prs tickets`, `TicketToolHost` for the skills' ticket tool,
-`ReportHost` for `/prs report`, and `Host` (`machine.ts`) for git and gh.
+`ReportHost` for `/prs report`, `VisitHost` for a visit, `ElsewhereHost` for the check of other repositories, and
+`Host` (`machine.ts`) for git and gh.
 register.tsx builds each (`refreshHostOf($, session)`, `pressHostOf`, …). A member passes the call on, a few with a
 guard of their own (a load of the module a reload replaced shows no list, problem or loading mark; an end mark is
 waited for a moment at most), and a module is tested with a host of stand-ins.
@@ -16,29 +19,47 @@ waited for a moment at most), and a module is tested with a host of stand-ins.
 hooks/hooks.json          names register.tsx as the hooks module
 hooks/register.tsx        the hooks module: the hooks, every call into the engine and the session's state, the
                           drawing's and the demo's wiring, and the hosts it hands the other modules
-hooks/session.ts          what one load of the module keeps between hooks, grouped by what it serves
+hooks/session.ts          what one load of the module keeps between hooks, grouped by what it serves, and the name of
+                          a list among its lists: the folder's, or a visit's
 hooks/settings.ts         the plugin's options, read into settings
 hooks/refresh.ts          the timer, one load at a time, and each load's way from GitHub's answer to the pane, the
                           status line and the alerts
 hooks/github.ts           the requests to GitHub through gh: the repository, the lists, how pull requests ended, one
                           as it stands now, its stack, failed runs, and the writes
+hooks/visit.ts            a visit: another repository's list in the pane beside the folder's, which goes on as it was:
+                          what the person types to start one, the repository found as GitHub writes it, its list
+                          read as the folder's is, its own timer, whether the pane is there for it, and the way back
+                          to the folder's list; `/prs owner/name` and the picker's choice shown
+hooks/elsewhere.ts        the light check of other repositories: one request for the open pull requests where the
+                          viewer is the author or asked to review, what it keeps of each between checks, what it
+                          alerts, and what waits for the viewer there
+hooks/repo-picker.ts      the repository picker the pane's header opens: which repositories it offers and in what
+                          order, the question that asks for one, picked or typed, the answer read back and shown
+hooks/clones.ts           a folder's remotes read from its git config as a file, in the order gh picks one, to check a
+                          clone before it is offered and to find what a typed folder names; the clones noted that
+                          still are
+hooks/paths.ts            a folder's path as typed, made whole (`typedPath`), and as shown, from `~` (`homeShort`); on
+                          Windows with its drives and backslashes
 hooks/pulls.ts            the GraphQL query, each pull request's row read from GitHub's answer, and lookups in the list
 hooks/pull-status.ts      each pull request's status: the stage its facts put it at, its label and tone, and the
                           button that moves it on
 hooks/ended.ts            how pull requests that left the lists ended: GitHub's lookup and its answer, and what the
                           loads found, kept for the next cleanup
-hooks/alerts.ts           what changed between two refreshes, which alerts it raises, and which wait or repeat
+hooks/alerts.ts           what changed between two refreshes, which alerts it raises, which wait or repeat, and the
+                          batches they are told in, one repository's changes each
 hooks/carry.ts            what a load's list carries over from the lists before it, and which pull requests that left
                           them GitHub is asked how they ended
-hooks/toasts.ts           the alerts on their way to the person: held while a turn runs, then toasts and the sound,
-                          those another session showed lately left out
+hooks/toasts.ts           the alerts on their way to the person: held while a turn runs, then toasts, the sound and a
+                          system notification for each repository, those another session showed lately left out
 hooks/summary.ts          the counts the status line, the band and the pane's header show
 hooks/list.ts             the list /prs prints where no pane shows, the words both lists use, and a panel's rows
-hooks/autocomplete.ts     the pull requests `#` offers in the prompt box, from the list held
+hooks/autocomplete.ts     the pull requests `#` offers in the prompt box, from the list held; off for now, its hook
+                          commented out in register.tsx
 hooks/store.ts            every key the plugin keeps in the store, read and written: the last look at each
-                          repository, the view, what cleanups left and the cleanup under way in each clone, the alerts
-                          shown, the answers sessions share and the create-pr choices; what a failure of each costs,
-                          and what gives way when it is full
+                          repository, the view, what cleanups left and the cleanup under way in each clone, the
+                          folders noted as clones, the alerts shown, the answers sessions share, the create-pr choices
+                          and the ticket links; what a failure of each costs, what gives way when it is full, and the
+                          kinds of which only the latest few are kept
 hooks/store-keys.ts       the store's keys: an id too long for one goes in by its hash
 hooks/shared.ts           GitHub's answers the sessions in a repository share, and when a session takes one, waits
                           for one, or asks GitHub
@@ -47,20 +68,21 @@ hooks/writes.ts           the writes a row's buttons make, each behind the perso
                           review asked again, failed runs re-run
 hooks/press.ts            what a press on a row does around its write: the look at GitHub before the question (and
                           before Request Review's write), the refresh after, a merged row shown merged until GitHub's
-                          search catches up
+                          search catches up, and a visit's busy marks kept apart from the folder's
 hooks/actions.ts          the merge, branch update, re-run, ready for review, request review and re-request review
                           questions, commands and outcomes, and what a press finds changed on GitHub since the list
                           was read
 hooks/skill-runs.ts       the bundled skills' runs: Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR
                           started from a button (here, in a worktree, or typed into a new session), and each skill
-                          turn's life (its row marked while it works, given back as it ends, the list following it)
+                          turn's life (its row marked while it works, given back as it ends, the list following it);
+                          on another repository's pull request, the new session opened in its clone
 hooks/branch-lookup.ts    GitHub's lookup of the pull requests from the session's branch the lists don't show, which
                           a load and Create PR's press ask: its query, the answer read, and the request
 hooks/suggestions.ts      the people GitHub suggests to review your own pull requests nobody was asked to review, at
                           first or for more approvals, which a load asks once it shows the list: which rows want them,
                           the request, the answer read, kept for each row's head commit and reviews
 hooks/branch-flow.ts      where Resolve Comments, Fix CI and Resolve Conflicts work, and the arguments they hand
-                          their skills
+                          their skills; on another repository's pull request, the clone they open a session in
 hooks/review-flow.ts      Review's questions: where, and on a pull request back to you what to cover, under a line on
                           your last review; the answer read, and the arguments it hands the skill
 hooks/create-flow.ts      Create PR: the pull request it could open from the session's branch, its question, the
@@ -93,23 +115,30 @@ hooks/include.ts          the ignored files .worktreeinclude names, copied into 
                           by the same selection, that the main checkout holds the same
 hooks/remade.ts           what git ignores in a worktree that tools make again: installed dependencies, build output,
                           caches
-hooks/gh.ts               reading gh's output and its errors
+hooks/gh.ts               reading gh's output and its errors, and a repository's name with its server, which keys
+                          the repository and its pull requests
 hooks/when.ts             how times read: a clock time, the day, how long ago, how often checks run
-hooks/demo.ts             the example pull requests, alerts and list /prs demo shows
+hooks/demo.ts             the example pull requests, alerts and list /prs demo shows, and the other repositories
+                          whose examples the picker offers
 hooks/pane.tsx            the pane, from elements every surface draws, and the desktop app's band above the prompt,
                           the header's counts
+hooks/panels.tsx          what a panel of rows is drawn with, the lists' and the repository picker's: its title, the
+                          lines between rows, an app's cards, the mark on a row changed lately
 hooks/question-frame.tsx  what every question is drawn with, in place of the list: the frame (header, subject, text,
-                          how to leave), the field, and the answers' row
-hooks/dialog.tsx          the question a button asks as the pane draws it: by the picker where it offers names, else
-                          its field and its answers, in that frame
+                          how to leave), the field, the answers' row, Checking… while an answer is carried out, and
+                          what kept it from working
+hooks/dialog.tsx          the question a button asks as the pane draws it: by the picker where it offers names (the
+                          repository picker's as rows), else its field and its answers, in that frame
 hooks/picking.ts          the rules of a question answered by picking names first: a pick, Select All and Clear, when
                           the main answer may go, the names an answer carries
 hooks/picker.tsx          that question as the pane draws it, in that frame: the names that pick, Select All and
                           Clear, and an answer that carries the names picked
+hooks/repo-rows.tsx       the repository picker as the pane draws it: a row each, grouped, with Open, and the field
 hooks/keys.ts             the keys of what the pane and the dialog draw that the flows name too, and where a
                           question's keyboard starts
-hooks/dialog-flow.ts      the dialog as it runs: one question at a time, in the pane or Claude Code's own dialog, and
-                          the pane's window back on its row once it is answered
+hooks/dialog-flow.ts      the dialog as it runs: one question at a time, in the pane or Claude Code's own dialog, an
+                          answer carried out before the question closes, and the pane's window back on its row once
+                          it is answered
 hooks/back-to-row.ts      the pane's window put back on its row once a question is answered
 hooks/question.ts         what a question is about, text typed in place of a choice read as an answer, where a skill
                           runs (this session or a new one), and how many options Claude Code's own dialog offers
@@ -119,16 +148,20 @@ hooks/stable-buttons.ts   a button drawn again unchanged kept as the same elemen
 hooks/*.test.ts           the modules' logic, apart from the engine (helpers.test.ts holds the small ones')
 hooks/*.test.tsx          the hooks module, by area, against the machine in hooks/testing/
 hooks/testing/            that machine (gh, git and the system answering from a world each test sets up), the
-                          GitHub answers it serves, the store in memory it answers from, and the git and press hosts
-                          in memory the module tests share
+                          GitHub answers it serves, including the other repositories a visit finds (gh-repos.ts),
+                          the store in memory it answers from, and the git, press and visit hosts in memory the
+                          module tests share
 skills/                   the bundled resolve-comments, fix-ci, resolve-conflicts, review and create-pr skills, and
-                          in skills/shared/ the steps the first three share, reading the arguments and checking the
-                          checkout against the pull request, and the first two's committing and pushing
+                          in skills/shared/ what they share: the first three's reading of the arguments and check of
+                          the checkout against the pull request (checkout.md), their committing and pushing
+                          (commit-and-push.md), and how Create PR and Review write a ticket (ticket.md); Resolve
+                          Comments' report format in its references/
 docs/                     the guides README.md links to
 types/index.d.ts          the state the pane reads
-sounds/alert.wav          the alert sound
-assets/                   the logo and screenshots the README shows, and the icon Anthropic's directory lists
 ```
+
+Besides, the sounds folder holds the alert sound, and the assets folder the logo and screenshots the README shows and
+the icon the plugin's listing uses.
 
 Work on the plugin from a clone of [the repository](https://github.com/maturada/gh-prs-monitor):
 `claude --plugin-dir gh-prs-monitor`, from the clone's root, loads this folder for that session in place of an
@@ -160,6 +193,9 @@ changes one is where to look first.
   drops that handle: `stableButtons` hands an unchanged button back as the same element.
 - A plugin's own `$.command.run` does not pass through its own `command.run` hooks, so a skill a pane button starts
   marks its row itself (`runSkill`), while a typed one is caught by the hooks.
+- A pane is `isPlaced` once a surface draws it and `isShown` while it is in front, not a tab behind another. A visit
+  loads only while its pane is both, waits while it is placed but behind or not placed (an app detached), and ends once
+  the pane is gone from `$.ui.panes()`, which the engine's own close tells no hook (`visitPlace`).
 - A pane opened while another holds the keyboard opens behind it, as a tab, and a plugin can't bring it forward: so
   a question is drawn in the pane whose button was pressed, and only while `$.ui.panes()` says it is shown; otherwise
   the engine's own dialog asks.
@@ -207,10 +243,14 @@ changes one is where to look first.
   keys: a write that would pass that is refused in words the plugin reads ("the store would be N characters, over the M
   limit", `isStoreFull`, as of 2.1.296), and the answers sessions share give way first. No event says another session
   wrote it, so a session looks (`checkShared`). It is kept per plugin source (`name@marketplace`, or `name@inline` for a
-  plugin handed in with `--plugin-dir`, as the desktop app hands in installed plugins), so the desktop app's sessions
-  never share it with the terminal's, nor with VS Code's, which load the installed plugin as the terminal does. The test
+  plugin handed in with `--plugin-dir`): the sessions that load the installed plugin share it, in the terminal, VS Code
+  and the desktop app alike, which load it from the user's settings; a `--plugin-dir` run keeps one of its own. The test
   kit has no store of its own: the tests' world answers the store's events from a store in memory
   (`hooks/testing/memory-store.ts`), and store.test.ts hands store.ts a host over the same one.
+- No git runs in a folder Claude Code hasn't been asked to trust yet, and the clones a session noted may be such
+  folders: so a folder's remotes are read as a file (`$.fs.read` of its `.git/config`, or a worktree's main checkout's),
+  never through git (`readClone`, `readFolder`). A path typed from `~` starts at `$.env.get("HOME")` (`USERPROFILE` on
+  Windows), and a relative one at `$.session.cwd()` (`typedPath`).
 - Claude Code asks before a command writes a file into a repository's `.git` folder, as hooks or config planted there
   run on the next git command; git's own writes there go on unasked. So the create-pr skill keeps its choices in the
   plugin's store, through a tool the plugin registers (`$.tool.register`; the model calls it

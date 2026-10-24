@@ -23,7 +23,7 @@ export function linksOf(repo: RepoRef): ListLinks {
 // What the two lists are called, in the pane and in the list /prs prints.
 export const LIST_TITLES = { mine: "Your Pull Requests", review: "Waiting On Your Review" } as const
 
-// Said under the viewer's own list when the Hide drafts setting leaves drafts out of it.
+// Said under the viewer's own list when the Hide my drafts setting leaves drafts out of it.
 export function hiddenDraftsNote(count: number): string | null {
   return count > 0 ? `${count} draft${count === 1 ? "" : "s"} hidden` : null
 }

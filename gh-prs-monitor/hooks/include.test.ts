@@ -655,8 +655,9 @@ describe("a worktree's ignored files the main checkout holds the same", () => {
     )
     expect(await firstNotInMain(certs.host, ROOT, PATH, ["certs/"])).toBe(null)
 
-    // With `build/*` ignored, git status lists build/ whole, while git lists build/config.json apart. Named by its path,
-    // it is a copy, and changed in the worktree keeps it; named at any depth, as `config.json`, nothing in build/ is.
+    // With `build/*` ignored, git status lists build/ whole, while git lists build/config.json apart. Named by its
+    // path, it is a copy, and changed in the worktree keeps it; named at any depth, as `config.json`, nothing in build/
+    // is.
     const build = (include: string) => {
       let asked = 0
 

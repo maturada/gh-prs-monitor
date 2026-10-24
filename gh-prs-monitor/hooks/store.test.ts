@@ -17,7 +17,7 @@ import {
   keptKey,
   keptLooks,
   lookKey,
-  notShownElsewhere,
+  notShownByOtherSessions,
   recallClaim,
   recallCleanup,
   recallKept,
@@ -498,7 +498,7 @@ describe("the answers sessions share", () => {
 describe("the alerts shown", () => {
   test("another session's mark in its window leaves a line out; marks unread or unkept show every line", async () => {
     const now = 11 * MINUTE
-    const lines = ["#7 merged", "#8 closed", "#9 ready"]
+    const lines = ["#7 merged", "#8 closed", "#9 ready"].map((line) => ({ kind: "line" as const, repo: REPO, line }))
     const marked = {
       "github.com/acme/app #7 merged": { at: now - 5 * MINUTE, by: "other" },
       "github.com/acme/app #8 closed": { at: now - 10 * MINUTE, by: "other" }
@@ -506,7 +506,7 @@ describe("the alerts shown", () => {
     const { world, host } = storeWith({ shown: marked }, now)
     const shown = { by: "this", pollMs: 3 * MINUTE }
 
-    expect(await notShownElsewhere(host, REPO, lines, shown)).toEqual(["#8 closed", "#9 ready"])
+    expect(await notShownByOtherSessions(host, lines, shown)).toEqual(lines.slice(1))
     expect(world.store?.shown).toEqual({
       "github.com/acme/app #7 merged": { at: now - 5 * MINUTE, by: "other" },
       "github.com/acme/app #8 closed": { at: now, by: "this" },
@@ -517,9 +517,9 @@ describe("the alerts shown", () => {
     const unkept = storeWith({ shown: marked }, now)
     unkept.world.storeSetDeny = "the disk is read-only"
 
-    expect(await notShownElsewhere(unread.host, REPO, lines, shown)).toEqual(lines)
+    expect(await notShownByOtherSessions(unread.host, lines, shown)).toEqual(lines)
     expect(unread.logs).toEqual(["Shown alerts could not be checked: store unavailable"])
-    expect(await notShownElsewhere(unkept.host, REPO, lines, shown)).toEqual(lines)
+    expect(await notShownByOtherSessions(unkept.host, lines, shown)).toEqual(lines)
     expect(unkept.world.store).toEqual({ shown: marked })
   })
 })

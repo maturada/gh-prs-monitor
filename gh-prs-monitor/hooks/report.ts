@@ -1,8 +1,8 @@
 // Author: David Matura
 
-// `/prs report`: where to report a bug or suggest an idea, and the versions a bug report asks for, filled into its link.
-// The repository is the one the plugin's manifest names, so a copy whose manifest names another reports there. Nothing
-// of the person's goes in, no repository, path or account: only the versions and the system.
+// `/prs report`: where to report a bug or suggest an idea, and the versions a bug report asks for, filled into its
+// link. The repository is the one the plugin's manifest names, so a copy whose manifest names another reports there.
+// Nothing of the person's goes in, no repository, path or account: only the versions and the system.
 
 import { firstLine } from "./gh"
 import { GIT } from "./machine"

@@ -4,19 +4,27 @@ Review comments piling up on your pull request? **Resolve Comments** works throu
 as needs fix, debatable or already fixed, changes only what you approve, and commits, pushes and replies only on your
 yes.
 
-It shows on your own pull requests with unresolved review comments, or where changes were requested.
-It asks where to work first: see [Where the branch skills work](working-on-a-branch.md). While it runs, its row says so:
-see [While a skill is at work](actions.md#while-a-skill-is-at-work).
+It shows on your own pull requests with unresolved review comments, or where changes were requested. While it runs, its
+row says so: see [While a skill is at work](actions.md#while-a-skill-is-at-work).
 
-Typed, it is `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]`; without a number or URL it
+## Where it works
+
+It asks where to work first: see [Where the branch skills work](working-on-a-branch.md). On a pull request of
+[another repository](other-repositories.md) it offers to open a new session in a clone of that repository instead:
+see [Buttons on its rows](other-repositories.md#buttons-on-its-rows).
+
+## Typed
+
+Type it as `/gh-prs-monitor:resolve-comments [<number or URL>] [-- <instructions>]`; without a number or URL it
 takes the pull request of the current branch. The pane adds `--worktree "<path>"`, `--deps "<note>"` and
 `--include-outdated` itself.
 
+## What it does
+
 The work itself is the bundled `resolve-comments` skill:
 
-1. It checks the checkout is on the pull request's commit and has no unexpected changes. A checkout behind GitHub's,
-   or left behind by a rebase there, can be brought up to date first: in /prs's worktree on your yes, in your own
-   folder with a command it gives you.
+1. It checks the checkout is on the pull request's commit and has no unexpected changes. One behind GitHub's can be
+   brought up to date first ([A checkout behind GitHub's](working-on-a-branch.md#a-checkout-behind-githubs)).
 2. It lists each unresolved comment, the requests a review made in its own text, and conversation comments you haven't
    answered, as needs fix, debatable or already fixed.
 3. It edits only what you approve, then runs the project's quick checks on what it changed, where it can.
@@ -30,3 +38,11 @@ The work itself is the bundled `resolve-comments` skill:
    commit.
 6. Last, on your own pull request, unless it is a draft, once it pushed, it offers to ask those who requested changes
    to review again, as **Re-Request Review** in the pane does; that too needs its own yes.
+
+## Where to go next
+
+- [Where the branch skills work](working-on-a-branch.md): the worktree, dependencies and cleanup.
+- [Settings](settings.md): **Count outdated comments** lets it work on comments on changed code too, which the pane
+  adds as `--include-outdated`.
+- [Fix CI](fix-ci.md) and [Resolve Conflicts](resolve-conflicts.md): the other two branch skills.
+- [When something is wrong](troubleshooting.md).

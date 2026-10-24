@@ -34,7 +34,7 @@ import {
   parseRepoView
 } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
-import { pullSearches, pullsQuery } from "./pulls"
+import { isStackless, noAccessProblem, pullSearches, pullsQuery } from "./pulls"
 
 // The clock a merge in the background is waited out by.
 export type Clock = { now: () => Promise<number>; sleep: (ms: number) => Promise<void> }
@@ -112,15 +112,31 @@ export function problemOf(error: unknown): GhProblem {
   return error instanceof GhFailure ? error.problem : { message: messageOf(error), isPermanent: false }
 }
 
-// The session's folder's repository, as gh finds it from the git remote, or what kept it from being found.
-export async function viewRepo(host: Host): Promise<{ repo: RepoRef } | { problem: GhProblem }> {
+// How long gh may take to say how GitHub writes a repository's name, or whether it is signed in to a server.
+export const GH_LOOKUP_TIMEOUT_MS = 30_000
+
+// Whether the GitHub CLI is signed in to `server`, by the account it uses there (`--active`): another account's trouble
+// on the same server, as an expired token, is none of the plugin's.
+export function authStatus(host: Host, server: string): Promise<GhAnswer> {
+  return ghRun(host, ["gh", "auth", "status", "--active", "--hostname", server], GH_LOOKUP_TIMEOUT_MS)
+}
+
+// The session's folder's repository, as gh finds it from the git remote, or another one named (`named`, as typed), as
+// GitHub writes its name; or what kept it from being found.
+export async function viewRepo(host: Host, named?: RepoRef): Promise<{ repo: RepoRef } | { problem: GhProblem }> {
   const asked = await ghRun(
     host,
-    ["gh", "repo", "view", "--json", "nameWithOwner,url", "--jq", '.nameWithOwner + " " + .url'],
-    30_000
+    [
+      ...["gh", "repo", "view", ...(named ? [`https://${named.host}/${named.name}`] : [])],
+      ...["--json", "nameWithOwner,url", "--jq", '.nameWithOwner + " " + .url']
+    ],
+    GH_LOOKUP_TIMEOUT_MS
   )
   if ("problem" in asked) {
-    return { problem: asked.problem }
+    // A repository named is named in what is said of it, as a list's is (`noAccessProblem`).
+    const isMissing = named && /could not resolve to a repository/i.test(asked.said)
+
+    return { problem: isMissing ? { message: noAccessProblem(named.name), isPermanent: true } : asked.problem }
   }
   const repo = parseRepoView(asked.ran.stdout)
 
@@ -150,6 +166,37 @@ export function queryPulls(host: Host, repo: RepoRef, withStacks: boolean): Prom
   const argv = graphqlArgv(repo, pullsQuery(withStacks), { mine, requested, commented, reviewed, mentioned })
 
   return ghRun(host, argv, LIST_QUERY_TIMEOUT_MS)
+}
+
+// The lists, asked with stacked pull requests until the repository's server says it has none; `stackless` keeps the
+// servers that said so, which are asked without them from then on.
+export async function askPulls(host: Host, repo: RepoRef, stackless: Set<string>): Promise<GhAnswer> {
+  const withStacks = !stackless.has(repo.host)
+  const asked = await queryPulls(host, repo, withStacks)
+  if (!withStacks || !asked.ran || !isStackless(asked.ran.stdout)) {
+    return asked
+  }
+  stackless.add(repo.host)
+
+  return queryPulls(host, repo, false)
+}
+
+// The session's repository for a press or a typed skill, looked up here where no load has found it since a reload, and
+// kept on the session (`repo`). What kept it from being found is the loads' to show, and to stop the checks for: a
+// press may end after a load that worked.
+export async function sessionRepo(
+  host: Host,
+  session: { repo: RepoRef | null }
+): Promise<{ repo: RepoRef } | { problem: GhProblem }> {
+  if (session.repo) {
+    return { repo: session.repo }
+  }
+  const viewed = await viewRepo(host)
+  if ("repo" in viewed) {
+    session.repo ??= viewed.repo
+  }
+
+  return session.repo ? { repo: session.repo } : viewed
 }
 
 // How many pull requests one request asks how they ended.

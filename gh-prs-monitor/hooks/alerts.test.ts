@@ -3,7 +3,7 @@
 import { describe, expect, test } from "claude-code/testing"
 
 import type { Activity, PullsSnapshot } from "../types"
-import { snapshotOf } from "./testing/fixtures"
+import { REPO, snapshotOf } from "./testing/fixtures"
 import type { PullFixture, ResponseFixture } from "./testing/fixtures"
 import {
   activityAfter,
@@ -17,6 +17,7 @@ import {
   holdAlerts,
   noteEvents,
   pullAlerts as changesOf,
+  readHeld,
   refreshAlerts,
   sinceLastLook,
   toastsFor,
@@ -707,28 +708,32 @@ describe("refreshAlerts", () => {
   const KIND = { isReturning: false, isAlerting: false, isListShown: false }
 
   test("coming back, one line counts the pull requests that changed, unless the pane lists them", () => {
-    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true })).toEqual([
-      awayLine(2, lookedAt(before.fetchedAt, after.fetchedAt))
-    ])
-    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true, isAlerting: true })).toEqual([
-      awayLine(2, lookedAt(before.fetchedAt, after.fetchedAt))
-    ])
-    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true, isListShown: true })).toBe(null)
-    expect(refreshAlerts([], before, after, { ...KIND, isReturning: true })).toBe(null)
-    expect(refreshAlerts(changes, null, after, { ...KIND, isReturning: true })).toBe(null)
+    const away = [{ kind: "line", repo: REPO, line: awayLine(2, lookedAt(before.fetchedAt, after.fetchedAt)) }]
+
+    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true }, REPO)).toEqual(away)
+    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true, isAlerting: true }, REPO)).toEqual(away)
+    expect(refreshAlerts(changes, before, after, { ...KIND, isReturning: true, isListShown: true }, REPO)).toBe(null)
+    expect(refreshAlerts([], before, after, { ...KIND, isReturning: true }, REPO)).toBe(null)
+    expect(refreshAlerts(changes, null, after, { ...KIND, isReturning: true }, REPO)).toBe(null)
   })
 
-  test("a refresh nobody asked for has a line per pull request; even none lets held alerts through", () => {
-    expect(refreshAlerts(changes, before, after, { ...KIND, isAlerting: true })).toEqual([
+  test("a refresh nobody asked for has a batch per pull request; even none lets held alerts through", () => {
+    const batches = refreshAlerts(changes, before, after, { ...KIND, isAlerting: true }, REPO)
+
+    expect(batches).toEqual([
+      { kind: "events", from: "list", repo: REPO, events: [changes[0], changes[1]] },
+      { kind: "events", from: "list", repo: REPO, events: [changes[2]] }
+    ])
+    expect(batches!.flatMap((batch) => (batch.kind === "events" ? alertLines(batch.events) : []))).toEqual([
       "✎ #1 Pull request 1 — new comment, approved",
       "✎ #2 Pull request 2 — new comment"
     ])
-    expect(refreshAlerts([], before, after, { ...KIND, isAlerting: true })).toEqual([])
+    expect(refreshAlerts([], before, after, { ...KIND, isAlerting: true }, REPO)).toEqual([])
   })
 
   test("a refresh the person asked for announces nothing", () => {
-    expect(refreshAlerts(changes, before, after, KIND)).toBe(null)
-    expect(refreshAlerts(changes, before, after, { ...KIND, isListShown: true })).toBe(null)
+    expect(refreshAlerts(changes, before, after, KIND, REPO)).toBe(null)
+    expect(refreshAlerts(changes, before, after, { ...KIND, isListShown: true }, REPO)).toBe(null)
   })
 })
 
@@ -899,14 +904,31 @@ describe("alertLine", () => {
 })
 
 describe("toastsFor", () => {
+  // This folder's lines, which its pane lists; and another repository's, which no list here shows.
+  const own = (...texts: string[]) => texts.map((text) => ({ text, elsewhere: null }))
+  const of = (repo: string, ...texts: string[]) => texts.map((text) => ({ text, elsewhere: repo }))
+
   test("up to three alerts show as they are", () => {
     expect(toastsFor([])).toEqual([])
-    expect(toastsFor(["a", "b", "c"])).toEqual(["a", "b", "c"])
+    expect(toastsFor(own("a", "b", "c"))).toEqual(["a", "b", "c"])
   })
 
   test("more than three keep to three toasts, the last counting the rest", () => {
-    expect(toastsFor(["a", "b", "c", "d"])).toEqual(["a", "b", "2 more pull request changes, see /prs"])
-    expect(toastsFor(["a", "b", "c", "d", "e", "f"])).toEqual(["a", "b", "4 more pull request changes, see /prs"])
+    expect(toastsFor(own("a", "b", "c", "d"))).toEqual(["a", "b", "2 more pull request changes, see /prs"])
+    expect(toastsFor(own("a", "b", "c", "d", "e", "f"))).toEqual(["a", "b", "4 more pull request changes, see /prs"])
+  })
+
+  test("other repositories' changes counted among the rest are named, as /prs lists only this folder's", () => {
+    expect(toastsFor([...own("a", "b"), ...of("acme/ios", "c"), ...of("acme/admin", "d")])).toEqual([
+      "a",
+      "b",
+      "2 more changes in acme/admin, acme/ios"
+    ])
+    expect(toastsFor([...own("a", "b", "c"), ...of("acme/ios", "d", "e")])).toEqual([
+      "a",
+      "b",
+      "1 more pull request change, see /prs; 2 more in acme/ios"
+    ])
   })
 })
 
@@ -1001,108 +1023,181 @@ describe("statusSummary", () => {
 })
 
 describe("holdAlerts", () => {
-  const NONE = { held: [], heldSince: null, changes: [] }
+  const NONE = { held: [], heldSince: null }
+  const [A, B, C] = ["a", "b", "c"].map((text) => ({ kind: "line" as const, repo: REPO, line: text }))
 
-  test("while holding, lines wait from when the first did; with none, nothing changes", () => {
-    const first = holdAlerts(NONE, ["a"], 10 * MINUTE, true, true)
-    expect(first).toEqual({ shown: [], changes: [], waiting: { held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] } })
+  test("while holding, batches wait from when the first did; with none, nothing changes", () => {
+    const first = holdAlerts(NONE, [A!], 10 * MINUTE, true)
+    expect(first).toEqual({ shown: [], waiting: { held: [A], heldSince: 10 * MINUTE } })
 
-    const second = holdAlerts(first.waiting, ["b", "c"], 12 * MINUTE, true, true)
-    expect(second).toEqual({
-      shown: [],
-      changes: [],
-      waiting: { held: ["a", "b", "c"], heldSince: 10 * MINUTE, changes: ["a", "b", "c"] }
-    })
+    const second = holdAlerts(first.waiting, [B!, C!], 12 * MINUTE, true)
+    expect(second).toEqual({ shown: [], waiting: { held: [A, B, C], heldSince: 10 * MINUTE } })
 
-    expect(holdAlerts(second.waiting, [], 13 * MINUTE, true, true)).toEqual({
-      shown: [],
-      changes: [],
-      waiting: second.waiting
-    })
-    expect(holdAlerts(NONE, [], 13 * MINUTE, true, true)).toEqual({ shown: [], changes: [], waiting: NONE })
+    expect(holdAlerts(second.waiting, [], 13 * MINUTE, true)).toEqual({ shown: [], waiting: second.waiting })
+    expect(holdAlerts(NONE, [], 13 * MINUTE, true)).toEqual({ shown: [], waiting: NONE })
   })
 
-  test("not holding, everything waiting shows with the new lines, and holding starts over", () => {
+  test("not holding, everything waiting shows with the new batches, and holding starts over", () => {
+    expect(holdAlerts({ held: [A!], heldSince: 10 * MINUTE }, [B!], 11 * MINUTE, false)).toEqual({
+      shown: [A, B],
+      waiting: NONE
+    })
+    expect(holdAlerts(NONE, [], 11 * MINUTE, false)).toEqual({ shown: [], waiting: NONE })
+  })
+
+  test("held five minutes, they show even while the turn still runs", () => {
+    const waiting = { held: [A!], heldSince: 10 * MINUTE }
+
+    expect(holdAlerts(waiting, [B!], 14 * MINUTE, true)).toEqual({
+      shown: [],
+      waiting: { held: [A, B], heldSince: 10 * MINUTE }
+    })
+    expect(holdAlerts(waiting, [B!], 15 * MINUTE, true)).toEqual({ shown: [A, B], waiting: NONE })
+  })
+})
+
+describe("readHeld", () => {
+  test("1.4.0's held lines, and 1.2.0's with no changes kept, carry over as lines of no repository", () => {
+    expect(readHeld({ held: ["#7 merged"], heldSince: 5, changes: ["#7 merged"] })).toEqual({
+      held: [{ kind: "line", repo: null, line: "#7 merged" }],
+      heldSince: 5
+    })
+    expect(readHeld({ held: ["summary"], heldSince: 5 })).toEqual({
+      held: [{ kind: "line", repo: null, line: "summary" }],
+      heldSince: 5
+    })
+  })
+
+  test("batches held by this version carry over, one that says not when it was raised as raised as the hold began", () => {
+    const held = { held: [{ kind: "line", repo: REPO, line: "a", raisedAt: 7 }], heldSince: 5 }
+
+    expect(readHeld(held)).toEqual(held)
+    expect(readHeld({ held: [{ kind: "line", repo: REPO, line: "a" }], heldSince: 5 })).toEqual({
+      held: [{ kind: "line", repo: REPO, line: "a", raisedAt: 5 }],
+      heldSince: 5
+    })
+    expect(readHeld(null)).toEqual({ held: [], heldSince: null })
     expect(
-      holdAlerts({ held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] }, ["b"], 11 * MINUTE, false, true)
+      readHeld({
+        held: [7, { kind: "events", repo: REPO }, { kind: "events", repo: REPO, events: [] }],
+        heldSince: "now"
+      })
     ).toEqual({
-      shown: ["a", "b"],
-      changes: ["a", "b"],
-      waiting: NONE
-    })
-    expect(holdAlerts(NONE, [], 11 * MINUTE, false, true)).toEqual({ shown: [], changes: [], waiting: NONE })
-  })
-
-  test("held a quarter of an hour, they show even while the turn still runs", () => {
-    const waiting = { held: ["a"], heldSince: 10 * MINUTE, changes: ["a"] }
-
-    expect(holdAlerts(waiting, ["b"], 24 * MINUTE, true, true)).toEqual({
-      shown: [],
-      changes: [],
-      waiting: { held: ["a", "b"], heldSince: 10 * MINUTE, changes: ["a", "b"] }
-    })
-    expect(holdAlerts(waiting, ["b"], 25 * MINUTE, true, true)).toEqual({
-      shown: ["a", "b"],
-      changes: ["a", "b"],
-      waiting: NONE
-    })
-  })
-
-  test("a summary or a cleanup's note waits and shows with the rest, but is not a pull request change", () => {
-    const first = holdAlerts(NONE, ["summary"], 10 * MINUTE, true, false)
-    expect(first.waiting).toEqual({ held: ["summary"], heldSince: 10 * MINUTE, changes: [] })
-
-    const second = holdAlerts(first.waiting, ["#1 failed"], 11 * MINUTE, true, true)
-    expect(second.waiting.changes).toEqual(["#1 failed"])
-
-    expect(holdAlerts(second.waiting, ["note"], 12 * MINUTE, false, false)).toEqual({
-      shown: ["summary", "#1 failed", "note"],
-      changes: ["#1 failed"],
-      waiting: NONE
+      held: [],
+      heldSince: null
     })
   })
 })
 
 describe("freshAlerts", () => {
-  const SHOWN = { repo: "github.com/acme/app", by: "one", at: 100 * MINUTE, pollMs: 3 * MINUTE }
+  // Shown by session "one" at 100 minutes; a batch raised then unless it says when (`raisedAt`).
+  const SHOWN = { by: "one", at: 100 * MINUTE, pollMs: 3 * MINUTE }
+  const OTHER = { host: "github.com", name: "acme/web" }
+  const events = (number: number, ...texts: string[]) => ({
+    kind: "events" as const,
+    from: "list" as const,
+    repo: REPO,
+    events: texts.map((text) => alertOf(number, text))
+  })
+  const line = (text: string) => ({ kind: "line" as const, repo: REPO, line: text })
 
-  test("the first session to show a line marks it; another leaves it out, while its own repeat", () => {
-    const first = freshAlerts(undefined, ["✎ #1 a", "✓ #2 b"], SHOWN)
+  test("the first session to show an event marks it; another leaves it out, while its own repeat", () => {
+    const first = freshAlerts(undefined, [events(1, "new comment", "approved"), line("summary")], SHOWN)
     expect(first).toEqual({
-      fresh: ["✎ #1 a", "✓ #2 b"],
+      fresh: [events(1, "new comment", "approved"), line("summary")],
       marks: {
-        "github.com/acme/app ✎ #1 a": { at: 100 * MINUTE, by: "one" },
-        "github.com/acme/app ✓ #2 b": { at: 100 * MINUTE, by: "one" }
+        "github.com/acme/app#1 new comment": { at: 100 * MINUTE, by: "one" },
+        "github.com/acme/app#1 approved": { at: 100 * MINUTE, by: "one" },
+        "github.com/acme/app summary": { at: 100 * MINUTE, by: "one" }
       }
     })
 
-    const other = freshAlerts(first.marks, ["✎ #1 a", "✗ #3 c"], { ...SHOWN, by: "two", at: 101 * MINUTE })
-    expect(other.fresh).toEqual(["✗ #3 c"])
-    expect(other.marks["github.com/acme/app ✎ #1 a"]).toEqual({ at: 100 * MINUTE, by: "one" })
+    // Another session tells the same change grouped otherwise: only what wasn't told shows.
+    const other = freshAlerts(first.marks, [events(1, "approved", "CI failing"), events(2, "new comment")], {
+      ...SHOWN,
+      by: "two",
+      at: 101 * MINUTE
+    })
+    expect(other.fresh).toEqual([events(1, "CI failing"), events(2, "new comment")])
+    expect(other.marks["github.com/acme/app#1 approved"]).toEqual({ at: 100 * MINUTE, by: "one" })
 
-    expect(freshAlerts(first.marks, ["✎ #1 a"], { ...SHOWN, at: 101 * MINUTE }).fresh).toEqual(["✎ #1 a"])
+    expect(freshAlerts(first.marks, [events(1, "approved")], { ...SHOWN, at: 101 * MINUTE }).fresh).toEqual([
+      events(1, "approved")
+    ])
+  })
+
+  test("a batch whose every event was shown elsewhere goes; a line's mark is 1.4.0's", () => {
+    const marks = {
+      "github.com/acme/app#1 approved": { at: 100 * MINUTE, by: "two" },
+      "github.com/acme/app summary": { at: 100 * MINUTE, by: "two" }
+    }
+
+    expect(freshAlerts(marks, [events(1, "approved"), line("summary"), line("note")], SHOWN).fresh).toEqual([
+      line("note")
+    ])
+  })
+
+  test("the same number in another repository is another pull request", () => {
+    const marks = { "github.com/acme/app#1 approved": { at: 100 * MINUTE, by: "two" } }
+    const elsewhere = { ...events(1, "approved"), repo: OTHER }
+
+    expect(freshAlerts(marks, [elsewhere], SHOWN).fresh).toEqual([elsewhere])
   })
 
   test("a mark lasts ten minutes, or two refreshes where they are further apart", () => {
-    const marks = { "github.com/acme/app ✎ #1 a": { at: 100 * MINUTE, by: "one" } }
+    const marks = { "github.com/acme/app#1 a": { at: 100 * MINUTE, by: "one" } }
     const asked = (at: number, pollMs: number) =>
-      freshAlerts(marks, ["✎ #1 a"], { ...SHOWN, by: "two", at, pollMs }).fresh
+      freshAlerts(marks, [events(1, "a")], { ...SHOWN, by: "two", at, pollMs }).fresh.length
 
-    expect(asked(109 * MINUTE, 3 * MINUTE)).toEqual([])
-    expect(asked(110 * MINUTE, 3 * MINUTE)).toEqual(["✎ #1 a"])
-    expect(asked(139 * MINUTE, 20 * MINUTE)).toEqual([])
-    expect(asked(140 * MINUTE, 20 * MINUTE)).toEqual(["✎ #1 a"])
+    expect(asked(109 * MINUTE, 3 * MINUTE)).toBe(0)
+    expect(asked(110 * MINUTE, 3 * MINUTE)).toBe(1)
+    expect(asked(139 * MINUTE, 20 * MINUTE)).toBe(0)
+    expect(asked(140 * MINUTE, 20 * MINUTE)).toBe(1)
   })
 
-  test("another repository's marks and anything malformed in the store are no marks", () => {
-    const stored = {
-      "github.com/acme/other ✎ #1 a": { at: 100 * MINUTE, by: "two" },
-      "github.com/acme/app ✎ #1 a": { at: "now", by: "two" },
-      "github.com/acme/app ✓ #2 b": null
-    }
+  test("held for a long turn, an event leaves out what another session showed since it was raised", () => {
+    const marks = { "github.com/acme/app#1 a": { at: 101 * MINUTE, by: "two" } }
+    const raised = { ...events(1, "a"), raisedAt: 100 * MINUTE }
 
-    expect(freshAlerts(stored, ["✎ #1 a", "✓ #2 b"], SHOWN).fresh).toEqual(["✎ #1 a", "✓ #2 b"])
-    expect(freshAlerts("not a record", ["✎ #1 a"], SHOWN).fresh).toEqual(["✎ #1 a"])
-    expect(Object.keys(freshAlerts(stored, [], SHOWN).marks)).toEqual(["github.com/acme/other ✎ #1 a"])
+    // Raised at 100, shown at 114 as the turn ends: the other session's mark is 13 minutes old, and still counts.
+    expect(freshAlerts(marks, [raised], { ...SHOWN, at: 114 * MINUTE }).fresh).toEqual([])
+    // Raised and shown at 114, a mark that old doesn't.
+    expect(freshAlerts(marks, [events(1, "a")], { ...SHOWN, at: 114 * MINUTE }).fresh).toHaveLength(1)
+  })
+
+  test("in one long hold, each event is weighed from when it was raised: a later repeat of one shown elsewhere shows", () => {
+    // Another session showed CI failing at 101; this one held it, then CI passing at 109 and failing again at 112.
+    const marks = { "github.com/acme/app#1 CI failing": { at: 101 * MINUTE, by: "two" } }
+    const held = [
+      { ...events(1, "CI failing"), raisedAt: 101 * MINUTE },
+      { ...events(1, "CI passing"), raisedAt: 109 * MINUTE },
+      { ...events(1, "CI failing"), raisedAt: 112 * MINUTE }
+    ]
+
+    expect(freshAlerts(marks, held, { ...SHOWN, at: 114 * MINUTE }).fresh).toEqual(held.slice(1))
+  })
+
+  test("a mark is kept as long as an alert may wait for a turn and then count", () => {
+    const marks = { "github.com/acme/app#1 a": { at: 100 * MINUTE, by: "two" } }
+    const kept = (at: number) => Object.keys(freshAlerts(marks, [], { ...SHOWN, at }).marks).length
+
+    expect(kept(114 * MINUTE)).toBe(1)
+    expect(kept(116 * MINUTE)).toBe(0)
+  })
+
+  test("a line of no repository is never marked; anything malformed in the store is no mark", () => {
+    const stored = {
+      "github.com/acme/app#1 a": { at: "now", by: "two" },
+      "github.com/acme/app summary": null
+    }
+    const unknown = { kind: "line" as const, repo: null, line: "summary" }
+
+    expect(freshAlerts(stored, [events(1, "a"), line("summary")], SHOWN).fresh).toEqual([
+      events(1, "a"),
+      line("summary")
+    ])
+    expect(freshAlerts("not a record", [events(1, "a")], SHOWN).fresh).toEqual([events(1, "a")])
+    const once = freshAlerts(undefined, [unknown], SHOWN)
+    expect(once).toEqual({ fresh: [unknown], marks: {} })
   })
 })

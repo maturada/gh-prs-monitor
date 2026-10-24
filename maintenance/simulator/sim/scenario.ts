@@ -56,6 +56,8 @@ export type Scenario = {
   // The world and its sessions before the run, to schedule events of a probe's own.
   onWorld?: (world: World, sims: SimSession[]) => void
   repos?: number
+  // Half the sessions see acme/app through the light check of other repositories (`WorldOptions.lightCheck`).
+  lightCheck?: boolean
   shareFail?: (at: number, session: string) => boolean
   readStall?: { rate: number; ms: (r: () => number) => number }
   hoursOverride?: number
@@ -74,6 +76,7 @@ export async function run(s: Scenario) {
     showThrowRate: s.showThrowRate,
     skewMs: s.skewMs,
     repos: s.repos,
+    lightCheck: s.lightCheck,
     sleepSuspend: s.sleepSuspend,
     clockStep: s.clockStep ? { at: 1_800_000_000_000 + s.clockStep.atMs, delta: s.clockStep.deltaMs } : undefined,
     stall: s.stall,
@@ -294,6 +297,13 @@ export async function run(s: Scenario) {
   const mergeLines = [...lines].filter(([line]) => line.includes("merged by bob"))
   const toasted = new Set([...lines.keys()].map((line) => Number(/#(\d+)/.exec(line)?.[1])))
   const lost = events.filter((e) => !toasted.has(e.number))
+  // Each review request by the sessions that told it, whichever list told it, as the light check words it alike.
+  const tellers = new Map<number, Set<string>>()
+  for (const t of world.toasts) {
+    const number = Number(/#(\d+) .*review requested/.exec(t.line)?.[1])
+    if (number) tellers.set(number, (tellers.get(number) ?? new Set()).add(t.session))
+  }
+  const toldTwice = [...tellers].filter(([, who]) => who.size > 1).map(([number]) => number)
   const ciToasts = world.toasts.filter((t) => t.line.includes("#1 "))
 
   return {
@@ -307,6 +317,7 @@ export async function run(s: Scenario) {
     duplicates,
     lost,
     events,
+    toldTwice,
     ciToasts,
     errors: sims.flatMap((sim) => sim.errors.map((e) => `${sim.name}: ${e}`)),
     aborted: sims.reduce((n, sim) => n + sim.aborted, 0),

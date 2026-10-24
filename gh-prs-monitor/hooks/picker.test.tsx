@@ -6,11 +6,13 @@ import type { Engine } from "claude-code/testing"
 
 import type { Answer, Question } from "../types"
 import { answerOpen, questionView } from "./dialog"
-import { answerKey, PICK_ALL_KEY, pickKey } from "./keys"
+import { answerKey, openKey, PICK_ALL_KEY, pickKey } from "./keys"
 import { pickerActions, pickerView } from "./picker"
 import type { PickerActions } from "./picker"
 import type { PickingQuestion } from "./picking"
-import type { QuestionKit } from "./question-frame"
+import type { QuestionKit, QuestionState } from "./question-frame"
+import { repoRowsView } from "./repo-rows"
+import { repoPickerQuestion } from "./repo-picker"
 import { createSession } from "./session"
 import type { Session } from "./session"
 import { readSettings } from "./settings"
@@ -48,37 +50,73 @@ const KIND: PickingQuestion = {
   }
 }
 
+// The repository picker: the folder's acme/app, shown; its clone of acme/web; acme/admin on GitHub, asking a review.
+const REPOS = repoPickerQuestion(
+  [
+    {
+      repo: { host: "github.com", name: "acme/app" },
+      clone: null,
+      mine: 0,
+      requested: 0,
+      isNew: false,
+      isFolder: true
+    },
+    {
+      repo: { host: "github.com", name: "acme/web" },
+      clone: "/code/web",
+      mine: 0,
+      requested: 0,
+      isNew: false,
+      isFolder: false
+    },
+    {
+      repo: { host: "github.com", name: "acme/admin" },
+      clone: null,
+      mine: 0,
+      requested: 1,
+      isNew: true,
+      isFolder: false
+    }
+  ],
+  { host: "github.com", name: "acme/app" }
+) as PickingQuestion
+
 // Re-Review's, where it would ask for a piece of text of its own: the keyboard starts in its field.
 const KIND_WITH_FIELD: PickingQuestion = {
   ...KIND,
   field: { label: "Focus", placeholder: "What to look at", submitLabel: "Start", otherHint: "" }
 }
 
-const NONE: PickerActions = { pick: () => {}, pickAll: () => {}, answer: () => {} }
+const NONE: PickerActions = { pick: () => {}, pickAll: () => {}, open: () => {}, answer: () => {} }
 
-type Drawing = { question: PickingQuestion; picks: readonly number[]; actions: PickerActions }
+type Drawing = { question: PickingQuestion; picks: readonly number[]; actions: PickerActions; state: QuestionState }
 
 // The picker as a surface draws it, through a drawing of the test's own beside the plugin's pane: one drawing hook a
 // test, drawing what `draw` was last given.
 function drawer($: Engine, on: On) {
-  let current: Drawing = { question: PEOPLE, picks: [], actions: NONE }
+  let current: Drawing = { question: PEOPLE, picks: [], actions: NONE, state: NOT_CHECKING }
   let mounted: { unmount: () => Promise<unknown> } | null = null
   on("ui.render", { component: "Pane", requestId: "picker" }, async ($, e) => {
     const { Box, Text, Button, ...rest } = $.ui.resolve(e)
     const Input = e.surface !== "mobile" && "Input" in rest ? rest.Input : undefined
     const field = { key: "answer-text-1", read: () => "", keep: () => {} }
-    const site = { surface: e.surface, isEscapable: false }
+    const site = { surface: e.surface, isEscapable: false, columns: e.props.bodyColumns, isCompact: false }
+    const kit = { Box, Text, Button, Input }
+    const { question, picks, actions, state } = current
 
-    return pickerView({ Box, Text, Button, Input }, current.question, current.picks, current.actions, field, site)
+    return question.picking.rows
+      ? repoRowsView(kit, question, question.picking.rows, actions, field, site, state)
+      : pickerView(kit, question, picks, actions, field, site, state)
   })
 
   return async (
     question: PickingQuestion,
     picks: readonly number[],
     surface: (typeof SURFACES)[number] = "terminal",
-    actions: PickerActions = NONE
+    actions: PickerActions = NONE,
+    state: QuestionState = NOT_CHECKING
   ) => {
-    current = { question, picks, actions }
+    current = { question, picks, actions, state }
     await mounted?.unmount()
     const ui = await $.ui.mount({
       plugin: PLUGIN,
@@ -101,13 +139,19 @@ function drawer($: Engine, on: On) {
   }
 }
 
-const SITE = { surface: "terminal", isEscapable: false }
+const SITE = { surface: "terminal", isEscapable: false, columns: 100, isCompact: false }
+const NOT_CHECKING = { checking: null, problem: null }
+
+// The keys of what a drawing puts the keyboard on first.
+function focused(nodes: Drawn[]): unknown[] {
+  return nodes.filter((node) => node.props?.autoFocus).map((node) => node.props?.key ?? node.type)
+}
 
 // The picker built with plain elements (`plain`).
 function built(question: PickingQuestion, picks: readonly number[], actions: PickerActions) {
   const field = { key: "answer-text-1", read: () => "", keep: () => {} }
 
-  return plain((kit) => pickerView(kit, question, picks, actions, field, SITE))
+  return plain((kit) => pickerView(kit, question, picks, actions, field, SITE, NOT_CHECKING))
 }
 
 // A drawing built with plain elements, whose props keep their handlers and their key (an engine's element keeps the
@@ -213,8 +257,6 @@ describe("the picker as drawn", () => {
 
   test("the keyboard starts on the first name, else on the first answer, else in a field of the question's own", async ($, on) => {
     const draw = drawer($, on)
-    const focused = (nodes: Drawn[]) =>
-      nodes.filter((node) => node.props?.autoFocus).map((node) => node.props?.key ?? node.type)
 
     expect(focused((await draw(PEOPLE, [])).nodes)).toEqual([pickKey(0)])
     expect(focused((await draw(KIND, [0])).nodes)).toEqual([answerKey(0)])
@@ -226,6 +268,7 @@ describe("the picker as drawn", () => {
     const actions: PickerActions = {
       pick: (index) => seen.push(`pick ${index}`),
       pickAll: () => seen.push("all"),
+      open: (index) => seen.push(`open ${index}`),
       answer: (answer) => seen.push(`answer ${answer.choice}`)
     }
     const { press } = built(PEOPLE, [], actions)
@@ -263,6 +306,65 @@ describe("the picker as drawn", () => {
       expect(nodes.some((node) => node.type === "Input")).toBe(surface !== "mobile")
     }
   })
+
+  test("the repository picker's keyboard starts on the first Open, as its rows come before its field", async ($, on) => {
+    const draw = drawer($, on)
+
+    expect(focused((await draw(REPOS, [])).nodes)).toEqual([openKey(1)])
+  })
+
+  test("while an answer is carried out: the row opened says Checking…, else the field's Enter does", async ($, on) => {
+    const draw = drawer($, on)
+    const show = (picked: string) => ({ choice: "Show", instructions: "", picks: [picked] })
+    const label = (nodes: Drawn[], key: string) => nodes.find((node) => node.props?.key === key)?.props?.label
+    const submit = (nodes: Drawn[]) => nodes.find((node) => node.type === "Input")?.props?.submitLabel
+
+    const opened = (await draw(REPOS, [], "terminal", NONE, { checking: show(REPOS.picking.names[2]!), problem: null }))
+      .nodes
+    expect(label(opened, openKey(2))).toBe("Checking…")
+    expect(submit(opened)).toBe("Show")
+    // "show" typed in the field gives Show with the one shown picked, whose row has no Open to say it.
+    const typed = (await draw(REPOS, [], "terminal", NONE, { checking: show(REPOS.picking.names[0]!), problem: null }))
+      .nodes
+    expect(submit(typed)).toBe("Checking…")
+    expect(label(typed, openKey(2))).toBe("Open")
+    // Typed after an Open that failed, whose row is still picked: the field's Enter gave it.
+    const after = { choice: null, instructions: "acme/docs", picks: [REPOS.picking.names[2]!] }
+    const retyped = (await draw(REPOS, [], "terminal", NONE, { checking: after, problem: null })).nodes
+    expect(submit(retyped)).toBe("Checking…")
+    expect(label(retyped, openKey(2))).toBe("Open")
+  })
+
+  test("a picker of names says Checking… on its main answer, then what kept it from working", async ($, on) => {
+    const draw = drawer($, on)
+    const given = { choice: "Request Review", instructions: "", picks: ["kim"] }
+
+    const checking = (await draw(PEOPLE, [0], "terminal", NONE, { checking: given, problem: null })).nodes
+    expect(labels(checking)).toContain("Checking…")
+    const refused = (await draw(PEOPLE, [0], "terminal", NONE, { checking: null, problem: "kim can't review it." }))
+      .nodes
+    expect(refused.some((node) => node.type === "Text" && node.children?.[0] === "⚠ kim can't review it.")).toBe(true)
+  })
+
+  test("the repository picker on every surface: a row each, by group, Open on all but the one shown, and Cancel", async ($, on) => {
+    const draw = drawer($, on)
+    for (const surface of SURFACES) {
+      const { nodes } = await draw(REPOS, [], surface)
+      const texts = nodes.filter((node) => node.type === "Text").map((node) => node.children?.[0])
+      expect(labels(nodes)).toEqual(["Open", "Open", "Cancel"])
+      expect(nodes.filter((node) => node.type === "Button").map((node) => node.props?.key)).toEqual([
+        openKey(1),
+        openKey(2),
+        answerKey(1)
+      ])
+      expect(texts).toEqual(expect.arrayContaining(["On this machine", "On GitHub", "✓ Shown", "/code/web"]))
+      // An app parts the rows as cards, where the terminal draws lines between them.
+      const cards = nodes.filter((node) => String(node.props?.key).startsWith("card-"))
+      expect(cards.length).toBe(surface === "terminal" ? 0 : 3)
+      expect(nodes.some((node) => node.type === "Input")).toBe(surface !== "mobile")
+      expect(texts.includes("To type one, use the computer: this app has no text field.")).toBe(surface === "mobile")
+    }
+  })
 })
 
 describe("the picker's presses", () => {
@@ -279,9 +381,11 @@ describe("the picker's presses", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
-      picks: [...question.picking.initial]
+      picks: [...question.picking.initial],
+      checking: null,
+      problem: null
     }
-    const actions: PickerActions = { ...pickerActions(session, () => redraws++), answer: answerOpen(session) }
+    const actions = pickerActions(session, () => redraws++, answerOpen(session))
 
     return { session, answers, actions, redraws: () => redraws }
   }
@@ -345,6 +449,17 @@ describe("the picker's presses", () => {
     ])
   })
 
+  test("a row opened is picked alone and gives the main answer, nothing typed along; while one is checked, nothing", () => {
+    const { session, answers, actions } = opened(REPOS)
+    session.asking!.draft = "acme/docs"
+
+    actions.open(2)
+    expect(answers).toEqual([{ choice: "Show", instructions: "", picks: [REPOS.picking.names[2]] }])
+    session.asking!.checking = answers[0]!
+    actions.open(1)
+    expect(answers).toHaveLength(1)
+  })
+
   test("a button kept from an earlier question acts on the one open now", () => {
     const { session, answers, actions } = opened(PEOPLE)
     session.asking = { ...session.asking!, question: KIND, picks: [0] }
@@ -385,7 +500,9 @@ describe("the open question in the pane", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
-      picks: [...(question.picking?.initial ?? [])]
+      picks: [...(question.picking?.initial ?? [])],
+      checking: null,
+      problem: null
     }
   }
 

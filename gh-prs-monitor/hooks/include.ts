@@ -79,8 +79,8 @@ async function includePatterns(host: Host, root: string): Promise<string[]> {
 
 // The ignored files of the checkout at `cwd` that the main checkout's include file takes, the same for the copy (from
 // the main checkout) as for cleanup (of a worktree it copied into), however git lists them there: a folder it ignores
-// whole as the folder, asked into only where a pattern could match in it, and a file apart. In a folder tools make again
-// only the patterns that name it count (`remadeFolderOf`, `namedIn`), so `*.pem` never reaches into an install.
+// whole as the folder, asked into only where a pattern could match in it, and a file apart. In a folder tools make
+// again only the patterns that name it count (`remadeFolderOf`, `namedIn`), so `*.pem` never reaches into an install.
 // Elsewhere every pattern counts, and a file tools make (a `.pyc`, a `.DS_Store`) is left out, unless a pattern names
 // its path. git itself matches the paths. Case is ignored here, as git ignores it where the file system does.
 async function includedFiles(host: Host, root: string, patterns: readonly string[], cwd = root): Promise<string[]> {

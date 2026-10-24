@@ -760,6 +760,30 @@ describe("a reload while a press was under way", () => {
   )
 })
 
+describe("a list kept over a reload", () => {
+  test(
+    "links its rows to their tickets at once, where no load runs to read the links again",
+    { options: { refresh: "on-demand" } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const keyed = { ...GITHUB, mine: [{ ...GITHUB.mine![0]!, headRefName: "feature/WEB-5761-menu" }] }
+      const store = { "tickets:github.com/acme/app": { "WEB-": "https://linear.app/acme/issue/{key}" } }
+      const seen = machine($, on, { github: keyed, branch: "main", uncommitted: 0, store }, clock)
+      keptOverReload(on, { snapshot: keptList(keyed), checkout: { branch: "main", head: "h", at: 0 } })
+      await startSession($)
+      await settleAll(clock, seen)
+
+      const ui = await mountPane($, "terminal")
+      expect(seen.runs.filter((line) => line.startsWith("gh api graphql"))).toEqual([])
+      expect(
+        drawnNodes(await ui.drawn()).some(
+          (node) => node.type === "Link" && node.props?.href === "https://linear.app/acme/issue/WEB-5761"
+        )
+      ).toBe(true)
+    }
+  )
+})
+
 describe("a list kept over a reload by an earlier version", () => {
   test(
     "marks the session's branch at once, from one look at the checkout, where no load runs",
@@ -925,9 +949,11 @@ describe("the pane's problem box", () => {
     expect(note?.props?.dimColor).toBe(true)
     const retry = nodes.find((node) => node.props?.key === "retry")
     expect(retry?.props?.variant).toBe("primary")
-    // Retry's row adds no spacing of its own: the box's gap is the line before it.
+    // Retry's row adds no line of its own: the box's gap is the line before it. Beside Retry, with no list at all,
+    // another repository's can show, a button's gap apart.
     const retryRow = nodes.find((node) => node.type === "Box" && node.children?.includes(retry))
-    expect(retryRow?.props ?? {}).toEqual({})
+    expect(retryRow?.props).toEqual({ columnGap: 1, rowGap: 0, flexWrap: "wrap" })
+    expect(nodes.find((node) => node.props?.key === "pick-repo")?.props?.label).toBe("Show Another Repository")
 
     // VS Code draws the theme's warning as plain text: there the frame and the title are the theme's terminal yellow.
     const editor = await mountPane($, "vscode")
@@ -976,6 +1002,8 @@ describe("the pane's problem box", () => {
 
     expect(texts.slice(0, 2)).toEqual(["⚠ Can't check pull requests", "Could not reach GitHub."])
     expect(texts[2]).toMatch(/^The list below is from \d\d:\d\d\. Checking again every 3 minutes\.$/)
+    // With a list below, Retry stands alone: the picker is the header's.
+    expect(await ui.find({ key: "pick-repo" })).toBeUndefined()
     expect(await ui.find({ type: "Text", text: "Fix the menu" })).toBeDefined()
   })
 
@@ -2503,8 +2531,8 @@ describe("sessions in the same repository", () => {
 })
 
 // The engine's end step and the settings hooks of a start, beneath the plugin (answering as `started` does), and what a
-// /clear or a resume does to the session's state: from `empty()` on, the list and the loading mark read as never written,
-// until written again.
+// /clear or a resume does to the session's state: from `empty()` on, the list and the loading mark read as never
+// written, until written again.
 function endsLikeClear(
   on: On,
   started: () => Promise<object> = async () => ({})
