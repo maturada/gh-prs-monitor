@@ -432,19 +432,45 @@ describe("alerts while a turn runs", () => {
     expect(kept).toEqual({
       turns: ["t1"],
       heldAlerts: {
-        held: ["✗ #1 Fix the menu — CI failed"],
-        heldSince: expect.any(Number),
-        changes: ["✗ #1 Fix the menu — CI failed"]
+        held: [
+          {
+            kind: "events",
+            from: "list",
+            repo: { host: "github.com", name: "acme/app" },
+            events: [{ kind: "ci", number: 1, title: "Fix the menu", by: null, symbol: "✗", event: "CI failed" }],
+            raisedAt: expect.any(Number)
+          }
+        ],
+        heldSince: expect.any(Number)
       }
     })
     await $.turn.complete(DONE)
     await clock.settle()
-    expect(kept).toEqual({ turns: [], heldAlerts: { held: [], heldSince: null, changes: [] } })
+    expect(kept).toEqual({ turns: [], heldAlerts: { held: [], heldSince: null } })
   })
 
-  // A module before 1.2.0 kept no `changes`: what it held still shows, with no system notification.
   test(
-    "alerts an older module held over a reload show when the turn ends, and notify nothing",
+    "alerts held over a reload show once their five minutes are up, though the turn goes on and no check runs",
+    { options: { refresh: "on-demand" } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+      const seen = machine($, on, world)
+      keptOverReload(on, { turns: ["t1"], heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: clock.now() } })
+      await startSession($)
+      await clock.settle()
+
+      await clock.advance(4 * MINUTE)
+      expect(seen.toasts).toEqual([])
+      await clock.advance(MINUTE)
+      expect(seen.toasts).toEqual(["✓ #9 Old work — approved"])
+    }
+  )
+
+  // A module before 1.5.0 held lines alone: what it held still shows, with no system notification, also where 1.2.0 to
+  // 1.4.0 kept which of them were changes.
+  test(
+    "alerts a module before 1.2.0 held over a reload show when the turn ends, and notify nothing",
     { options: { systemNotification: true } },
     async ($, on) => {
       const clock = clockOf(on)
@@ -462,7 +488,7 @@ describe("alerts while a turn runs", () => {
   )
 
   test(
-    "alerts this version held over a reload notify when the turn ends, as they would have",
+    "alerts 1.4.0 held over a reload show when the turn ends, and notify nothing",
     { options: { systemNotification: true } },
     async ($, on) => {
       const clock = clockOf(on)
@@ -471,6 +497,31 @@ describe("alerts while a turn runs", () => {
       keptOverReload(on, {
         turns: ["t1"],
         heldAlerts: { held: ["✓ #9 Old work — approved"], heldSince: 0, changes: ["✓ #9 Old work — approved"] }
+      })
+      await startSession($)
+      await clock.settle()
+
+      await $.turn.complete(DONE)
+      await clock.settle()
+      expect(seen.toasts).toEqual(["✓ #9 Old work — approved"])
+      expect(triedToNotify(seen.debug)).toBe(false)
+    }
+  )
+
+  test(
+    "alerts this version held over a reload notify when the turn ends, as they would have",
+    { options: { systemNotification: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
+      const seen = machine($, on, world)
+      const approved = { kind: "reviews", number: 9, title: "Old work", by: null, symbol: "✓", event: "approved" }
+      keptOverReload(on, {
+        turns: ["t1"],
+        heldAlerts: {
+          held: [{ kind: "events", from: "list", repo: { host: "github.com", name: "acme/app" }, events: [approved] }],
+          heldSince: 0
+        }
       })
       await startSession($)
       await clock.settle()
@@ -500,7 +551,7 @@ describe("alerts while a turn runs", () => {
     expect(seen.toasts).toEqual(["✗ #1 Fix the menu — CI failed"])
   })
 
-  test("holding starts over with each turn: the next one's alerts wait their own quarter of an hour", async ($, on) => {
+  test("holding starts over with each turn: the next one's alerts wait their own five minutes", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
     const seen = machine($, on, world)
@@ -515,13 +566,13 @@ describe("alerts while a turn runs", () => {
     await clock.settle()
     expect(seen.toasts).toEqual(["✗ #1 Fix the menu — CI failed"])
 
-    // The next turn starts at once; its alert from minute 9 still waits at minute 18, fifteen minutes after the first
+    // The next turn starts at once; its alert from minute 9 still waits at minute 13, ten minutes after the first
     // turn's began to.
     await $.turn.start({ text: "again", turnId: "t2" } as never)
     await clock.advance(3 * MINUTE)
     world.github = { ...FAILED, mine: [FAILED.mine![0]!, { ...FAILED.mine![1]!, ci: "FAILURE" }] }
     await clock.advance(3 * MINUTE)
-    await clock.advance(9 * MINUTE)
+    await clock.advance(4 * MINUTE)
     expect(seen.toasts).toHaveLength(1)
 
     await $.turn.complete({ answer: "", durationMs: 1, isAborted: false, reason: "answer", turnId: "t2" } as never)
@@ -591,7 +642,7 @@ describe("alerts while a turn runs", () => {
     expect(seen.toasts).toEqual(["✗ #1 Fix the menu — CI failed"])
   })
 
-  test("a long turn shows what it held each quarter of an hour, and goes on holding", async ($, on) => {
+  test("a long turn shows what it held every five minutes, and goes on holding", async ($, on) => {
     const clock = clockOf(on)
     const world: World = { github: GITHUB, branch: "main", uncommitted: 0 }
     const seen = machine($, on, world)
@@ -605,7 +656,7 @@ describe("alerts while a turn runs", () => {
       ...FAILED,
       requested: [...GITHUB.requested!, { number: 8, title: "Activity cards", author: "bob" }]
     }
-    await clock.advance(15 * MINUTE)
+    await clock.advance(5 * MINUTE)
 
     expect(seen.toasts).toEqual(["✗ #1 Fix the menu — CI failed", "⌕ #8 Activity cards (bob) — review requested"])
 
@@ -619,7 +670,7 @@ describe("alerts while a turn runs", () => {
       ...world.github,
       mine: world.github.mine!.map((pull) => (pull.number === 9 ? { ...pull, mergeable: "CONFLICTING" } : pull))
     }
-    await clock.advance(3 * MINUTE)
+    await clock.advance(MINUTE)
     expect(seen.toasts).toHaveLength(2)
 
     await $.turn.complete(DONE)
@@ -690,7 +741,7 @@ describe("ready to merge, as alerts", () => {
 describe("one toast per change across sessions", () => {
   const KEY = "shown"
   const LINE = "✗ #1 Fix the menu — CI failed"
-  const MARK = `github.com/acme/app ${LINE}`
+  const MARK = "github.com/acme/app#1 CI failed"
 
   test("a change this session shows is marked for the others, at the time it showed", async ($, on) => {
     const clock = clockOf(on)

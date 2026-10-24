@@ -14,12 +14,12 @@ import type { Host } from "./machine"
 import { CREATE_PR } from "./create-flow"
 import { OPEN_QUESTION_NOTE } from "./dialog-flow"
 import type { ClosedState } from "./ended"
-import { messageOf } from "./gh"
+import { messageOf, pullKey, repoKey } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
-import { currentPull, problemOf, viewRepo, WriteRefused } from "./github"
+import { currentPull, problemOf, WriteRefused } from "./github"
 import { entryNumber, ownEntries } from "./list"
 import { withoutMerged } from "./pulls"
-import type { Mark, Session } from "./session"
+import type { ListRef, Mark, Session } from "./session"
 import { statusSummary } from "./summary"
 
 // What a press on a pull request's row reaches beyond git and gh (`Host`), handed in by the hooks module: the
@@ -33,7 +33,10 @@ export type PressHost = Host & {
   notify: (text: string, timeoutMs: number) => Promise<void>
   // What kept gh from asking GitHub, told for as long as it needs (`notifyProblem`).
   notifyProblem: (problem: GhProblem) => Promise<void>
-  // The session's state: the list, the rows shown merged, the problem shown, the demo, and the status line.
+  // The list a press is on (the folder's, or a visit's): its repository, found where no load has yet, or why not; its
+  // load under way, once ended; and its rows, the rows shown merged, the problem shown, the demo, and the status line.
+  repo: () => Promise<{ repo: RepoRef } | { problem: GhProblem }>
+  settled: () => Promise<void>
   storedList: () => Promise<PullsSnapshot | null>
   keepList: (change: (list: PullsSnapshot | null) => PullsSnapshot | null) => Promise<PullsSnapshot | null>
   merged: () => Promise<MergedPull[]>
@@ -106,7 +109,7 @@ export async function settleAfterWrite(host: PressHost): Promise<void> {
 const SEARCH_LAG_MS = 15_000
 
 export async function dropMerged(host: PressHost, session: Session, row: PullRow): Promise<void> {
-  await session.checks.inFlight?.done.catch(() => undefined)
+  await host.settled()
   // Its place in the list as drawn, among any others merged a moment ago.
   const snapshot = await host.storedList()
   const drawn = snapshot ? ownEntries(snapshot.mine, await host.merged()) : []
@@ -156,9 +159,9 @@ export async function resumeMerged(host: PressHost, session: Session): Promise<v
 // it then, null where that could not be read.
 export type Look = { isGoing: false } | { isGoing: true; repo: RepoRef; current: CurrentPull | null }
 
-// Before a question: none may be open already; the session's repository must be known, a press before any load since a
-// reload looking it up here, and be the list's; and the pull request must still stand as the list, which can be
-// minutes old, showed it (`lookAtPull`).
+// Before a question: none may be open already; the list's repository must be known, a press before any load since a
+// reload looking the folder's up here, and be the list's; and the pull request must still stand as the list, which
+// can be minutes old, showed it (`lookAtPull`).
 export async function lookBeforeAsking(
   host: PressHost,
   session: Session,
@@ -170,14 +173,14 @@ export async function lookBeforeAsking(
 
     return { isGoing: false }
   }
-  const known = await sessionRepo(host, session)
+  const known = await host.repo()
   if ("problem" in known) {
     await host.notifyProblem(known.problem)
 
     return { isGoing: false }
   }
-  // A list kept over a reload may be of another repository than the one this session's folder is in now: its number
-  // names another pull request there.
+  // A list kept over a reload may be of another repository than the one this session's folder is in now, as a visit
+  // ended meanwhile may: its number names another pull request there.
   const list = await host.storedList()
   if (list && list.repo.toLowerCase() !== known.repo.name.toLowerCase()) {
     await host.notify(
@@ -229,39 +232,50 @@ async function stopStale(host: PressHost, session: Session, row: PullRow, stale:
   await (isShownMerged ? dropMerged(host, session, row) : settleAfterWrite(host))
 }
 
-// The session's repository for a press or a typed skill, looked up here where no load has found it since a reload. What
-// kept it from being found is the loads' to show, and to stop the checks for: a press may end after a load that worked.
-export async function sessionRepo(host: Host, session: Session): Promise<{ repo: RepoRef } | { problem: GhProblem }> {
-  if (session.repo) {
-    return { repo: session.repo }
-  }
-  const viewed = await viewRepo(host)
-  if ("repo" in viewed) {
-    session.repo ??= viewed.repo
-  }
-
-  return session.repo ? { repo: session.repo } : viewed
-}
-
 // --- A row's busy mark ---
 
 // What each row at work shows in place of its buttons, by its mark (`Mark`).
 export type BusyMarks = Readonly<Record<string, string>>
 
-// The marks with `mark` claimed for `label`; null where it is held already, so two quick presses cannot both start a
-// flow for the same pull request.
-export function claimedBusy(all: BusyMarks, mark: Mark, label: string): BusyMarks | null {
+// Where a list's busy marks are kept: the folder's under the mark itself, as ever; a visit's under its repository too
+// (`github.com/acme/web#12`), so its #12 is never the folder's.
+export function markKey(list: ListRef, mark: Mark): string {
+  return list.kind === "folder" ? String(mark) : pullKey(list.repo, mark)
+}
+
+function marksPrefix(repo: RepoRef): string {
+  return `${repoKey(repo)}#`
+}
+
+// A visit's marks as its pane draws them, by mark.
+export function marksOfVisit(all: BusyMarks, repo: RepoRef): BusyMarks {
+  const own = marksPrefix(repo)
+
+  return Object.fromEntries(
+    Object.entries(all).flatMap(([key, label]) => (key.startsWith(own) ? [[key.slice(own.length), label]] : []))
+  )
+}
+
+// A toast's or a question's pull request named on a visit's list with its repository (`acme/web#12`), as `#12` alone
+// names the folder's.
+export function namedOn(list: ListRef, text: string): string {
+  return list.kind === "visit" && text.startsWith("#") ? `${list.repo.name}${text}` : text
+}
+
+// The marks with `mark` (a `Mark`, or a visit's key for one, `markKey`) claimed for `label`; null where it is held
+// already, so two quick presses cannot both start a flow for the same pull request.
+export function claimedBusy(all: BusyMarks, mark: Mark | string, label: string): BusyMarks | null {
   return all[String(mark)] ? null : { ...all, [String(mark)]: label }
 }
 
 // The marks with `mark` showing `label`, or with none.
-export function withBusy(all: BusyMarks, mark: Mark, label: string | null): BusyMarks {
+export function withBusy(all: BusyMarks, mark: Mark | string, label: string | null): BusyMarks {
   const { [String(mark)]: _was, ...rest } = all
 
   return label ? { ...rest, [String(mark)]: label } : rest
 }
 
 // The marks without `mark` where it still shows `label`: one taken for other work since stays.
-export function withoutBusyIf(all: BusyMarks, mark: Mark, label: string): BusyMarks {
+export function withoutBusyIf(all: BusyMarks, mark: Mark | string, label: string): BusyMarks {
   return all[String(mark)] === label ? withBusy(all, mark, null) : all
 }

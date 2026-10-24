@@ -1,6 +1,6 @@
 {
   "name": "gh-prs-monitor",
-  "description": "gh-prs-monitor: a Claude Code plugin for your GitHub pull requests, your reviews and the tickets behind them",
+  "description": "gh-prs-monitor: a Claude Code plugin for your GitHub pull requests across your repositories, your reviews and the tickets behind them",
   "owner": {
     "name": "David Matura",
     "url": "https://github.com/maturada"

@@ -1,12 +1,21 @@
 // Author: David Matura
 
 import type { Answer, PullAction, Question } from "../types"
+import { ACTION_LABELS } from "./actions"
+import { DEFAULT_HOST } from "./gh"
+import type { RepoRef } from "./gh"
 import { oneLine, quotedArg } from "./args"
+import { canOpenSession } from "./new-session"
 import { CANCEL, isDecline, pullSubject } from "./question"
 
 // The bundled skills that work on a pull request's branch: where they work is asked alike, and their arguments read
 // alike.
 export type BranchSkill = Extract<PullAction, "resolve" | "fixCi" | "resolveConflicts">
+
+// Resolve Comments, Fix CI and Resolve Conflicts: the buttons that work on the pull request's branch.
+export function isBranchSkill(action: PullAction): action is BranchSkill {
+  return action === "resolve" || action === "fixCi" || action === "resolveConflicts"
+}
 
 // What each is there for, as the question names it.
 const PURPOSES: Readonly<Record<BranchSkill, { what: string; done: string }>> = {
@@ -121,6 +130,65 @@ export function placeDetail(
 
 // Where instructions sent alone go (`readPlaceAnswer`).
 const PLACE_INSTRUCTIONS = "to a worktree in this session"
+
+// A branch skill pressed on a visit: another repository's pull request is worked on in a clone of it, never in this
+// session's folder, which the question says first. With a clone known (`clone`, as shown) and an app that opens a
+// session in a folder (`opens`), it offers a new session there, with `/prs owner/name` typed in for the person to send
+// and press the button again. VS Code, which can't open another folder from a link, and a surface that opens no session
+// at all are told the folder and the steps, VS Code not named, as the editor may be another built on it; with none
+// known, how to make one known.
+export function openCloneQuestion(
+  skill: BranchSkill,
+  pull: { number: number; title: string; headRefName: string },
+  repo: RepoRef,
+  clone: string | null,
+  opens: "folder" | "vscode" | "none"
+): Question {
+  const { what, done } = PURPOSES[skill]
+  const work = `${what.charAt(0).toUpperCase()}${what.slice(1)} on ${pull.headRefName} get ${done}`
+  const prs = `/prs ${repo.name}`
+  const again = `then press ${ACTION_LABELS[skill]} on #${pull.number}`
+  const isOpening = clone !== null && opens === "folder"
+  const text = !clone
+    ? `${work} in a clone of ${repo.name}, not in this session's folder, and none is known on this machine.`
+    : `${work} in your clone of ${repo.name} at ${clone}, not in this session's folder.${isOpening ? " Start a new session there?" : ""}`
+  const detail = !clone
+    ? `Clone it if you haven't (gh repo clone ${cloneName(repo)}), open a Claude Code session in it once, and it is offered here.`
+    : isOpening
+      ? `It opens with ${prs} typed in: send it, ${again} there.`
+      : opens === "vscode"
+        ? `Open that folder in a new window, run ${prs} in Claude Code there, ${again}.`
+        : `On the computer, open a Claude Code session there, run ${prs}, ${again}.`
+
+  return {
+    header: SKILL_HEADERS[skill],
+    subject: pullSubject(pull),
+    text,
+    detail,
+    choices: isOpening ? [`${NEW_SESSION_IN} ${clone}`, CANCEL] : [OK],
+    main: isOpening ? `${NEW_SESSION_IN} ${clone}` : OK,
+    instructions: null
+  }
+}
+
+// The repository as `gh repo clone` takes it: its server named where it isn't GitHub's own.
+function cloneName(repo: RepoRef): string {
+  return repo.host.toLowerCase() === DEFAULT_HOST ? repo.name : `${repo.host}/${repo.name}`
+}
+
+// What a branch skill on a visit can do with a clone from `surface` (`openCloneQuestion`): open a new session in it; in
+// VS Code, which opens no other folder from a link, tell it; where no new session opens at all, tell it too.
+export function cloneOpens(surface: string): "folder" | "vscode" | "none" {
+  return !canOpenSession(surface) ? "none" : surface === "vscode" ? "vscode" : "folder"
+}
+
+const NEW_SESSION_IN = "New Session in"
+const OK = "OK"
+
+// Whether the answer opens a new session in the clone the question offered.
+export function isOpeningClone(answer: Answer | null): boolean {
+  return answer?.choice?.startsWith(`${NEW_SESSION_IN} `) === true
+}
 
 // Instructions go with any place; sent alone, they work in a worktree in this session.
 export function readPlaceAnswer(answer: Answer): BranchPlace {

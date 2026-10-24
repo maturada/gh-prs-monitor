@@ -1,10 +1,10 @@
 # Real git: the plugin's checkouts, copies and cleanup on throwaway repositories
 
 The test suite answers git with a fake host. These cases run the plugin's own code (`switchHere`, `prepareWorktree`,
-`copyIncluded`, `firstNotInMain`, `removePullWorktree`, `ensureDependencies`) against real git, in repositories made
-for each case: a bare `acme/app.git` standing in for GitHub, a teammate's clone that pushes the pull request's branch,
-and the person's clone the plugin works in. GitHub's API is answered by the harness from the bare repository; nothing
-reaches the network.
+`copyIncluded`, `firstNotInMain`, `removePullWorktree`, `ensureDependencies`, `mainRoot`, `readClone`, `readFolder`,
+`checkClone`) against real git, in repositories made for each case: a bare `acme/app.git` standing in for GitHub, a
+teammate's clone that pushes the pull request's branch, and the person's clone the plugin works in. GitHub's API is
+answered by the harness from the bare repository; nothing reaches the network.
 
 Each case states what should happen in its title (`=== … : kept`, `removed`, `copied …`), and the switch cases print
 what the plugin did beside what plain git and gh's own checkout steps do in the same clone, and what each lost:
@@ -31,10 +31,10 @@ zsh maintenance/real-git/run.sh <older copy> before                      # a ver
 python3 maintenance/real-git/compare.py before now
 ```
 
-Outputs are in `.work/real-git/<name>/`; the last run's repositories are under `.work/real-git/run/git/`. Every git command
-runs with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`, so no setting of yours reaches a case, and only folders
-under the run's `git/` are touched. `deps-yarn-pnp` runs real Yarn 4 through corepack (it needs Node and the network
-the first time), so it runs only when named.
+Outputs are in `.work/real-git/<name>/`; the last run's repositories are under `.work/real-git/run/git/`. Every git
+command runs with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`, so no setting of yours reaches a case, and only
+folders under the run's `git/` are touched. `deps-yarn-pnp` runs real Yarn 4 through corepack (it needs Node and the
+network the first time), so it runs only when named.
 
 ## The sets
 
@@ -46,6 +46,7 @@ the first time), so it runs only when named.
 | `cleanup*` | when a merged pull request's worktree is removed and when it is kept: copies the same or edited, what tools make again |
 | `deps`, `deps-yarn-pnp` | the projects found in a monorepo and the installs run, faked or real |
 | `skill-resolve-conflicts`, `skills` | the skills' git commands as their text gives them: merges, rebases, pushes, the moves of a checkout |
+| `clones` | the folder a session notes (its main checkout, from a worktree too) and the folders a visit offers, by their own git config: moved, deleted, pointed elsewhere, an SSH alias, a fork; a typed folder's repository as gh picks it |
 
 `probe-switch.sh` and `probe-states.sh` are the probes the switch sets run each case through; `lib.sh` makes the
 repositories. The harness (`harness/`) calls the plugin's functions with a host over the real machine

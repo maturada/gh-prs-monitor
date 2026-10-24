@@ -1,21 +1,22 @@
 # Author: David Matura
 #
 # The setup GIF of docs/tickets.md: frames of the pane as `/prs tickets` draws it, with the plugin's own texts and
-# made-up data (acme/app, three of the demo's examples), in alerts.gif's look; rendered at 2x by headless Chrome and
-# assembled by ffmpeg. Its frames are worked in maintenance/.work/gif/, and the GIF goes to the plugin's screenshots.
+# made-up data (acme/app, three of the demo's examples), in a terminal window's look; rendered at 2x by headless Chrome,
+# each frame set on the README's card (card.py) and the GIF encoded there. Its frames are worked in
+# maintenance/.work/gif/, and the GIF goes to the plugin's screenshots.
 import html
 import os
 import pathlib
-import re
-import shutil
 import subprocess
+
+from card import Panel, animated
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERE = os.path.join(ROOT, "maintenance", ".work", "gif")
 GIF = os.path.join(ROOT, "gh-prs-monitor", "assets", "screenshots", "tickets.gif")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 WIDTH, HEIGHT = 820, 560
-FLAGGED = re.compile(rb"(?i)iex|irm|iwr|npx|curl|wget|cmd|powershell|bash")
+CAPTION = "Ticket links, set up from one link"
 
 STYLE = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -114,7 +115,7 @@ def listed(with_tickets):
     header = (
         '<div class="panel"><div><span class="b">acme/app</span> &nbsp;<span class="ok">✅</span> 1 &nbsp;'
         '<span class="bad">❗</span> 2</div><div class="dim">updated 12:44</div>'
-        '<div class="dim">[ Compact ] [ Refresh ]</div></div>'
+        '<div class="dim">[ Repositories ] [ Compact ] [ Refresh ]</div></div>'
     )
     # In the order the pane sorts them: conflicting first, then what needs you, then what can merge.
     rows = (
@@ -174,27 +175,7 @@ def render():
              f"--window-size={WIDTH},{HEIGHT}", f"--screenshot={target}", pathlib.Path(source).as_uri()],
             check=True, capture_output=True)
         pngs.append((target, seconds))
-    listing = os.path.join(HERE, "frames.txt")
-    with open(listing, "w") as file:
-        for target, seconds in pngs:
-            file.write(f"file '{target}'\nduration {seconds}\n")
-        file.write(f"file '{pngs[-1][0]}'\n")
-    palette = os.path.join(HERE, "palette.png")
-    out = os.path.join(HERE, "tickets.gif")
-    # The plugin directory's scan flags byte runs that spell commands (as `iex` in 1.0.1's compact.png): another palette
-    # size encodes the same frames in other bytes, until one holds none.
-    for colours in range(64, 24, -1):
-        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing,
-                        "-vf", f"palettegen=max_colors={colours}:stats_mode=full", palette], check=True)
-        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing, "-i",
-                        palette, "-lavfi", "paletteuse=dither=none", "-loop", "0", out], check=True)
-        with open(out, "rb") as file:
-            if not FLAGGED.search(file.read()):
-                shutil.copyfile(out, GIF)
-                print(GIF, os.path.getsize(GIF), f"{colours} colours, no flagged run")
-                return
-    raise SystemExit("Every palette tried has a flagged run: render again a pixel wider or taller.")
-
+    animated(GIF, [([Panel(CAPTION, target, WIDTH)], seconds) for target, seconds in pngs])
 
 if __name__ == "__main__":
     render()

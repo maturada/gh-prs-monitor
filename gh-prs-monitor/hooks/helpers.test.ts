@@ -2,10 +2,30 @@
 
 import { describe, expect, test } from "claude-code/testing"
 
-import { branchPlaceQuestion, CHOICES, placeChoices, placeDetail, readPlaceAnswer, skillArgs } from "./branch-flow"
+import {
+  branchPlaceQuestion,
+  CHOICES,
+  cloneOpens,
+  isBranchSkill,
+  isOpeningClone,
+  openCloneQuestion,
+  placeChoices,
+  placeDetail,
+  readPlaceAnswer,
+  skillArgs
+} from "./branch-flow"
 import { readAnswer, readSessionAnswer, SESSION_CHOICES } from "./question"
-import { describeGhFailure, failureLine, firstLine, GH_MISSING, ghRunFailure, lastLine, parseRepoView } from "./gh"
-import { pullNumberOf, pullRefIn } from "./args"
+import {
+  describeGhFailure,
+  failureLine,
+  firstLine,
+  GH_MISSING,
+  ghRunFailure,
+  lastLine,
+  parseRepoView,
+  sameRepo
+} from "./gh"
+import { pullNumberOf, pullRefIn, readAddress } from "./args"
 import { createArgs } from "./create-flow"
 import { mainRootOf, parseWorktreeList, prNumberOf, worktreePath } from "./worktrees"
 import {
@@ -919,6 +939,7 @@ describe("the pull request a skill's arguments name", () => {
     expect(pullNumberOf("#7", null)).toBe(7)
     expect(pullNumberOf("https://github.com/acme/app/pull/7", REPO)).toBe(7)
     expect(pullNumberOf("https://GitHub.com/Acme/App/pull/7/files", REPO)).toBe(7)
+    expect(pullNumberOf("https://github.com/acme/app/pull/7#discussion_r1", REPO)).toBe(7)
   })
 
   test("another repository's or host's address, or an address with no repository known, names none here", () => {
@@ -926,6 +947,57 @@ describe("the pull request a skill's arguments name", () => {
     expect(pullNumberOf("https://ghe.example.com/acme/app/pull/7", REPO)).toBe(null)
     expect(pullNumberOf("https://github.com/acme/app/pull/7", null)).toBe(null)
     expect(pullNumberOf("menu", REPO)).toBe(null)
+  })
+})
+
+describe("a repository's or pull request's address", () => {
+  test("a pull request's address names its server, repository and number, whatever follows the number", () => {
+    expect(readAddress("https://github.com/acme/web/pull/12")).toEqual({
+      host: "github.com",
+      name: "acme/web",
+      number: 12
+    })
+    expect(readAddress("https://GitHub.com/Acme/Web/pull/12/files")).toEqual({
+      host: "GitHub.com",
+      name: "Acme/Web",
+      number: 12
+    })
+    expect(readAddress("https://github.com/acme/web/pull/12?w=1#discussion_r1")?.number).toBe(12)
+    expect(readAddress("  https://ghe.example.com/acme/web/pull/3  ")).toEqual({
+      host: "ghe.example.com",
+      name: "acme/web",
+      number: 3
+    })
+  })
+
+  test("a repository's address, or one of its pages, names no pull request", () => {
+    expect(readAddress("https://github.com/acme/web")).toEqual({ host: "github.com", name: "acme/web", number: null })
+    expect(readAddress("https://github.com/acme/web/")?.number).toBe(null)
+    expect(readAddress("https://github.com/acme/web/pulls")).toEqual({
+      host: "github.com",
+      name: "acme/web",
+      number: null
+    })
+    expect(readAddress("https://github.com/acme/web.git")?.name).toBe("acme/web")
+  })
+
+  test("anything that isn't an address on a repository is none", () => {
+    expect(readAddress("acme/web")).toBe(null)
+    expect(readAddress("https://github.com/acme")).toBe(null)
+    expect(readAddress("github.com/acme/web")).toBe(null)
+    expect(readAddress("https://github.com/acme/..")).toBe(null)
+    expect(readAddress("https://github.com/me@host/web")).toBe(null)
+    expect(readAddress("")).toBe(null)
+  })
+})
+
+describe("sameRepo", () => {
+  test("one repository is the same name on the same server, in any letter case", () => {
+    expect(sameRepo({ host: "github.com", name: "acme/web" }, { host: "GitHub.com", name: "Acme/Web" })).toBe(true)
+    expect(sameRepo({ host: "github.com", name: "acme/web" }, { host: "ghe.example.com", name: "acme/web" })).toBe(
+      false
+    )
+    expect(sameRepo({ host: "github.com", name: "acme/web" }, { host: "github.com", name: "acme/app" })).toBe(false)
   })
 })
 
@@ -1053,7 +1125,9 @@ describe("putting the pane's window back after a question", () => {
       isInPane: true,
       fieldKey: "answer-text",
       draft: "",
-      picks: []
+      picks: [],
+      checking: null,
+      problem: null
     }
     const window = { listOffset: 3, goingBack: { offset: 3 } as { offset: number } | null, asking: null }
 
@@ -1368,5 +1442,70 @@ describe("/prs report", () => {
     }
 
     expect(await reportFacts(failing)).toEqual(NOTHING_READ)
+  })
+})
+
+describe("a branch skill on a visit's row", () => {
+  const pull = { number: 12, title: "Checkout page", headRefName: "feature/checkout" }
+  const WEB = { host: "github.com", name: "acme/web" }
+
+  test("with a clone and an app that opens a folder: where the work happens, a new session there, and what comes next", () => {
+    const question = openCloneQuestion("fixCi", pull, WEB, "~/code/web", "folder")
+
+    expect(question).toEqual({
+      header: "Fix CI",
+      subject: "#12 Checkout page",
+      text: "Its failing checks on feature/checkout get fixed in your clone of acme/web at ~/code/web, not in this session's folder. Start a new session there?",
+      detail: "It opens with /prs acme/web typed in: send it, then press Fix CI on #12 there.",
+      choices: ["New Session in ~/code/web", "Cancel"],
+      main: "New Session in ~/code/web",
+      instructions: null
+    })
+    expect(isOpeningClone({ choice: "New Session in ~/code/web", instructions: "" })).toBe(true)
+    expect(isOpeningClone({ choice: "Cancel", instructions: "" })).toBe(false)
+    expect(isOpeningClone(null)).toBe(false)
+  })
+
+  test("where the app opens no folder from a link it says the steps, VS Code not named; where it opens no session, too", () => {
+    expect(openCloneQuestion("resolve", pull, WEB, "~/code/web", "vscode")).toMatchObject({
+      text: "Its review comments on feature/checkout get resolved in your clone of acme/web at ~/code/web, not in this session's folder.",
+      detail:
+        "Open that folder in a new window, run /prs acme/web in Claude Code there, then press Resolve Comments on #12.",
+      choices: ["OK"]
+    })
+    expect(openCloneQuestion("resolve", pull, WEB, "~/code/web", "none")).toMatchObject({
+      detail:
+        "On the computer, open a Claude Code session there, run /prs acme/web, then press Resolve Comments on #12.",
+      choices: ["OK"]
+    })
+  })
+
+  test("what a surface can do with a clone: open a session in it, tell it in VS Code, tell it where none opens", () => {
+    expect(cloneOpens("terminal")).toBe("folder")
+    expect(cloneOpens("desktop")).toBe("folder")
+    expect(cloneOpens("vscode")).toBe("vscode")
+    expect(cloneOpens("mobile")).toBe("none")
+  })
+
+  test("the branch skills are Resolve Comments, Fix CI and Resolve Conflicts", () => {
+    expect(
+      ["resolve", "fixCi", "resolveConflicts", "review", "merge", "rerun"].map((action) =>
+        isBranchSkill(action as never)
+      )
+    ).toEqual([true, true, true, false, false, false])
+  })
+
+  test("with none known, how to make one known", () => {
+    expect(openCloneQuestion("resolveConflicts", pull, WEB, null, "folder")).toMatchObject({
+      text: "Its merge conflicts on feature/checkout get resolved in a clone of acme/web, not in this session's folder, and none is known on this machine.",
+      detail:
+        "Clone it if you haven't (gh repo clone acme/web), open a Claude Code session in it once, and it is offered here.",
+      choices: ["OK"],
+      main: "OK"
+    })
+    // On another server, gh is told which.
+    expect(
+      openCloneQuestion("fixCi", pull, { host: "ghe.example.com", name: "acme/web" }, null, "folder").detail
+    ).toContain("(gh repo clone ghe.example.com/acme/web)")
   })
 })

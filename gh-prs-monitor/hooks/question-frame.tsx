@@ -1,7 +1,8 @@
 // Author: David Matura
 
-// What every question the pane asks is drawn with, in place of the list: its frame, its field and its answers' row,
-// which the plugin's dialog (`dialog.tsx`) and the picker (`picker.tsx`) fill.
+// What every question the pane asks is drawn with, in place of the list: its frame, its field, its answers' row, Checking…
+// while an answer is carried out, and what kept one from working; which the plugin's dialog (`dialog.tsx`), the picker
+// (`picker.tsx`) and the repository picker's rows (`repo-rows.tsx`) fill.
 
 import type {
   BoxProps,
@@ -15,12 +16,25 @@ import type {
 
 import type { Answer, Question } from "../types"
 import { answerKey, firstFocusKey } from "./keys"
-import { buttonGaps, framePadding } from "./layout"
+import { buttonGaps, colourOn, framePadding } from "./layout"
 import { readAnswer } from "./question"
+import type { OpenQuestion } from "./session"
 
-// Where a question is drawn: the surface, and whether Escape reaches the pane there (the terminal, where the pane holds
-// the keyboard).
-export type QuestionSite = { surface: string; isEscapable: boolean }
+// Where a question is drawn: the surface, whether Escape reaches the pane there (the terminal, where the pane holds the
+// keyboard), the pane's width in columns, and whether the person picked its compact view.
+export type QuestionSite = { surface: string; isEscapable: boolean; columns: number; isCompact: boolean }
+
+// Where an answer given stands while it is carried out before the question closes (`ask`'s `check`): by the row picked
+// or by the main answer, and why the last one kept the question open.
+export type QuestionState = Pick<OpenQuestion, "checking" | "problem">
+
+// What a button, or a field's Enter, says while the answer it gave is checked.
+export const CHECKING_LABEL = "Checking…"
+
+// The main answer's look, saying Checking… while an answer is carried out.
+export function mainLookWhile(look: NonNullable<MainLook>, state: QuestionState): MainLook {
+  return state.checking ? { ...look, label: CHECKING_LABEL } : look
+}
 
 // The elements a question draws with: `Input` only where the surface has one (not the mobile app).
 export type QuestionKit = {
@@ -35,8 +49,9 @@ export type QuestionKit = {
 // as a button pressed later sends them along.
 export type InstructionsField = { key: string; read: () => string; keep: (text: string) => void }
 
-// How a question's main answer looks apart from the others.
-export type MainLook = Pick<ButtonProps, "variant" | "dimColor">
+// How a question's main answer looks apart from the others, and what it says while the answer it gave is checked; none
+// where another part of it gives that answer, as the repository picker's rows and field do.
+export type MainLook = Pick<ButtonProps, "variant" | "dimColor" | "label"> | null
 
 // Where a question asks for a piece of text and the surface draws no field (the mobile app), the person answers where
 // one is drawn.
@@ -83,12 +98,14 @@ export function questionFrame(
 // A question's field: its own where it asks for a piece of text, which says what its Enter does beside it; else one
 // for instructions where it takes them, which says under it where they go; none where the surface draws no field (the
 // phone), which a question asking for text then says. Enter answers with what was typed, read as an answer where it
-// names one (`readAnswer`); an empty Enter is no answer, so the question stays.
+// names one (`readAnswer`); an empty Enter is no answer, so the question stays. While what it gave is checked
+// (`isChecking`), its Enter says so.
 export function questionField(
   kit: QuestionKit,
   question: Question,
   field: InstructionsField,
-  answer: (answer: Answer) => void
+  answer: (answer: Answer) => void,
+  isChecking = false
 ): RenderElement | null {
   const { Box, Text, Input } = kit
   const input = question.field
@@ -116,7 +133,7 @@ export function questionField(
         {...(firstFocusKey(question, field.key) === field.key ? { autoFocus: true as const } : {})}
         label={input.label}
         placeholder={input.placeholder}
-        {...(input.submitLabel ? { submitLabel: input.submitLabel } : {})}
+        {...(input.submitLabel ? { submitLabel: isChecking ? CHECKING_LABEL : input.submitLabel } : {})}
         value={field.read()}
         onInput={field.keep}
         onSubmit={(text) => {
@@ -134,8 +151,20 @@ export function questionField(
   )
 }
 
+// What kept the answer last given from being carried out, said in the colour of the pane's problems, as the question
+// stays open to answer again.
+export function problemLine(kit: QuestionKit, site: QuestionSite, problem: string | null): RenderElement | null {
+  const { Text } = kit
+
+  return problem === null ? null : (
+    <Text color={colourOn(site.surface, "warning")} wrap="wrap">
+      {`⚠ ${problem}`}
+    </Text>
+  )
+}
+
 // A question's answers, a button each in a row that wraps, so a narrow pane cuts nothing off; the main one drawn as
-// `main` says. A press answers with its choice and the instructions typed along.
+// `main` says, or not at all. A press answers with its choice and the instructions typed along.
 export function answerRow(
   kit: QuestionKit,
   question: Question,
@@ -149,15 +178,17 @@ export function answerRow(
 
   return (
     <Box flexDirection="row" flexWrap="wrap" {...buttonGaps(site.surface)}>
-      {question.choices.map((choice, index) => (
-        <Button
-          key={answerKey(index)}
-          label={choice}
-          {...(answerKey(index) === focus ? { autoFocus: true as const } : {})}
-          {...(choice === question.main ? main : {})}
-          onPress={() => answer({ choice, instructions: field.read().trim() })}
-        />
-      ))}
+      {question.choices.map((choice, index) =>
+        choice === question.main && main === null ? null : (
+          <Button
+            key={answerKey(index)}
+            label={choice}
+            {...(answerKey(index) === focus ? { autoFocus: true as const } : {})}
+            {...(choice === question.main ? main : {})}
+            onPress={() => answer({ choice, instructions: field.read().trim() })}
+          />
+        )
+      )}
     </Box>
   )
 }

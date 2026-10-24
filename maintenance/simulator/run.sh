@@ -9,6 +9,7 @@ here=${0:a:h}
 dir=${1:?plugin folder}; name=${2:?name for this run}; shift 2
 worlds=($@)
 (( $#worlds )) || worlds=(random aligned near people wake slow looks slowstore flavors dups life exact closed dups-mid leave life2 slowclosed throws holds skew)
+# `elsewhere` runs only where named: a version before 1.5.0 has no light check.
 out=$here/../.work/sim/$name
 [[ -d $out ]] && chmod -R u+w $out
 rm -rf $out && mkdir -p $out/results $out/sim

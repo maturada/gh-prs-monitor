@@ -2,12 +2,15 @@
 
 You don't need to keep the pane open to know what your pull requests are doing. By default, gh-prs-monitor checks them
 in the background while you work and tells you when something changes: a review came in, CI failed, someone asked for
-your review. Whether it checks by itself, and how often, are the **Refresh** settings ([Settings](settings.md)).
+your review.
+
+Each alert is a toast, a small pop-up in the corner that goes away by itself. Whether the plugin checks by itself, and
+how often, are the **Refresh** settings ([Settings](settings.md)).
 
 ## What an alert looks like
 
-Each check is compared with the one before. Every pull request that changed gets one line, shown as a toast: the
-symbol of its first change, the pull request, and what happened, every change in turn.
+Each check is compared with the one before. Every pull request that changed gets one line as a toast: the symbol of its
+first change, the pull request, and what happened, every change in turn.
 
 ```
 ✓ #146 Offline downloads — ready to merge, approved by ann
@@ -20,10 +23,11 @@ symbol of its first change, the pull request, and what happened, every change in
 @ #151 Cache the map tiles offline (ann) — you were mentioned
 ```
 
-Toasts are for the checks nobody asked for: the regular ones, and those that follow a skill's work. When you look for
-yourself, by opening `/prs` or pressing **Refresh**, what changed shows in the list instead, where you are already
-looking: in the pane at the foot of each pull request, or, where the pane can't show, at the head of the list `/prs`
-prints.
+Toasts are for the checks nobody asked for: the regular ones, and those that follow a skill's work.
+
+When you look for yourself, by opening `/prs` or pressing **Refresh**, what changed shows in the list instead, where you
+are already looking. In the pane it sits at the foot of each pull request. Where the pane can't show, it is at the head
+of the list `/prs` prints.
 
 ## What you are alerted about
 
@@ -48,40 +52,70 @@ about the ones waiting on your review; mentions about anyone else's open pull re
 
 ## When alerts show
 
-By default, alerts don't cut into Claude's work. While a turn runs, they wait and show together when it finishes, so
-they don't cover what you are reading; a long turn shows what it held each quarter of an hour, then holds again. A
-reload of the plugin during the turn keeps holding them for it, and **Hold alerts while working** turns the waiting off.
+### While Claude is working
 
-Coming back is quiet too. A session's first check compares with your last look and sums up everything in one toast,
-`Since yesterday 17:40, 3 pull requests changed — see /prs`, and marks the changes in the pane; so does the first
-check after the desktop app's window opens again. With the pane already open and in front, the marks are enough, and
-no toast shows.
+By default, alerts don't cut into Claude's work. While a turn runs, they wait and show together when it finishes, so
+they don't cover what you are reading. A long turn shows what it held every five minutes, then holds again.
+
+A reload of the plugin during the turn keeps holding them for it. **Hold alerts while working** turns the waiting off.
+Even after a long turn, the alerts it held leave out what another session showed meanwhile.
+
+### Coming back
+
+Coming back is quiet too. With checks in the background, a session's first check compares with your last look and sums
+up everything in one toast, `Since yesterday 17:40, 3 pull requests changed — see /prs`, and marks the changes in the
+pane. So does the first check after the desktop app's window opens again. With the pane already open and in front, the
+marks are enough, and no toast shows.
+
+### How many show
 
 A check never shows more than three toasts: with more pull requests changed, you get two of them and a count of the
-rest. Each stays up for the **Alert duration**; hovering keeps it, and a click dismisses it.
+rest, `4 more pull request changes, see /prs`. Changes in [other repositories](other-repositories.md) among the rest are
+counted apart and named, `2 more changes in acme/admin, acme/web`, as `/prs` lists only this folder's. Each toast stays
+up for the **Alert duration**; hovering keeps it, and a click dismisses it.
 
-If you work in several sessions in one repository, worktrees side by side say, each change still shows once. The first
-session to show it notes it in the plugin's store, and the others leave it out for a while. The sessions share
-GitHub's answers too ([cost](settings.md#cost)), so a change one of them saw usually reaches the others' lists and
-status lines within 20 seconds, its alert still shown once. This holds in the terminal, VS Code and the desktop app
-alike.
+### Several sessions
+
+If you work in several sessions, worktrees side by side say, each change still shows once. The first session to show a
+change to a pull request records it in the plugin's store, and the others leave it out. This holds in the terminal, VS
+Code and the desktop app alike, and for the alerts from
+[other repositories](other-repositories.md#alerts-from-other-repositories) too.
+
+- The record is judged per change: a change one session showed is left out of another's toast even when that toast
+  holds other changes too.
+- Another session leaves a change out where it was shown no longer than twice the Refresh interval (at least ten
+  minutes) before that session raised it, and any time since, as while it waited out a long turn. An alert waits five
+  minutes at most, so a record is kept that long besides: at least 15 minutes in all.
+- The sessions share GitHub's answers too ([cost](settings.md#cost)), so a change one of them saw usually reaches the
+  others' lists and status lines within 20 seconds, its alert still shown once.
+
+## Other repositories
+
+Alerts cover this folder's repository. With **Alerts from other repositories** on, a light check tells you about
+reviews and CI in your other repositories too, and the pane's header counts what waits there, `+3 elsewhere`. The
+setting, what it alerts and what it costs are on
+[Other repositories](other-repositories.md#alerts-from-other-repositories).
 
 ## Sound and system notifications
 
 **Alert sound** plays a short chime with the toasts. It's off by default and macOS only, as Linux and Windows terminals
 have no player.
 
-**Alerts as system notifications** reaches you when Claude Code isn't in front. It sends the alerts of the kinds you
-turned on as a system notification too, one each time they show, with the first alert's line and how many came with it,
-under the repository's name. Only pull request changes go out, not the summary when a session starts or a cleanup's
-note. They go the way Claude Code's own notifications go, through its `preferredNotifChannel` setting: a banner in
-iTerm2, kitty or Ghostty, and your own `Notification` hooks wherever they run. Another terminal shows them once you
-choose a channel there: Warp, for one, shows them with the channel set to `iterm2`, while `terminal_bell` rings the bell
-without the text. Left to choose by itself in such a terminal, Claude Code sends nothing, for its own notifications too.
-The desktop app and VS Code show nothing more unless a `Notification` hook does. A notification goes out whether or not
-Claude Code is in front, and the terminal decides whether a banner shows over itself; macOS shows one only for a
-terminal its Notifications settings allow. It's off by default, needs Claude Code 2.1.295, and the toasts show either
-way.
+**Alerts as system notifications** reaches you when Claude Code isn't in front. It's off by default, needs Claude Code
+2.1.295, and the toasts show either way.
+
+- It sends the alerts of the kinds you turned on as a system notification too, one for each repository whose changes
+  show, with the first alert's line and how many came with it, under the repository's name.
+- Only pull request changes go out, not the summary when a session starts, the line about other repositories or a
+  cleanup's note.
+- They go the way Claude Code's own notifications go, through its `preferredNotifChannel` setting: a banner in iTerm2,
+  kitty or Ghostty, and your own `Notification` hooks wherever they run.
+- Another terminal shows them once you choose a channel there: Warp, for one, shows them with the channel set to
+  `iterm2`, while `terminal_bell` rings the bell without the text. Left to choose by itself in such a terminal, Claude
+  Code sends nothing, for its own notifications too.
+- The desktop app and VS Code show nothing more unless a `Notification` hook does.
+- A notification goes out whether or not Claude Code is in front. The terminal decides whether a banner shows over
+  itself; macOS shows one only for a terminal its Notifications settings allow.
 
 ## What doesn't alert
 
@@ -102,9 +136,7 @@ way.
 With background refresh, the status line under the prompt (a band above it in the desktop app) keeps count of what is
 ready to merge, what needs you, and what waits on your review, and clears when there is nothing to report:
 
-```
-PRs ✅ 1 Ready  ❗ 2 Need You  🔍 1 To Review  (/prs)
-```
+![The status line: 1 ready, 6 need you, 4 to review](../assets/screenshots/status-line.png)
 
 The band, the pane's header and the list `/prs` prints draw each number in bold; a status line is plain text, so there
 it stays as it is.

@@ -11,13 +11,21 @@ import {
   rerunConfirm,
   updateConfirm
 } from "./actions"
-import { branchPlaceQuestion } from "./branch-flow"
+import { branchPlaceQuestion, cloneOpens, isBranchSkill, openCloneQuestion } from "./branch-flow"
 import type { PullToOpen } from "./create-flow"
+import { CHECKED_KINDS, elsewhereAlerts, nextElsewhere, readElsewhere } from "./elsewhere"
+import type { ElsewhereRead, ElsewhereState } from "./elsewhere"
+import { DEFAULT_HOST, sameRepo } from "./gh"
+import type { RepoRef } from "./gh"
+import { canOpenSession } from "./new-session"
+import { isInFolder, typedPath } from "./paths"
 import { CANCEL, isDecline } from "./question"
 import { isBackToReview, backToReviewQuestion, reviewPlaceQuestion } from "./review-flow"
 import type { PaneView } from "./pane"
-import { readPulls } from "./pulls"
-import { activityOf, alertLines, awayLine, systemNotificationText } from "./alerts"
+import { readPulls, rowsOf } from "./pulls"
+import { choiceOf, elsewhereCount, repoChoices, repoPickerQuestion } from "./repo-picker"
+import type { RepoChoice } from "./repo-picker"
+import { activityOf, alertLines, awayLine, batchLines, systemNotificationText, toastLines } from "./alerts"
 import type { Alert, AlertKind } from "./alerts"
 import { listText } from "./list"
 import { withRequestReview } from "./suggestions"
@@ -38,25 +46,32 @@ export const DEMO_SEEN_NOTE =
   "These are examples, so their notes stay. Close the pane, or press Refresh, for your own pull requests."
 
 // What an example's button asks: the real button's own question, about the example, from a checkout on another branch
-// with nothing uncommitted; null where the real one asks nothing and starts here, as Review where no new session can be
-// opened. A stacked example's Merge says what merges along, as GitHub's stack says of a real one.
+// with nothing uncommitted, asked from `surface` while a turn runs or none (`isWorking`); null where the real one asks
+// nothing and starts here, as Review where no new session can be opened. A stacked example's Merge says what merges
+// along, as GitHub's stack says of a real one. On another repository's examples (`visited`), a branch skill asks as a
+// visit's does, of the clone known here or none.
 export function demoQuestion(
   action: PullAction,
   row: PullRow,
   snapshot: PullsSnapshot,
-  canOpenSession: boolean
+  { surface, visited = null, isWorking = false }: { surface: string; visited?: string | null; isWorking?: boolean }
 ): Question | null {
+  const other = otherShown(visited)
+  if (other && isBranchSkill(action)) {
+    return openCloneQuestion(action, row, repoOf(other), other.clone, cloneOpens(surface))
+  }
+  const canOpen = canOpenSession(surface)
   const checkout = { uncommitted: 0, isDetached: false, isOnBranch: false }
   const methods = snapshot.merging.methods
   const placed = row.stack
-  const below = [...snapshot.mine, ...snapshot.review].filter(
-    (other) => placed && other.stack?.number === placed.number && other.stack.position < placed.position
+  const below = rowsOf(snapshot).filter(
+    (each) => placed && each.stack?.number === placed.number && each.stack.position < placed.position
   )
   const stack = placed
     ? {
         number: placed.number,
         base: snapshot.defaultBranch ?? row.baseRefName,
-        below: below.map((other) => ({ number: other.number, title: other.title }))
+        below: below.map((each) => ({ number: each.number, title: each.title }))
       }
     : null
   const questions: Readonly<Record<PullAction, () => Question | null>> = {
@@ -69,13 +84,13 @@ export function demoQuestion(
     rerun: () => confirmQuestion(rerunConfirm(row, [{ id: 0, name: "test" }])),
     review: () =>
       isBackToReview(row)
-        ? backToReviewQuestion(row, false, snapshot.fetchedAt, canOpenSession)
-        : canOpenSession
-          ? reviewPlaceQuestion(row, false)
+        ? backToReviewQuestion(row, isWorking, snapshot.fetchedAt, canOpen)
+        : canOpen
+          ? reviewPlaceQuestion(row, isWorking)
           : null,
-    resolve: () => branchPlaceQuestion("resolve", row, checkout, canOpenSession, false),
-    fixCi: () => branchPlaceQuestion("fixCi", row, checkout, canOpenSession, false),
-    resolveConflicts: () => branchPlaceQuestion("resolveConflicts", row, checkout, canOpenSession, false)
+    resolve: () => branchPlaceQuestion("resolve", row, checkout, canOpen, isWorking),
+    fixCi: () => branchPlaceQuestion("fixCi", row, checkout, canOpen, isWorking),
+    resolveConflicts: () => branchPlaceQuestion("resolveConflicts", row, checkout, canOpen, isWorking)
   }
 
   return questions[action]()
@@ -86,13 +101,14 @@ export function demoStartNote(example: string, what: string): string {
   return `${example} is an example: in your own list, ${what} would start here without asking. Nothing was sent to GitHub.`
 }
 
-// What an answer to an example's question would have done, said instead of done, the example named as given (its
-// number, or Create PR's branch); nothing for Cancel, for nothing sent, or for words sent alone that decline or that
-// the question takes none of.
+// What an answer to an example's question would have done, said instead of done. The example is named as given: its
+// number, or Create PR's branch. Nothing is said for Cancel, or for nothing sent; for words sent alone that decline, or
+// that the question takes none of; or for a question that only tells, its one choice closing it.
 export function demoAnswerNote(example: string, question: Question, answer: Answer | null): string | null {
   if (
     answer === null ||
     answer.choice === CANCEL ||
+    question.choices.length === 1 ||
     (answer.choice === null &&
       (question.instructions === null || answer.instructions === "" || isDecline(answer.instructions)))
   ) {
@@ -117,6 +133,7 @@ const LINK = "https://github.com/pulls"
 const VIEWER = "you"
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
 
 type ExampleReview = {
   login: string
@@ -377,11 +394,16 @@ function withoutLinks(rows: PullRow[]): PullRow[] {
 
 // The examples as GitHub would answer the list query about them.
 export function demoAnswer(now: number): string {
+  return listAnswer(DEMO_NAME, MINE, REVIEW, now)
+}
+
+// A repository's examples, the viewer's own (`mine`) and others' (`review`), as GitHub would answer the list query.
+function listAnswer(name: string, mine: readonly Example[], review: readonly Example[], now: number): string {
   return JSON.stringify({
     data: {
       viewer: { login: VIEWER },
       repository: {
-        nameWithOwner: DEMO_NAME,
+        nameWithOwner: name,
         url: "",
         viewerPermission: "WRITE",
         squashMergeAllowed: true,
@@ -392,14 +414,14 @@ export function demoAnswer(now: number): string {
         allowUpdateBranch: false,
         defaultBranchRef: { name: "main" }
       },
-      mine: group(MINE, now, true),
+      mine: group(mine, now, true),
       requested: group(
-        REVIEW.filter((example) => example.requested?.includes(VIEWER)),
+        review.filter((example) => example.requested?.includes(VIEWER)),
         now
       ),
       commented: group([], now),
       reviewed: group(
-        REVIEW.filter((example) => example.reviews?.some((review) => review.login === VIEWER)),
+        review.filter((example) => example.reviews?.some((each) => each.login === VIEWER)),
         now
       ),
       mentioned: { issueCount: 0, nodes: [] }
@@ -408,18 +430,29 @@ export function demoAnswer(now: number): string {
 }
 
 export function demoSnapshot(now: number): PullsSnapshot | null {
-  const result = readPulls(demoAnswer(now), DEMO_NAME, now, { includeOutdated: false })
-  if (!("snapshot" in result)) {
-    return null
-  }
+  const snapshot = listOf(DEMO_NAME, demoAnswer(now), now)
 
-  const snapshot = {
-    ...result.snapshot,
-    mine: withoutLinks(result.snapshot.mine),
-    review: withoutLinks(result.snapshot.review)
-  }
+  return snapshot && withRequestReview(snapshot, demoSuggested)
+}
 
-  return withRequestReview(snapshot, demoSuggested)
+// The list the pane shows of examples: their own (`visited` null), or another repository's.
+export function demoList(now: number, visited: string | null): PullsSnapshot | null {
+  const other = otherShown(visited)
+
+  return other ? otherList(other, now) : demoSnapshot(now)
+}
+
+function otherList(other: OtherExamples, now: number): PullsSnapshot | null {
+  return listOf(other.name, listAnswer(other.name, other.mine, other.review, now), now)
+}
+
+// A repository's examples read as a real list is, from GitHub's answer about them, with nothing of them linked.
+function listOf(name: string, answer: string, now: number): PullsSnapshot | null {
+  const result = readPulls(answer, name, now, { includeOutdated: false })
+
+  return "snapshot" in result
+    ? { ...result.snapshot, mine: withoutLinks(result.snapshot.mine), review: withoutLinks(result.snapshot.review) }
+    : null
 }
 
 // Whom GitHub would suggest to review the example nobody was asked to review, as Request Review offers a real list's
@@ -464,32 +497,45 @@ function demoMerged(snapshot: PullsSnapshot | null, now: number): MergedPull[] {
   ]
 }
 
-// The pane as the examples fill it, at the width and on the surface it is drawn.
-// `isShowingTickets`: the examples' tickets show as real rows' do, where Ticket links on rows is on.
+// The pane as the examples fill it, at the time, width and surface it is drawn (`frame`): their own list, or, where
+// the person picked another of their repositories (`visited`), that one's, as a visit shows it. As a real list's, their
+// tickets show where Ticket links on rows is on (`isShowingTickets`), and "+N elsewhere" where the alerts from other
+// repositories are (`isCountingElsewhere`).
 export function demoView(
-  now: number,
-  columns: number,
-  surface: string,
-  isCompact: boolean,
-  isShowingTickets: boolean
+  frame: { now: number; columns: number; surface: string; isCompact: boolean },
+  shown: { isShowingTickets: boolean; isCountingElsewhere: boolean; visited: string | null }
 ): PaneView {
+  const { now } = frame
+  const other = otherShown(shown.visited)
+  const elsewhere = shown.isCountingElsewhere
+    ? elsewhereCount(demoElsewhere(now), DEMO_FOLDER, other && repoOf(other))
+    : 0
+  const quiet = { problem: null, retryMinutes: null, isLoading: false, busy: {}, elsewhere }
+  if (other) {
+    return {
+      ...frame,
+      ...quiet,
+      snapshot: otherList(other, now),
+      activity: [],
+      branch: null,
+      toOpen: null,
+      merged: [],
+      tickets: null,
+      visit: { repo: other.name, folder: DEMO_NAME }
+    }
+  }
   const snapshot = demoSnapshot(now)
 
   return {
+    ...frame,
+    ...quiet,
     snapshot,
-    problem: null,
-    retryMinutes: null,
-    now,
-    isLoading: false,
-    busy: {},
     activity: demoActivity(now),
     branch: DEMO_BRANCH,
     toOpen: DEMO_TO_OPEN,
     merged: demoMerged(snapshot, now),
-    isCompact,
-    columns,
-    surface,
-    tickets: isShowingTickets ? DEMO_TICKETS : null
+    tickets: shown.isShowingTickets ? DEMO_TICKETS : null,
+    visit: null
   }
 }
 
@@ -497,6 +543,173 @@ export function demoCounts(now: number): SummaryCounts {
   const snapshot = demoSnapshot(now)
 
   return snapshot ? summaryCounts(snapshot) : { ready: 0, needsYou: 0, toReview: 0 }
+}
+
+// --- The examples' other repositories ---
+
+// Where the examples' repositories are, as the repository picker offers them; their own list stands for the folder's.
+const DEMO_HOST = DEFAULT_HOST
+const DEMO_FOLDER: RepoRef = { host: DEMO_HOST, name: DEMO_NAME }
+
+// Another repository with examples: its clone on this machine, a made-up folder, or none; the viewer's own and others'.
+type OtherExamples = { name: string; clone: string | null; mine: readonly Example[]; review: readonly Example[] }
+
+// One cloned here, whose branch skills offer to open it; one on GitHub alone, whose say none is known; and one where a
+// review was asked since the picker was last opened, so it is marked new (`demoChecks`). Each has something waiting,
+// so each is counted in "+N elsewhere"; acme/web's #14 has changes requested, which the light check counts as the list
+// does, so the picker and the list agree, and a comment unresolved, for its Resolve Comments.
+const OTHERS: readonly OtherExamples[] = [
+  {
+    name: "acme/web",
+    clone: "~/code/web",
+    mine: [
+      { number: 12, title: "Checkout page", ci: "FAILURE", requested: ["a-teammate"] },
+      {
+        number: 14,
+        title: "Gift cards",
+        reviewDecision: "CHANGES_REQUESTED",
+        mergeStateStatus: "BLOCKED",
+        unresolvedThreads: 1,
+        reviews: [{ login: "a-teammate", state: "CHANGES_REQUESTED", hoursAgo: 2 }],
+        requested: ["another-teammate"]
+      }
+    ],
+    review: [
+      { number: 15, title: "Product images", author: "another-teammate", requested: [VIEWER], size: [86, 14, 5] }
+    ]
+  },
+  {
+    name: "acme/ios-app",
+    clone: null,
+    mine: [
+      {
+        number: 31,
+        title: "Dark mode",
+        isConflicting: true,
+        reviewDecision: "APPROVED",
+        reviews: [{ login: "a-teammate", state: "APPROVED", hoursAgo: 5 }]
+      }
+    ],
+    review: [{ number: 33, title: "Push notifications", author: "a-teammate", requested: [VIEWER], size: [140, 22, 9] }]
+  },
+  {
+    name: "acme/admin",
+    clone: null,
+    mine: [],
+    review: [
+      { number: 7, title: "Roles and permissions", author: "another-teammate", requested: [VIEWER], size: [58, 6, 3] }
+    ]
+  }
+]
+
+// The one whose review was asked since the picker was last opened.
+const NEW_SINCE_PICKED = "acme/admin"
+
+// The examples' other repository shown, by its name; none for their own list (null).
+function otherShown(visited: string | null): OtherExamples | null {
+  return visited === null ? null : otherAt({ host: DEMO_HOST, name: visited })
+}
+
+function otherAt(repo: RepoRef): OtherExamples | null {
+  return OTHERS.find((other) => sameRepo(repoOf(other), repo)) ?? null
+}
+
+function repoOf(other: OtherExamples): RepoRef {
+  return { host: DEMO_HOST, name: other.name }
+}
+
+// What the light check of other repositories would have kept of the examples' others (`elsewhere.ts`).
+function demoElsewhere(now: number): ElsewhereState | null {
+  const checks = demoChecks(now)
+
+  return checks && nextElsewhere(checks.before, checks.read, now)
+}
+
+// What the light check would tell of them, where the alerts from other repositories are on: what changed since its
+// check before, as its toast names their repository, and as each repository's system notification.
+export function demoElsewhereAlerts(now: number): {
+  toasts: string[]
+  notifications: { title: string; text: string }[]
+} {
+  const checks = demoChecks(now)
+  const batches = checks ? elsewhereAlerts(checks.before, checks.read.pulls, CHECKED_KINDS) : []
+
+  return {
+    toasts: batches.flatMap(toastLines),
+    notifications: batches.flatMap((batch) =>
+      batch.kind === "events" ? [{ title: batch.repo.name, text: systemNotificationText(batchLines(batch)) }] : []
+    )
+  }
+}
+
+// The light check's two checks of the examples' others, from GitHub's answers about them: the state one a day ago kept,
+// before acme/admin's review was asked, with the picker opened since; and what one now reads.
+function demoChecks(now: number): { before: ElsewhereState; read: ElsewhereRead } | null {
+  const checked = (others: readonly OtherExamples[]) => {
+    const search = (isMine: boolean) => {
+      const nodes = others.flatMap((other) =>
+        (isMine ? other.mine : other.review.filter((example) => example.requested?.includes(VIEWER))).map(
+          (example) => ({ ...(rawPull(example, now, isMine) as object), repository: { nameWithOwner: other.name } })
+        )
+      )
+
+      return { issueCount: nodes.length, nodes }
+    }
+
+    return readElsewhere(
+      JSON.stringify({ data: { viewer: { login: VIEWER }, mine: search(true), requested: search(false) } }),
+      DEMO_HOST
+    )
+  }
+  const before = checked(OTHERS.filter((other) => other.name !== NEW_SINCE_PICKED))
+  const read = checked(OTHERS)
+
+  return before && read ? { before: { ...nextElsewhere(null, before, now - DAY), pickedAt: now - HOUR }, read } : null
+}
+
+// The repository picker over the examples, as the real one offers the folder's, its clones and those on GitHub alone,
+// starting on the one shown (`visited`, null for the examples' own); its choices, to read the answer by.
+export function demoPicker(now: number, visited: string | null): { question: Question; choices: RepoChoice[] } {
+  const clones = OTHERS.flatMap((other) => (other.clone ? [{ root: other.clone, repo: repoOf(other) }] : []))
+  const choices = repoChoices(clones, demoElsewhere(now), DEMO_FOLDER)
+  const other = otherShown(visited)
+
+  return { question: repoPickerQuestion(choices, other ? repoOf(other) : DEMO_FOLDER), choices }
+}
+
+// What the picker's answer shows of the examples: their own list (`visited` null), or another repository's, picked,
+// named, or by a folder in it; else what is said instead: why what was typed names no repository, or that it names none
+// of the examples. A folder is read as `/prs <path>` reads one, from the home folder (`home`) and the session's
+// (`cwd`), which stands for the examples' own, a clone in it counting first. Nothing for Cancel, or with nothing picked
+// or typed.
+export function demoPicked(
+  answer: Answer | null,
+  choices: readonly RepoChoice[],
+  { home, cwd }: { home: string | null; cwd: string }
+): { visited: string | null } | { note: string } | null {
+  const chosen = answer ? choiceOf(answer, choices) : null
+  if (!answer || !chosen) {
+    return null
+  }
+  if ("problem" in chosen) {
+    return { note: chosen.problem }
+  }
+  if ("repo" in chosen) {
+    return { visited: otherAt(chosen.repo)?.name ?? null }
+  }
+  const none = {
+    note: `${answer.instructions.trim()} is none of the examples: in your own list, its pull requests would show. Nothing was read from GitHub.`
+  }
+  if ("path" in chosen) {
+    const typed = typedPath(chosen.path, home, cwd)
+    const other = OTHERS.find((each) => each.clone !== null && isInFolder(typed, typedPath(each.clone, home, cwd)))
+
+    return other ? { visited: other.name } : isInFolder(typed, typedPath(cwd, home, cwd)) ? { visited: null } : none
+  }
+  // Named on no server, a repository is on the folder's, the examples' own.
+  const other = otherAt({ host: chosen.host ?? DEMO_HOST, name: chosen.name })
+
+  return other ? { visited: other.name } : none
 }
 
 function change(number: number, title: string, kind: AlertKind, symbol: string, event: string): Alert {

@@ -11,12 +11,13 @@
 
 import type { PullsSnapshot } from "../types"
 import { freshAlerts } from "./alerts"
+import type { AlertBatch } from "./alerts"
 import { storedCleanupClaim } from "./cleanup"
 import type { CleanupClaim } from "./cleanup"
 import { isNothingKept, readKeptNotes } from "./kept-notes"
 import type { KeptNotes } from "./kept-notes"
 import type { CreateChoices } from "./create-choices"
-import { messageOf } from "./gh"
+import { isRepo, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { storedSnapshot } from "./pulls"
 import { MAX_POLL_MINUTES } from "./settings"
@@ -114,6 +115,72 @@ async function unlistedLooks(store: StoreHost, listed: unknown): Promise<string[
   return (await store.keys()).filter((each) => each.startsWith(LOOK_PREFIX) && !named.has(each))
 }
 
+// --- The folders repositories are cloned in ---
+
+// Every session notes its folder's main checkout: the latest 50 folders, newest first, in one record, so the picker and
+// a visit's branch skills read them all in one read of the store.
+const CLONES = "clones"
+export const CLONES_LIMIT = 50
+
+// A folder on this machine, and the repository its session found there, as GitHub writes its name; with the remote gh
+// found it by, as its git config writes it, where that reads otherwise (`remote`): a clone left on a repository's old
+// name after GitHub renamed or moved it, or reached through an SSH alias with a dot (`github.com-work`).
+export type NotedClone = { root: string; repo: RepoRef; remote?: RepoRef }
+
+// Noting a folder is a saving for the picker and a visit's branch skills: failing to keep one loses only that. Two
+// sessions noting at once may write over each other's list, so the note is read back and written once more where it
+// was taken away.
+export async function noteClone(store: StoreHost, clone: NotedClone, at: number): Promise<void> {
+  const { root } = clone
+  try {
+    await withRoom(store, async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const kept = readNotedList(await store.get(CLONES)).filter((each) => each.root !== root)
+        await store.set(CLONES, [{ ...clone, at }, ...kept].slice(0, CLONES_LIMIT))
+        if (readNotedList(await store.get(CLONES)).some((each) => each.root === root)) {
+          return
+        }
+      }
+    })
+  } catch (error) {
+    store.log(`The folder ${root} could not be noted: ${messageOf(error)}`)
+  }
+}
+
+// The folders noted, newest first, but `own`, the session's own; none where the store can't be read.
+export async function knownClones(store: StoreHost, own: string | null): Promise<NotedClone[]> {
+  try {
+    return readNotedList(await store.get(CLONES))
+      .filter((each) => each.root !== own)
+      .sort((a, b) => b.at - a.at)
+      .map(({ at: _, ...clone }) => clone)
+  } catch (error) {
+    store.log(`The folders noted could not be read: ${messageOf(error)}`)
+
+    return []
+  }
+}
+
+// The noted folders a record holds; what isn't one is skipped.
+function readNotedList(value: unknown): (NotedClone & { at: number })[] {
+  return Array.isArray(value) ? value.flatMap(readNoted) : []
+}
+
+function readNoted(value: unknown): (NotedClone & { at: number })[] {
+  const { root, repo, remote, at } = (value as { root?: unknown; repo?: unknown; remote?: unknown; at?: unknown }) ?? {}
+
+  return typeof root === "string" && isRepo(repo) && typeof at === "number"
+    ? [
+        {
+          root,
+          repo: { host: repo.host, name: repo.name },
+          ...(isRepo(remote) ? { remote: { host: remote.host, name: remote.name } } : {}),
+          at
+        }
+      ]
+    : []
+}
+
 // --- The pane's view ---
 
 // The person's choice of view, kept across sessions.
@@ -198,29 +265,23 @@ export async function freeCleanup(store: StoreHost, root: string, by: string): P
 // Which alerts a session showed, so another session in the same repository leaves them out (`freshAlerts`).
 const SHOWN_KEY = "shown"
 
-// The lines no other session showed lately, now marked as shown by this one (`by`); all of them where the marks can't
-// be read or kept, as an alert shown twice costs less than one lost.
-export async function notShownElsewhere(
+// What of the batches, each from when it was raised, no other session showed lately, now marked as shown by this one
+// (`by`); all of them where the marks can't be read or kept, as an alert shown twice costs less than one lost.
+export async function notShownByOtherSessions(
   store: StoreHost,
-  repo: RepoRef,
-  lines: readonly string[],
+  batches: readonly AlertBatch[],
   shown: { by: string; pollMs: number }
-): Promise<string[]> {
+): Promise<AlertBatch[]> {
   const at = await store.now()
   try {
-    const { fresh, marks } = freshAlerts(await store.get(SHOWN_KEY), lines, {
-      repo: `${repo.host}/${repo.name}`,
-      by: shown.by,
-      at,
-      pollMs: shown.pollMs
-    })
+    const { fresh, marks } = freshAlerts(await store.get(SHOWN_KEY), batches, { ...shown, at })
     await keepValue(store, SHOWN_KEY, marks)
 
     return fresh
   } catch (error) {
     store.log(`Shown alerts could not be checked: ${messageOf(error)}`)
 
-    return [...lines]
+    return [...batches]
   }
 }
 
@@ -407,8 +468,8 @@ export function keepTickets(store: StoreHost, repo: RepoRef, value: TicketLinks 
 
 // The store refuses a write that would take it past its 4 MiB, and says so. The answers sessions share are only a
 // saving, so they give way to everything else it keeps, and the write is made once more, also where another session
-// gave them up first. Every write of the plugin's goes this way (`keepValue`) but a refresh's claim (`claimFetch`): that
-// claim is one of those keys itself, and can't make room by freeing them.
+// gave them up first. Every write of the plugin's goes this way (`keepValue`) but a refresh's claim (`claimFetch`):
+// that claim is one of those keys itself, and can't make room by freeing them.
 async function withRoom(store: StoreHost, write: () => Promise<unknown>): Promise<void> {
   try {
     await write()

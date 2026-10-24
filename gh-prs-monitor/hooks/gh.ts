@@ -102,6 +102,41 @@ function parseBody(stdout: string): { data?: unknown; message?: string } | null 
 
 export type RepoRef = { name: string; host: string }
 
+// Whether a value read back from the store or the session's state is a repository.
+export function isRepo(value: unknown): value is RepoRef {
+  const repo = value as Partial<RepoRef> | null
+
+  return typeof repo?.host === "string" && typeof repo.name === "string"
+}
+
+// The server `owner/name` names where the session's folder has no repository to name its own: GitHub's, as gh's own
+// default is, unless an environment variable the plugin doesn't read says otherwise.
+export const DEFAULT_HOST = "github.com"
+
+// The repository `name` on the server its address `url` is on; none where the address isn't one.
+export function repoAt(name: string, url: string): RepoRef | null {
+  try {
+    return { name, host: new URL(url).host }
+  } catch {
+    return null
+  }
+}
+
+// A repository as one text, its server and name in lower case, as GitHub reads both in any letter case.
+export function repoKey(repo: RepoRef): string {
+  return `${repo.host}/${repo.name}`.toLowerCase()
+}
+
+// A pull request of a repository as one text, `github.com/acme/web#12`; a mark of its row too, `…#create-pr`.
+export function pullKey(repo: RepoRef, number: number | string): string {
+  return `${repoKey(repo)}#${number}`
+}
+
+// One repository: the same name on the same server, as GitHub reads both, in any letter case.
+export function sameRepo(a: RepoRef, b: RepoRef): boolean {
+  return a.host.toLowerCase() === b.host.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase()
+}
+
 // A REST request to the repository on its own server, `path` within `repos/<owner>/<name>/`.
 export function ghApiArgv(repo: RepoRef, path: string, method?: "PUT" | "POST"): string[] {
   return ["gh", "api", ...(method ? ["--method", method] : []), `repos/${repo.name}/${path}`, "--hostname", repo.host]
@@ -115,11 +150,7 @@ export function parseRepoView(stdout: string): RepoRef | null {
     return null
   }
 
-  try {
-    return { name, host: new URL(url).host }
-  } catch {
-    return null
-  }
+  return repoAt(name, url)
 }
 
 // What git or gh said went wrong: its `fatal:` or `error:` line, or the ref a fetch rejected, ahead of the `hint:`

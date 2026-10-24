@@ -1,17 +1,19 @@
 # The pane
 
 `/prs` opens the pane: the pull requests you opened and the ones waiting on your review, sorted so that what needs you
-comes first, each with the one status that matters and the buttons that move it on. Esc closes it. This page walks
-through what you see, then lists every status, where each part shows in the terminal, the desktop app and VS Code, and
-the commands.
+comes first, each with the one status that matters and the buttons that move it on. Use it to see what to deal with
+next, and to deal with it in one press. Esc closes it.
 
 ## Two lists, what needs you first
 
 The pane shows two panels, **Your Pull Requests** and **Waiting On Your Review**. At 120 columns or more, as when the
 pane opens inline at full width, they sit side by side; narrower, as when it is docked beside the conversation, one sits
-above the other. A list with nothing in it takes one line and leaves the full width to the other. Each lists what needs
-you first: failing and conflicting, then waiting on you, then ready to merge, then waiting on others, drafts last. A
-long list scrolls inside the pane.
+above the other. A list with nothing in it takes one line and leaves the full width to the other. A long list scrolls
+inside the pane.
+
+Each lists what needs you first: failing and conflicting, then waiting on you, then ready to merge, then waiting on
+others, drafts last. With **Hide my drafts** on ([Settings](settings.md)), your own drafts leave the list and the
+counts, and a line under the list says how many are hidden. Drafts you are asked to review still show.
 
 Each search returns the 30 most recently updated pull requests. When GitHub has more, the panel says so and links to a
 list on GitHub: your open pull requests, or, for the review panel, every open pull request of others that involves you,
@@ -19,6 +21,9 @@ including those that only mention you.
 
 With nothing open and nothing waiting, the pane says just that, centred under the header. Before the first list, the
 line there says it is checking GitHub, or, where nothing will check by itself, to press Refresh.
+
+Every status, and the main button each one gets, is listed under [Your Pull Requests](#your-pull-requests) and
+[Waiting On Your Review](#waiting-on-your-review) below.
 
 ## Reading a row
 
@@ -35,34 +40,30 @@ rule, shows each as a card of its own.
   checks, unresolved comments to the changed files, conflicts to GitHub's page for resolving them; a green CI result
   stays plain. With [ticket links](tickets.md), the pull request's ticket comes first, `WEB-5785 ⧉`, linked to the
   ticket; the ⧉ marks the one link that leaves GitHub.
-- **The main button** is the one that moves the row on (table below), drawn apart from the others.
+- **The main button** is the one that moves the row on, drawn apart from the others. [Which one](#main-buttons)
 - **A draft's title** is dimmed, and the pointer on a row lights its title. In a narrow pane a long title wraps in its
   own column, never cut short, as the details do, while the status keeps a line of its own.
 - **A bold green `●`** in front of the number (not the yellow `●` of running checks) marks the pull request whose
   branch, or `pr-<number>`, this session is on. After you switch branches, the mark follows on the next refresh. Only a
   panel holding that pull request makes room for it.
 
-| Status | Main button, where the row offers it |
-|---|---|
-| Ready To Merge | **Merge** |
-| Conflicts | **Resolve Conflicts** |
-| CI Failing | **Re-Run CI**, or **Fix CI** where you can't re-run it |
-| Changes Requested | **Re-Request Review** once commits came after the change request, else **Resolve Comments** |
-| Comments To Address | **Resolve Comments** |
-| Waiting For Review, nobody asked and no review yet (a bot aside) | **Request Review**, once GitHub suggests someone |
-| Approved · More Approvals Needed | **Request Review** where no person is asked and GitHub suggests someone, else **Auto-Merge** |
-| Approved (checks running) | **Auto-Merge** |
-| Approved · Merge Blocked | **Resolve Comments** where it has open comments, else **Auto-Merge** |
-| Approved · Behind Base | **Update Branch** |
-| Draft | **Ready For Review** |
-| Review Requested, Re-Review Requested, Updated Since Your Review, Your Review Was Dismissed | **Review** |
-
 ## The header
 
 The header names the repository, as a link to its pull requests on GitHub, with the same counts as the status line and
 when the list was read (`updated 09:12`, or `updated yesterday 17:40` where it isn't today). **Compact** and **Refresh**
-(or `r` while the pane has the keyboard) sit beside it, or on a line of their own in a narrow pane. A problem reaching
-GitHub shows in a box above the list ([When something is wrong](troubleshooting.md)).
+(or `r` while the pane has the keyboard) sit beside it, or on a line of their own in a narrow pane.
+
+A dim **Repositories** button beside them opens the picker for [another repository's](other-repositories.md) pull
+requests, reading **Loading…** until it shows. With **Alerts from other repositories** on
+([more](other-repositories.md#alerts-from-other-repositories)), a dim `+3 elsewhere` beside the name counts the pull
+requests in your other repositories that wait for you: a review asked of you, or one of yours with CI failing, changes
+requested, or approved with its checks done.
+
+While the pane shows another repository, its header names that one, adds a dim "Not this session's folder", and
+offers **Back to** this folder's repository, or plain **Back** in a narrow pane
+([Other repositories](other-repositories.md#showing-another-repository)).
+
+A problem reaching GitHub shows in a box above the list ([When something is wrong](troubleshooting.md)).
 
 ## Compact view
 
@@ -80,6 +81,8 @@ panel is too narrow for both, the status goes on a second line under the title, 
 
 **Full** brings back the details, the buttons and what changed. The pane keeps the view you chose for later sessions.
 
+![The compact pane, in a terminal and in the desktop app](../assets/screenshots/compact.png)
+
 ## What changed
 
 What changed lately shows as a note at the foot of its pull request, under the buttons and a line of space: in blue
@@ -95,17 +98,93 @@ a reviewer posting single comments one after another, shows once with how many t
      ✗ CI failed · merge conflicts  2m ago  ✕
 ```
 
-A note stays until the first of these: half an hour has passed since a refresh noticed the change (the **Recent
-changes expire after** setting); you press its ✕ or one of that pull request's buttons; you close the pane. So a toast
-you missed is still there when you look, and a pane left open all day shows only what changed lately.
-
-Changes from while you were away show too, saying `in the last 15h`. The first refresh of a session compares with your
-last look, the list as you last saw it in any session ([more](#your-last-look)). The first after the desktop app's
-window opens again compares with the last check before it closed. Instead of an alert per change, one toast then tells
-how many pull requests changed. The alert settings pick which changes are marked.
+A note stays until the first of these: half an hour has passed since a refresh noticed the change (**Change notes last
+(minutes)** in [Settings](settings.md)); you press its ✕ or one of that pull request's buttons; you close the pane. So a
+toast you missed is still there when you look, and a pane left open all day shows only what changed lately.
 
 A pull request merged or closed by someone else has no row left, so its note shows under the lists instead: a line each
 under "Merged or closed since" and the time, with its ✕. These go as the other notes do.
+
+Changes from while you were away show too, saying `in the last 15h`. The first refresh of a session compares with
+[your last look](#your-last-look). The first after the desktop app's window opens again compares with the last check
+before it closed. Instead of an alert per change, one toast then tells how many pull requests changed. The alert
+settings pick which changes are marked.
+
+## Your last look
+
+Your last look is the list as you last saw it, in any session: the pane while open (and as you closed it), or a `/prs`
+printed where no pane shows. A toast you may not have seen doesn't count. It is kept for each repository across
+sessions, in the terminal, VS Code and the desktop app alike, for the 20 repositories you looked at last.
+
+Where no pane shows, `/prs` prints the list with what changed since that look, and runs no background checks, since
+nothing would show what they find:
+
+- the alert settings pick which changes are listed (none with **Change alerts** off);
+- the first `/prs` in a repository prints the list alone;
+- with nothing changed, the line reads `Nothing new since 17:40`;
+- `/prs demo` prints the example list.
+
+This gives the same list with what changed wherever the pane can't show, whatever toasts told you meanwhile. An
+extension updated to one that draws gets the pane, alerts and summary by itself.
+
+## `#` in the prompt
+
+`#` in the prompt offers no pull requests in this version; its suggestions come back in a later one.
+
+## Commands
+
+- **`/prs`** opens the pane, and Esc closes it. **Refresh**, or `r` while the pane has the keyboard, reloads it. It
+  works while a turn is running. Typed in the desktop app before its window has joined the session, as in the first
+  moments of a new one, it prints the list, and the pane opens as the window joins, within 10 minutes.
+- **`/prs close`** closes the pane, as its close mark does, and takes down a question it asks: for when a click does
+  nothing.
+- **`/prs demo`** shows example pull requests, one of each status, one just merged from the pane and one merged by
+  someone else, in the pane, the status line and the desktop app's band, while their alerts show one after another
+  (with the alert sound when it is on). The examples' buttons ask what the real ones ask, and send nothing to GitHub.
+  They stay until you close the pane; **Refresh** or `/prs` brings your own list back in it. Its **Repositories**
+  picker offers the examples' own list and three made-up repositories: `acme/web`, cloned at `~/code/web`, and
+  `acme/ios-app` and `acme/admin`, with no clone, `acme/admin` marked as changed. **Open** visits them, and their
+  Resolve Comments, Fix CI and Resolve Conflicts ask as a real visit's do. With **Alerts from other repositories** on, the
+  header shows `+6 elsewhere` and an alert from `acme/admin` comes after the examples' own. Nothing is read or written.
+  Where no pane shows, as with nothing attached or in an app that places no panes, it prints the example list.
+- **`/prs acme/web`** (or an address, or a folder's path) shows that repository's pull requests:
+  [Other repositories](other-repositories.md).
+- `/prs demo`, `/prs acme/web` and `/prs tickets` take the place of a question the pane is asking, which is cancelled;
+  a question in Claude Code's own dialog stays.
+- **`/prs report`** prints links to report a bug, with the versions of the plugin, Claude Code, the system, `gh` and
+  git filled in, to suggest an idea, and to the issues already open; and the `gh issue create` command for the
+  plugin's repository. Nothing else of yours goes in the link. The conversation sees the text too, so you can ask for
+  help writing the report.
+- **`/prs tickets`** sets up [ticket links](tickets.md) for the repository, from a link to any ticket you paste in the
+  pane, and once they are set up shows them and what they find in your list, with **Add a link**, **Remove** and
+  **Done**. Where no pane shows, as over Remote Control, it prints what is set up.
+
+Anything else after `/prs` does nothing but say what it takes.
+
+## Other repositories
+
+The header's **Repositories** button, or `/prs acme/web`, `/prs ~/code/web` or a pull request's address, shows another
+repository's pull requests in the pane, with **Back** to this folder's list.
+[Other repositories](other-repositories.md)
+
+## Main buttons
+
+The status of a row picks its main button:
+
+| Status | Main button, where the row offers it |
+|---|---|
+| Ready To Merge | **Merge** |
+| Conflicts | **Resolve Conflicts** |
+| CI Failing | **Re-Run CI**, or **Fix CI** where you can't re-run it |
+| Changes Requested | **Re-Request Review** once commits came after the change request, else **Resolve Comments** |
+| Comments To Address | **Resolve Comments** |
+| Waiting For Review, nobody asked and no review yet (a bot aside) | **Request Review**, once GitHub suggests someone |
+| Approved · More Approvals Needed | **Request Review** where no person is asked and GitHub suggests someone, else **Auto-Merge** |
+| Approved (checks running) | **Auto-Merge** |
+| Approved · Merge Blocked | **Resolve Comments** where it has open comments, else **Auto-Merge** |
+| Approved · Behind Base | **Update Branch** |
+| Draft | **Ready For Review** |
+| Review Requested, Re-Review Requested, Updated Since Your Review, Your Review Was Dismissed | **Review** |
 
 ## Your Pull Requests
 
@@ -177,17 +256,19 @@ or the whole pull request again: see [Since your review](review.md#since-your-re
 | The list | the pane | the pane | the pane |
 | Alerts | toasts | toasts | toasts, above the prompt box |
 | Summary | the status line | a band above the prompt, with an **Open** button (the app cuts a status line short) | the status line, above the prompt box |
-| `#` in the prompt | the prompt's suggestions | not yet | not yet |
+
+![The Claude desktop app: the conversation, the summary band above the prompt, and the /prs pane beside them](../assets/screenshots/desktop.png)
 
 Over Remote Control, the Claude app on your phone and claude.ai draw none of it yet. A `/prs` sent from there prints
 the list in the conversation and opens the pane on the computer too; `/prs demo` prints the example list and shows the
 examples on the computer. Once they draw the pane, `/prs` opens it there instead, with no update of the plugin.
 
-The VS Code extension, in VS Code or an editor built on it such as Cursor, draws what plugins add from its version
-2.1.299, in a session that
-[fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching). It lays the
-pane out in rows of text as the terminal does, with the desktop app's buttons and cards, and opens a new session as a
-tab of the editor (**New session**, see [Review](review.md)).
+The VS Code extension, in VS Code or an editor built on it, draws what plugins add from its version 2.1.299, in a
+session that [fetches feature flags](https://code.claude.com/docs/en/env-vars#features-that-need-feature-flag-fetching).
+It lays the pane out in rows of text as the terminal does, with the desktop app's buttons and cards, and opens a new
+session as a tab of the editor (**New session**, see [Review](review.md)).
+
+![The /prs pane in an editor built on VS Code, beside the Claude Code chat with the count above its prompt, and Fix CI's question in place of the list](../assets/screenshots/vscode.png)
 
 Where nothing draws what plugins add, as in an older extension or a `claude -p` run, only a command's own output shows,
 rendered as markdown. So `/prs` prints the list there as tables under a heading with the pane header's counts and time,
@@ -196,7 +277,7 @@ they are dealt with, as in the pane: CI to the checks (a green one too), unresol
 conflicts to GitHub's page for resolving them. As in the pane, a `●` in front of the number marks the pull request whose
 branch the session is on, details are parted by dots, an empty list is one line, and with nothing in either list a
 single line says so. The list there is already one row per pull request, with the details in a column of their own, so
-the pane's compact view has nothing to change in it.
+the pane's compact view has nothing to change in it. For example:
 
 > **[acme/app](#)** · ✅ **1** · ❗ **1** · updated 09:12
 >
@@ -215,50 +296,3 @@ the pane's compact view has nothing to change in it.
 > | [#145](#) Fix the mobile menu labels | ✅ Ready To Merge | [CI ✓](#) · approved: ann 2h ago |
 >
 > **Waiting On Your Review** (0) — _Nothing waits on your review._
-
-## Your last look
-
-It is the list as you last saw it, in any session: the pane while open (and as you closed it), or a `/prs`
-printed where no pane shows. A toast you may not have seen doesn't count. It is kept for each repository across
-sessions, in the terminal, VS Code and the desktop app alike, for the 20 repositories you looked at last.
-
-In the list `/prs` prints:
-
-- the alert settings pick which changes are listed (none with **Change alerts** off);
-- the first `/prs` in a repository prints the list alone;
-- with nothing changed, the line reads `Nothing new since 17:40`;
-- `/prs demo` prints the example list.
-
-No background checks run there, since nothing would show what they find. The same list with what changed comes from
-`/prs` wherever the pane can't show, whatever toasts told you meanwhile. An extension updated to one that draws gets
-the pane, alerts and summary by itself.
-
-## `#` in the prompt
-
-Type `#` and the start of a pull request's number, or two letters or more of a word in its title, and the prompt's
-suggestions offer the pull requests of the last list, yours first, then those waiting on your review, eight at most,
-each with its status. Picking one writes its number, `#142`. A bare `#` offers none, and nothing shows before a list
-has loaded, nor from the demo's examples. The terminal asks for these; the desktop app and VS Code don't ask plugins
-for suggestions yet, and get them once they do, with no update of the plugin.
-
-## Commands
-
-- **`/prs`** opens the pane, and Esc closes it. **Refresh**, or `r` while the pane has the keyboard, reloads it. It
-  works while a turn is running. Typed in the desktop app before its window has joined the session, as in the first
-  moments of a new one, it prints the list, and the pane opens as the window joins, within 10 minutes.
-- **`/prs close`** closes the pane, as its close mark does, and takes down a question it asks: for when a click does
-  nothing.
-- **`/prs demo`** shows example pull requests, one of each status, one just merged from the pane and one merged by
-  someone else, in the pane, the status line and the desktop app's band, while their alerts show one after another
-  (with the alert sound when it is on). The examples' buttons ask what the real ones ask, and send nothing to GitHub.
-  They stay until you close the pane; **Refresh** or `/prs` brings your own list back in it. In VS Code, or an app
-  that places no panes, it prints the example list.
-- **`/prs report`** prints links to report a bug, with the versions of the plugin, Claude Code, the system, `gh` and
-  git filled in, to suggest an idea, and to the issues already open; and the `gh issue create` command for the
-  plugin's repository. Nothing else of yours goes in the link. The conversation sees the text too, so you can ask for
-  help writing the report.
-- **`/prs tickets`** sets up [ticket links](tickets.md) for the repository, from a link to any ticket you paste in the
-  pane, and once they are set up shows them and what they find in your list, with **Add a link**, **Remove** and
-  **Done**. Where no pane shows, as over Remote Control, it prints what is set up.
-
-Any other word after `/prs` does nothing but say what it takes.

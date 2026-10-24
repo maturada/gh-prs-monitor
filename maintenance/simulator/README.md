@@ -25,8 +25,10 @@ run's requests, lists and toasts around its first step back or doubled toast.
 The worlds (`sim/batch.ts`): random, aligned and near-aligned starts; people pressing and writing; wake bursts after
 sleep; slow GitHub, slow store; fetch flavours; duplicate alerts; lifecycles (hot reloads, `/prs` typed, panes toggled,
 surfaces detached and attached); exact timers; merges by others and the closed lookup, slow or dead; sessions leaving;
-`showList` throwing; turns holding alerts; clocks seconds apart; and looks: sessions in several repositories sharing
-the stored last-look list.
+`showList` throwing; turns holding alerts; clocks seconds apart; looks: sessions in several repositories sharing
+the stored last-look list; and elsewhere: half the sessions in another folder seeing the changes through the light
+check of other repositories, where `toldTwice` counts a change told by two sessions, whichever list told each (1.5.0
+on: a version before has no light check, so `run.sh` runs it only where it is named).
 
 ## What a row measures
 

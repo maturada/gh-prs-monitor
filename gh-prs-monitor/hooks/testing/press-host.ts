@@ -6,7 +6,9 @@
 import type { Timer } from "claude-code"
 
 import type { MergedPull, PullsSnapshot } from "../../types"
+import type { RepoRef } from "../gh"
 import type { PressHost } from "../press"
+import { REPO } from "./fixtures"
 import { fakeHost } from "./git-host"
 
 // The clock's time, and the repository, every press here sees.
@@ -20,6 +22,9 @@ export function fakePressHost(state: {
   merged?: MergedPull[]
   problem?: string | null
   isDemo?: boolean
+  // The list's repository, acme/app unless given; and the list's load under way, none unless given.
+  repo?: RepoRef
+  settled?: () => Promise<void>
 }) {
   let list = state.list
   let merged = state.merged ?? []
@@ -27,6 +32,7 @@ export function fakePressHost(state: {
     status: [] as (string | undefined)[],
     timers: [] as { ms: number; fire: () => void }[],
     refreshes: [] as boolean[],
+    refreshAfterWrites: 0,
     cleanups: 0,
     work: [] as Promise<unknown>[]
   }
@@ -45,6 +51,8 @@ export function fakePressHost(state: {
     log: () => {},
     notify: async () => {},
     notifyProblem: async () => {},
+    repo: async () => ({ repo: state.repo ?? REPO }),
+    settled: state.settled ?? (async () => {}),
     storedList: async () => list,
     keepList: async (change) => (list = change(list)),
     merged: async () => merged,
@@ -61,7 +69,9 @@ export function fakePressHost(state: {
     refresh: async (isAlerting) => {
       seen.refreshes.push(isAlerting)
     },
-    refreshAfterWrite: async () => {},
+    refreshAfterWrite: async () => {
+      seen.refreshAfterWrites += 1
+    },
     cleanUp: async () => {
       seen.cleanups += 1
     }

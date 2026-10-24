@@ -1,9 +1,9 @@
 # Author: David Matura
 #
-# A rendered composite made ready for the plugin's assets, its pixels kept: the transparent rows a render leaves under
-# the card trimmed, the text and ICC-profile chunks dropped (as in the other screenshots), and the image data
-# compressed again until no run of its bytes reads as a command the directory's scan flags. 1.0.1's compact.png spelled
-# PowerShell's `iex` and `irm`, its icon and hero `iwr` and `npx`.
+# A rendered card (card.py) made ready for the plugin's assets, its pixels kept: the transparent space a render
+# leaves under and beside the card trimmed, the text and ICC-profile chunks dropped (as in the other screenshots), and
+# the image data compressed again until no run of its bytes reads as a command the directory's scan flags. 1.0.1's
+# compact.png spelled PowerShell's `iex` and `irm`, its icon and hero `iwr` and `npx`.
 # Usage: python3 maintenance/screenshots/clean.py <render.png> <gh-prs-monitor/assets/screenshots/name.png>
 import re
 import struct
@@ -59,10 +59,12 @@ rows = unfiltered(raw, width, height, 4)
 drawn = [y for y in range(height) if any(rows[y][3::4])]
 if not drawn:
     sys.exit("The render is empty: every pixel is transparent.")
-# A row's filter refers only to the rows above it, so the rows kept keep their bytes.
+# A pixel's filter refers only to the pixels above it and left of it, so the rows and columns kept keep their bytes.
 kept = drawn[-1] + 1
-image = raw[: kept * (width * 4 + 1)]
-header = chunk(b"IHDR", struct.pack(">IIBBBBB", width, kept, 8, 6, 0, 0, 0))
+right = max(len(rows[y][3::4].rstrip(b"\0")) for y in drawn)
+stride = width * 4 + 1
+image = b"".join(raw[y * stride : y * stride + 1 + right * 4] for y in range(kept))
+header = chunk(b"IHDR", struct.pack(">IIBBBBB", right, kept, 8, 6, 0, 0, 0))
 extras = b"".join(chunk(kind, body) for kind, body in parts if kind in KEPT)
 
 for level in range(9, 0, -1):
@@ -73,6 +75,6 @@ for level in range(9, 0, -1):
             png = data[:8] + header + extras + idat + chunk(b"IEND", b"")
             if not FLAGGED.search(png):
                 open(target, "wb").write(png)
-                print(f"{target}: {width}x{kept}, {len(png):,} bytes, no flagged run")
+                print(f"{target}: {right}x{kept}, {len(png):,} bytes, no flagged run")
                 sys.exit(0)
 sys.exit("Every encoding tried has a flagged run: render again a pixel wider or taller.")

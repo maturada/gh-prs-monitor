@@ -305,9 +305,10 @@ export async function installChanged(
 }
 
 // `done` is what a finished install leaves behind, the command and the lockfile's hash, and where; an old one is
-// emptied first, so an install that fails halfway is never taken for a finished one. None is written before the install, which
-// would make its folder ahead of the tool (uv refuses a `.venv` that is no environment). Where none could go before,
-// it is looked for again after, as a tool can make its folder ignored itself (uv writes `.venv/.gitignore`).
+// emptied first, so an install that fails halfway is never taken for a finished one. None is written before the
+// install, which would make its folder ahead of the tool (uv refuses a `.venv` that is no environment). Where none
+// could go before, it is looked for again after, as a tool can make its folder ignored itself (uv writes
+// `.venv/.gitignore`).
 async function install(
   host: Host,
   dir: string,

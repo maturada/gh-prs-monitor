@@ -1,39 +1,21 @@
 // Author: David Matura
 
-import type { RenderSurface } from "claude-code"
 import { describe, expect, test } from "claude-code/testing"
-import type { Engine } from "claude-code/testing"
 import {
   clockOf,
-  PLUGIN,
   machine,
   runPrs,
   startSession,
   drawnNodes,
   mountPane,
   GITHUB,
-  keepOlderSnapshot
+  keepOlderSnapshot,
+  mountBand
 } from "./testing/world"
 import type { World } from "./testing/world"
 
 describe("the desktop app", () => {
   const DESKTOP: Partial<World> = { surfaces: ["desktop"] }
-
-  async function mountBand($: Engine, surface: RenderSurface, hasSurvey = false) {
-    return $.ui.mount({
-      plugin: PLUGIN,
-      surface,
-      component: "AbovePrompt",
-      props: {
-        hasSurvey,
-        isWorking: false,
-        maxRows: 10,
-        bodyColumns: 100,
-        scroll: { offset: 0, bodyRows: 3 },
-        view: {}
-      } as never
-    })
-  }
 
   test("a list an older version of the plugin left draws no band until the next refresh", async ($, on) => {
     machine($, on, { github: GITHUB, branch: "main", uncommitted: 0, ...DESKTOP })

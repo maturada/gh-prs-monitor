@@ -5,8 +5,19 @@ import { describe, expect, test } from "claude-code/testing"
 
 import type { MergedPull, PullRow, PullsSnapshot } from "../types"
 import { GhFailure } from "./github"
-import { claimedBusy, dropMerged, pressing, resumeMerged, withBusy, withoutBusyIf } from "./press"
-import { createSession } from "./session"
+import {
+  claimedBusy,
+  dropMerged,
+  lookBeforeAsking,
+  markKey,
+  marksOfVisit,
+  namedOn,
+  pressing,
+  resumeMerged,
+  withBusy,
+  withoutBusyIf
+} from "./press"
+import { createSession, FOLDER_LIST } from "./session"
 import type { Session } from "./session"
 import { readSettings } from "./settings"
 import { statusSummary } from "./summary"
@@ -58,10 +69,10 @@ describe("a pull request merged from the pane", () => {
   })
 
   test("a load under way finishes before the row is taken out of its list", async () => {
-    const { host, list } = fakePressHost({ list: LIST })
-    const session = sessionOf()
     let finish = (): void => {}
-    session.checks.inFlight = { done: new Promise((resolve) => (finish = resolve)), isFetching: true, requestedAt: NOW }
+    const loading = new Promise<void>((resolve) => (finish = resolve))
+    const { host, list } = fakePressHost({ list: LIST, settled: () => loading })
+    const session = sessionOf()
 
     const dropped = dropMerged(host, session, row(7))
     await promisesRun(20)
@@ -160,5 +171,45 @@ describe("a press's work", () => {
     expect(busy).toEqual([])
     await pressing(pressHost, sessionOf(), 7, "Checking…", async () => undefined)
     expect(busy).toEqual([null])
+  })
+})
+
+describe("the list a press acts on", () => {
+  const WEB = { host: "github.com", name: "acme/web" }
+
+  test("is the repository its host says, the visit's or the folder's", async () => {
+    const { host } = fakePressHost({ list: { ...LIST, repo: "acme/web" }, repo: WEB })
+
+    const look = await lookBeforeAsking(host, sessionOf(), "merge", row(7))
+
+    expect(look).toMatchObject({ isGoing: true, repo: WEB })
+  })
+
+  test("a list kept of another repository than its host's asks nothing, and is read again", async () => {
+    const { host, seen } = fakePressHost({ list: LIST, repo: WEB })
+
+    expect(await lookBeforeAsking(host, sessionOf(), "merge", row(7))).toEqual({ isGoing: false })
+    expect(seen.refreshAfterWrites).toBe(1)
+  })
+})
+
+describe("a list's marks and words", () => {
+  const WEB = { kind: "visit" as const, repo: { host: "GitHub.com", name: "Acme/Web" } }
+
+  test("the folder's rows are marked by their number, as ever; a visit's under its repository too", () => {
+    expect(markKey(FOLDER_LIST, 12)).toBe("12")
+    expect(markKey(WEB, 12)).toBe("github.com/acme/web#12")
+  })
+
+  test("a visit's pane draws its own marks alone, by number", () => {
+    const all = { "12": "Merging…", "github.com/acme/web#12": "Checking…", "github.com/acme/web-app#3": "Reviewing…" }
+
+    expect(marksOfVisit(all, WEB.repo)).toEqual({ "12": "Checking…" })
+  })
+
+  test("on a visit, what names #12 names its repository; on the folder's list, and anything else, as it is", () => {
+    expect(namedOn(WEB, "#12: merged")).toBe("Acme/Web#12: merged")
+    expect(namedOn(WEB, "Answer the open question first.")).toBe("Answer the open question first.")
+    expect(namedOn(FOLDER_LIST, "#12: merged")).toBe("#12: merged")
   })
 })

@@ -4,9 +4,10 @@ import type { Timer } from "claude-code"
 
 import type { Answer, BranchPulls, PullsSnapshot, Question } from "../types"
 import { nothingHeld } from "./alerts"
-import type { HeldAlerts } from "./alerts"
+import type { AlertBatch, HeldAlerts } from "./alerts"
 import type { CREATE_PR } from "./create-flow"
 import type { ClosedState } from "./ended"
+import { repoKey } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
 import type { Settings } from "./settings"
 import type { AwaitedAnswer } from "./shared"
@@ -28,6 +29,12 @@ export type Session = {
   id: string
   // Resolved once; null until it is, or while it cannot be.
   repo: RepoRef | null
+  // Whether the session tried to note its folder as a clone of `repo` (`noteFolder`), once its first list loaded: once
+  // a session, as a note that fails costs only the picker's offer.
+  isFolderNoted: boolean
+  // The light check of other repositories (`elsewhere.ts`): the one under way, its timer, and whether a tick found
+  // nothing drawn, or while open no pane, since it last ran, so the next says what waits in one line again.
+  elsewhere: { inFlight: Promise<void> | null; timer: Timer | null; isReturning: boolean }
   // The repository's ticket links, as the store held them when a list was last shown or `/prs tickets` kept them;
   // null where none are set or they are off.
   ticketLinks: TicketLinks | null
@@ -57,6 +64,12 @@ export type Session = {
   demo: DemoRuns
   // Hosts that said they have no stacked pull requests (GitHub Enterprise Server), asked without them.
   stacklessHosts: Set<string>
+  // The timer reading a visit's list again (`pollVisit`), while there is one; and the latest visit asked for while
+  // GitHub is asked how it writes the repository's name (`startVisit`), which a later one or a visit's end overtakes.
+  visitTimer: Timer | null
+  visitStart: string | null
+  // The repository picker getting ready (`askPick`): its button says so, and a press more does nothing.
+  isPreparingPicker: boolean
   // The pull request this checkout is being switched to, waiting for a turn to end or under way: one switch at a time.
   switchingFor: number | null
   // GitHub asked about the pull requests from the session's branch at a commit, with where the list knew the last one
@@ -96,6 +109,10 @@ export type OpenQuestion = {
   draft: string
   // The names picked so far, by index, where the question offers some to pick (`picker.tsx`); none elsewhere.
   picks: number[]
+  // The answer being carried out before the question closes (`ask`'s `check`), and why the last one kept the question
+  // open.
+  checking: Answer | null
+  problem: string | null
 }
 
 // GitHub's suggested reviewers for a pull request: kept for the head commit and reviews asked about
@@ -131,7 +148,7 @@ export type Checks = {
   isAlertWanted: boolean
   // The toasts the load under way held back, as nobody asked for it, once it took its kind: a timer's refresh that
   // joins it from then on still gets them.
-  heldBack: { repo: RepoRef; lines: string[] } | null
+  heldBack: { batches: AlertBatch[] } | null
   // A setup problem (gh missing or signed out) is announced once, not on every refresh, until the checks work again.
   hasAnnouncedSetup: boolean
   // The checks stopped as nothing was drawn any more (the desktop window closed); the next attach comes back to what
@@ -152,16 +169,41 @@ export type SkillRuns = {
   // with the row it marks once that is known. The row says the skill is at work for that turn alone.
   starting: SkillStart[]
   turns: Map<string, Promise<SkillMark | null>>
-  // When a skill last started, pressed or typed, whose turns the list follows for a while, and when it last did.
-  startedAt: number | null
-  lastFollowAt: number
+  // The lists a skill was started from, pressed or typed, whose turns each reads again for a while, by `listId`.
+  follows: Map<string, SkillFollow>
 }
 
-// A skill's command that has run: a pressed one knows its pull request, a typed one has its arguments.
-export type SkillStart = { command: string; mark: Mark | null; args: string }
+// A list following a skill's turns: when a skill was last started from it, null once its half hour is over, and when
+// the list last read itself again.
+export type SkillFollow = { list: ListRef; startedAt: number | null; lastFollowAt: number }
 
-// The row a skill's turn marks, and what it says there.
-export type SkillMark = { mark: Mark; label: string }
+// A skill's command that has run: a pressed one knows its pull request, a typed one has its arguments; and the list it
+// came from, whose row its turn marks.
+export type SkillStart = { command: string; mark: Mark | null; args: string; list: ListRef }
+
+// The row a skill's turn marks, on which list, and what it says there.
+export type SkillMark = { mark: Mark; label: string; list: ListRef }
+
+// The list a press or a skill's turn is on: the folder's, or a visit's (`visit.ts`), each with its own rows, marks
+// and loads.
+export type ListRef = { kind: "folder" } | { kind: "visit"; repo: RepoRef }
+
+export const FOLDER_LIST: ListRef = { kind: "folder" }
+
+// A list's name among the session's lists: the folder's, or a visit's by its repository.
+export function listId(list: ListRef): string {
+  return list.kind === "folder" ? "folder" : repoKey(list.repo)
+}
+
+// A skill started from `list` at `at`: that list follows its turns for a while (`followSkill`), the others as before.
+export function followFrom(session: Session, list: ListRef, at: number): void {
+  const id = listId(list)
+  session.skills.follows.set(id, {
+    list,
+    startedAt: at,
+    lastFollowAt: session.skills.follows.get(id)?.lastFollowAt ?? 0
+  })
+}
 
 // What a press under way, or a skill's turn, marks in the pane, saying meanwhile what is under way there: a pull
 // request's row, by its number, or the Create PR button.
@@ -181,8 +223,9 @@ export type CleanupRuns = {
   known: ClosedState[]
 }
 
-// The example alerts still to show.
-export type DemoRuns = { toasts: Timer[] }
+// The example alerts still to show; and the demo's starts and ends counted, so an answer to a question asked during
+// one demo is never applied to another, or after it.
+export type DemoRuns = { toasts: Timer[]; run: number }
 
 export function createSession(settings: Settings): Session {
   return {
@@ -218,10 +261,15 @@ export function createSession(settings: Settings): Session {
       lookedUp: []
     },
     alerts: nothingHeld(),
-    skills: { starting: [], turns: new Map(), startedAt: null, lastFollowAt: 0 },
+    skills: { starting: [], turns: new Map(), follows: new Map() },
     cleanup: { settledWorktrees: new Set(), settledBranches: new Set(), isRunning: false, isWanted: false, known: [] },
-    demo: { toasts: [] },
+    demo: { toasts: [], run: 0 },
     stacklessHosts: new Set(),
+    visitTimer: null,
+    visitStart: null,
+    isPreparingPicker: false,
+    isFolderNoted: false,
+    elsewhere: { inFlight: null, timer: null, isReturning: false },
     switchingFor: null,
     branchLookup: null,
     suggestedReviewers: new Map(),

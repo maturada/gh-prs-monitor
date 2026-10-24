@@ -7,7 +7,14 @@
 
 import type { CheckoutAt, PullRow } from "../types"
 import { ACTION_LABELS } from "./actions"
-import { branchPlaceQuestion, readPlaceAnswer, skillArgs } from "./branch-flow"
+import {
+  branchPlaceQuestion,
+  cloneOpens,
+  isOpeningClone,
+  openCloneQuestion,
+  readPlaceAnswer,
+  skillArgs
+} from "./branch-flow"
 import type { BranchSkill, SkillArgs } from "./branch-flow"
 import { lookUpBranch } from "./branch-lookup"
 import type { BranchLookupHost } from "./branch-lookup"
@@ -24,8 +31,9 @@ import { ensureDependencies, FORK_DEPS_NOTE } from "./deps"
 import { branchPullsOf, CREATE_PR, createArgs, createPlaceQuestion, pullToOpen } from "./create-flow"
 import type { PullToOpen } from "./create-flow"
 import { pullNumberOf, pullRefIn } from "./args"
-import { messageOf } from "./gh"
+import { messageOf, sameRepo } from "./gh"
 import type { RepoRef } from "./gh"
+import { sessionRepo } from "./github"
 import {
   canOpenInWorktree,
   canOpenSession,
@@ -36,19 +44,24 @@ import {
   sessionAppFor
 } from "./new-session"
 import type { SessionApp } from "./new-session"
+import { homeShort } from "./paths"
 import { buttonKey } from "./keys"
-import { lookBeforeAsking, markName, pressing, sessionRepo } from "./press"
+import { lookBeforeAsking, markName, pressing } from "./press"
 import type { PressHost } from "./press"
 import { isOnBranch, pullOnBranch, storedSnapshot } from "./pulls"
 import { readSessionAnswer } from "./question"
 import type { SessionPlace } from "./question"
 import { isBackToReview, readReviewAnswer, backToReviewQuestion, reviewArgs, reviewPlaceQuestion } from "./review-flow"
 import type { ReviewStart } from "./review-flow"
-import type { Mark, Session, SkillMark, SkillStart } from "./session"
+import { FOLDER_LIST, followFrom } from "./session"
+import type { ListRef, Mark, Session, SkillFollow, SkillMark, SkillStart } from "./session"
+import type { NotedClone } from "./store"
 
 // What a bundled skill's run reaches beyond a press's (`PressHost`), handed in by the hooks module.
 export type SkillHost = PressHost &
   BranchLookupHost & {
+    // The list this host's presses and skills are on.
+    list: ListRef
     // The session's checkout as git says now, and kept unless one read later is (`newerCheckout`).
     checkoutNow: () => Promise<CheckoutAt>
     keepCheckout: (checkout: CheckoutAt) => Promise<CheckoutAt>
@@ -64,6 +77,9 @@ export type SkillHost = PressHost &
     isCheckingMode: () => Promise<boolean>
     // The scheme of the editor the VS Code extension runs in, or null where it isn't found (`editorScheme`).
     editorScheme: () => Promise<string | null>
+    // The clones noted on this machine that still are (`stillCloned`), and the home folder they show from.
+    clones: () => Promise<NotedClone[]>
+    home: () => Promise<string | null>
   }
 
 export const RESOLVE_COMMAND = "gh-prs-monitor:resolve-comments"
@@ -99,22 +115,24 @@ const BRANCH_SKILLS: Readonly<Record<BranchSkill, string>> = {
 // --- The skill turn's life ---
 
 // For half an hour after a skill started, each finished turn refreshes the list, at most every half minute, when
-// `isCheckingMode` has checks run. A problem that stopped the checks stops these too.
+// `isCheckingMode` has checks run. A problem that stopped the folder's checks stops the folder's follows too; a visit's
+// list is read apart from the folder's.
 const SKILL_FOLLOW_MS = 30 * 60_000
 
 const FOLLOW_GAP_MS = 30_000
 
-async function followSkill(host: SkillHost, session: Session): Promise<void> {
+async function followSkill(host: SkillHost, session: Session, follow: SkillFollow): Promise<void> {
   const now = await host.now()
-  if (session.skills.startedAt === null || now - session.skills.startedAt > SKILL_FOLLOW_MS) {
-    session.skills.startedAt = null
+  if (follow.startedAt === null || now - follow.startedAt > SKILL_FOLLOW_MS) {
+    follow.startedAt = null
 
     return
   }
-  if (!(await host.isCheckingMode()) || session.checks.isStopped || now - session.skills.lastFollowAt < FOLLOW_GAP_MS) {
+  const isStopped = host.list.kind === "folder" && session.checks.isStopped
+  if (!(await host.isCheckingMode()) || isStopped || now - follow.lastFollowAt < FOLLOW_GAP_MS) {
     return
   }
-  session.skills.lastFollowAt = now
+  follow.lastFollowAt = now
   // Nobody asked for this refresh, so what it finds is alerted, as the timer's is.
   await host.refresh(true)
 }
@@ -138,29 +156,29 @@ async function runSkill(host: SkillHost, session: Session, command: string, args
   } catch (error) {
     throw new Error(`could not run /${command}: ${messageOf(error)}`)
   }
-  session.skills.starting.push({ command, mark, args })
+  session.skills.starting.push({ command, mark, args, list: host.list })
   await host.setBusy(mark, SKILLS[command]!.atWork)
-  session.skills.startedAt = await host.now()
+  followFrom(session, host.list, await host.now())
 }
 
 // What a skill's turn marks: what was pressed for it; for a typed skill the pull request its arguments name, or for a
 // bare Resolve Comments, Fix CI or Resolve Conflicts the one on the checked-out branch, as the skill finds it itself;
 // for Create PR its button.
-export async function markSkillTurn(host: SkillHost, session: Session, skill: SkillStart): Promise<SkillMark | null> {
-  const mark = skill.mark ?? (skill.command === CREATE_PR_COMMAND ? CREATE_PR : await typedPull(host, session, skill))
+export async function markSkillTurn(host: SkillHost, skill: SkillStart): Promise<SkillMark | null> {
+  const mark = skill.mark ?? (skill.command === CREATE_PR_COMMAND ? CREATE_PR : await typedPull(host, skill))
   if (mark === null) {
     return null
   }
-  const marked = { mark, label: SKILLS[skill.command]!.atWork }
+  const marked = { mark, label: SKILLS[skill.command]!.atWork, list: skill.list }
   await host.setBusy(mark, marked.label)
 
   return marked
 }
 
-async function typedPull(host: SkillHost, session: Session, skill: SkillStart): Promise<number | null> {
+async function typedPull(host: SkillHost, skill: SkillStart): Promise<number | null> {
   const ref = pullRefIn(skill.args)
   if (ref !== null) {
-    const known = await sessionRepo(host, session)
+    const known = await host.repo()
 
     return pullNumberOf(ref, "repo" in known ? known.repo : null)
   }
@@ -173,34 +191,46 @@ async function typedPull(host: SkillHost, session: Session, skill: SkillStart): 
 }
 
 // Gives the row its buttons back, unless something else has marked it since.
-async function unmarkSkillTurn(host: SkillHost, mark: Promise<SkillMark | null>): Promise<void> {
+async function unmarkSkillTurn(hostOf: (list: ListRef) => SkillHost, mark: Promise<SkillMark | null>): Promise<void> {
   const marked = await mark
   if (marked) {
-    await host.clearBusyIf(marked.mark, marked.label)
+    await hostOf(marked.list).clearBusyIf(marked.mark, marked.label)
   }
 }
 
-export function skillTurnStarted(host: SkillHost, session: Session, turnId: string): void {
-  // A skill's command starts its turn as it runs, so the first turn to start after it is the skill's.
+export function skillTurnStarted(hostOf: (list: ListRef) => SkillHost, session: Session, turnId: string): void {
+  // A skill's command starts its turn as it runs, so the first turn to start after it is the skill's, which marks the
+  // row on the list it came from.
   const skill = session.skills.starting.shift()
   if (skill) {
-    const mark = markSkillTurn(host, session, skill)
+    const host = hostOf(skill.list)
+    const mark = markSkillTurn(host, skill)
     session.skills.turns.set(turnId, mark)
     host.background(mark)
   }
 }
 
 // A turn ended: a skill's gives its row back, and the main loop's lets the list follow the skill.
-export function skillTurnEnded(host: SkillHost, session: Session, turnId: string, isMainLoop: boolean): void {
+export function skillTurnEnded(
+  hostOf: (list: ListRef) => SkillHost,
+  session: Session,
+  turnId: string,
+  isMainLoop: boolean
+): void {
   // Answered, interrupted or failed, the skill's turn is over: it waits in the conversation, or is done.
   const mark = session.skills.turns.get(turnId)
   if (mark) {
     session.skills.turns.delete(turnId)
-    host.background(unmarkSkillTurn(host, mark))
+    hostOf(FOLDER_LIST).background(unmarkSkillTurn(hostOf, mark))
   }
-  // A subagent's turns run inside the turn that spawned it, which the list follows once it ends.
-  if (session.skills.startedAt !== null && isMainLoop) {
-    host.background(followSkill(host, session))
+  // A subagent's turns run inside the turn that spawned it, which each list a skill came from follows once it ends.
+  if (isMainLoop) {
+    for (const follow of session.skills.follows.values()) {
+      if (follow.startedAt !== null) {
+        const host = hostOf(follow.list)
+        host.background(followSkill(host, session, follow))
+      }
+    }
   }
 }
 
@@ -313,6 +343,42 @@ export async function workOnBranch(
       place.isNewSession && canOpenSession(surface) ? await sessionAppFor(surface, host.editorScheme) : null
 
     return workInWorktree(work, newSession)
+  })
+}
+
+// A branch skill pressed on a visit's row works in a clone of the visited repository, never in this session's folder
+// (`openCloneQuestion`): the latest noted that still is one, which New Session starts a session in with
+// `/prs owner/name` typed in, for the person to send and press the button again; a link that won't open says where to
+// type it.
+export async function openClone(
+  host: SkillHost,
+  session: Session,
+  skill: BranchSkill,
+  row: PullRow,
+  repo: RepoRef,
+  surface: string
+): Promise<void> {
+  await pressing(host, session, row.number, "Checking…", async () => {
+    const root = (await host.clones()).find((clone) => sameRepo(clone.repo, repo))?.root ?? null
+    const clone = root ? { root, shown: homeShort(root, await host.home()) } : null
+    const question = openCloneQuestion(skill, row, repo, clone?.shown ?? null, cloneOpens(surface))
+    const answer = await host.ask(question, buttonKey(skill, row.number))
+    // Only a clone the question offered to open is opened, from a surface that opens a new session.
+    if (!clone || !canOpenSession(surface) || !isOpeningClone(answer)) {
+      return
+    }
+    const prompt = `/prs ${repo.name}`
+    try {
+      await openLink(host, newSessionLink(await sessionAppFor(surface, host.editorScheme), clone.root, prompt))
+    } catch (error) {
+      const message = `could not open a new session (${messageOf(error)}); in ${clone.root}, type ${prompt} into one yourself`
+      host.inConversation(`${markName(row.number)}: ${message}`)
+      throw new Error(message)
+    }
+    await host.notify(
+      `${markName(row.number)}: a new session in ${clone.shown} has ${prompt} typed in; send it there`,
+      session.settings.alertMs
+    )
   })
 }
 

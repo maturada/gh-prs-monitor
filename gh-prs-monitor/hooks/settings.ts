@@ -22,6 +22,9 @@ export type Settings = {
   // The pull request changes among the alerts also go out as a system notification, one each time they show, through
   // Claude Code's own channel.
   isSendingSystemNotification: boolean
+  // A light check of the pull requests in other repositories that are the viewer's or ask their review, which alerts
+  // their changes (`elsewhere.ts`).
+  isAlertingElsewhere: boolean
   // Alerts wait while a turn runs, and show when it is done.
   isHoldingWhileWorking: boolean
   // Worktrees /prs made go, with their branches, and the branches a switch here left, once their pull request is
@@ -66,6 +69,7 @@ export function readSettings(options: PluginOptions): Settings {
     includeOutdated: options.includeOutdated === true,
     isPlayingSound: options.alertSound === true,
     isSendingSystemNotification: options.systemNotification === true,
+    isAlertingElsewhere: options.alertOtherRepos === true,
     isHoldingWhileWorking: options.holdWhileWorking !== false,
     isCleaningUp: options.cleanupWorktrees !== false,
     isHidingDrafts: options.hideDrafts === true,

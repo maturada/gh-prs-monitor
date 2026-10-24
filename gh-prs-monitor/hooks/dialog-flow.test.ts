@@ -4,7 +4,7 @@ import type { AskOptions } from "claude-code"
 import { describe, expect, test } from "claude-code/testing"
 
 import type { Answer, Question } from "../types"
-import { ask, closeAsked, drawnQuestion, isQuestionOpen, OPEN_QUESTION_NOTE } from "./dialog-flow"
+import { ask, closeAsked, drawnQuestion, dropAsked, isQuestionOpen, OPEN_QUESTION_NOTE } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { pickKey } from "./keys"
 import { createSession } from "./session"
@@ -123,6 +123,323 @@ function sessionOf(): Session {
 function answerAsked(session: Session, answer: Answer | null): void {
   ;(session.asking as OpenQuestion).answer(answer)
 }
+
+describe("an answer checked before the question closes", () => {
+  test("while it is checked the question says so; a problem keeps it open and says why; one that passes closes it", async () => {
+    const session = sessionOf()
+    const { host } = hostOf()
+    const results = ["No access to acme/wbe.", null]
+    const checked: string[] = []
+    let release = () => {}
+    const check = async (answer: Answer) => {
+      checked.push(answer.instructions)
+      await new Promise<void>((resolve) => (release = resolve))
+
+      const problem = results.shift() ?? null
+
+      return problem === null ? { isChanged: true } : { problem }
+    }
+
+    const answered = ask(host, session, QUESTION, "refresh", check)
+    await promisesRun(20)
+    answerAsked(session, { choice: "Merge", instructions: "acme/wbe" })
+    expect(session.asking?.checking).toEqual({ choice: "Merge", instructions: "acme/wbe" })
+    // A press while it is checked does nothing.
+    answerAsked(session, { choice: "Merge", instructions: "acme/other" })
+    release()
+    await promisesRun(20)
+    expect(session.asking?.checking).toBe(null)
+    expect(session.asking?.problem).toBe("No access to acme/wbe.")
+
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+    release()
+    expect(await answered).toEqual({ choice: "Merge", instructions: "acme/web" })
+    expect(checked).toEqual(["acme/wbe", "acme/web"])
+  })
+
+  test("Cancel is no answer to check, and closes it at once", async () => {
+    const session = sessionOf()
+    const { host } = hostOf()
+    const checked: Answer[] = []
+    const answered = ask(host, session, QUESTION, "refresh", async (answer) => {
+      checked.push(answer)
+
+      return { isChanged: true }
+    })
+    await promisesRun(20)
+    answerAsked(session, { choice: "Cancel", instructions: "" })
+
+    expect(await answered).toEqual({ choice: "Cancel", instructions: "" })
+    expect(checked).toEqual([])
+  })
+
+  test("in Claude Code's own dialog, the answer is checked once given, and a problem is told", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false, engine: async () => "Merge" })
+
+    const answered = await ask(host, session, QUESTION, "refresh", async () => ({ problem: "No access to acme/wbe." }))
+
+    expect(answered).toBe(null)
+    expect(seen.notes).toEqual(["No access to acme/wbe."])
+  })
+
+  test("an answer carried out is wanted until the question is answered otherwise, as by Cancel while it is checked", async () => {
+    const session = sessionOf()
+    const { host } = hostOf()
+    let isWanted = () => false
+    let release = () => {}
+    const answered = ask(host, session, QUESTION, "refresh", async (_answer, wanted) => {
+      isWanted = wanted
+      await new Promise<void>((resolve) => (release = resolve))
+
+      return { isChanged: true }
+    })
+    await promisesRun(20)
+
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+    expect(isWanted()).toBe(true)
+    answerAsked(session, { choice: "Cancel", instructions: "" })
+    expect(isWanted()).toBe(false)
+    expect(await answered).toEqual({ choice: "Cancel", instructions: "" })
+    release()
+  })
+
+  test("one carried out changed what the pane shows: its window starts at the top, the keyboard on the button pressed", async () => {
+    const session = sessionOf()
+    const carried = hostOf()
+    const answered = ask(carried.host, session, QUESTION, "repo", async () => ({ isChanged: true }))
+    await promisesRun(20)
+    const tops = carried.seen.tops
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+    await answered
+    await promisesRun(20)
+
+    expect(session.goingBack).toBe(null)
+    expect(carried.seen.tops).toBe(tops + 1)
+    expect(carried.seen.focused.at(-1)).toBe("repo")
+
+    const plain = hostOf()
+    const asked = ask(plain.host, session, QUESTION, "repo")
+    await promisesRun(20)
+    answerAsked(session, { choice: "Merge", instructions: "" })
+    await asked
+    expect(session.goingBack).not.toBe(null)
+  })
+
+  test("one carried out that changed nothing puts the window back on its row, as Cancel does", async () => {
+    const session = sessionOf()
+    session.listOffset = 40
+    const { host } = hostOf()
+    const answered = ask(host, session, QUESTION, "repo", async () => ({ isChanged: false }))
+    await promisesRun(20)
+
+    answerAsked(session, { choice: "Merge", instructions: "nope" })
+    await answered
+
+    expect(session.goingBack).toEqual({ offset: 40 })
+  })
+
+  test("once one changed what the pane shows, the next question goes back to its top, not the old list's row", async () => {
+    const session = sessionOf()
+    session.listOffset = 40
+    const { host } = hostOf()
+    const answered = ask(host, session, QUESTION, "repo", async () => ({ isChanged: true }))
+    await promisesRun(20)
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+    await answered
+
+    const next = ask(host, session, QUESTION, "refresh")
+    await promisesRun(20)
+    answerAsked(session, { choice: "Cancel", instructions: "" })
+    await next
+
+    expect(session.goingBack).toEqual({ offset: 0 })
+  })
+
+  test("answered in the pane before the pane's look comes back, and kept open by a problem, it is the pane's still", async () => {
+    const session = sessionOf()
+    const { host, seen, hold, release } = hostOf({ isShown: false })
+    hold("look")
+    const answered = ask(host, session, QUESTION, "refresh", async () => ({ problem: "No access to acme/wbe." }))
+    await promisesRun(20)
+
+    answerAsked(session, { choice: "Merge", instructions: "acme/wbe" })
+    await promisesRun(20)
+    release()
+    await promisesRun(20)
+
+    // Neither put away nor asked in Claude Code's own dialog.
+    expect(seen.shown).toEqual([QUESTION.subject])
+    expect(seen.engine).toEqual([])
+    expect(await settled(answered)).toBe("pending")
+    expect(session.asking?.problem).toBe("No access to acme/wbe.")
+  })
+
+  test("answered in the pane as it is put away, it is drawn again, not asked in Claude Code's own dialog", async () => {
+    const session = sessionOf()
+    const { host, seen, hold, release } = hostOf({ isShown: false })
+    hold("list")
+    let done = () => {}
+    const answered = ask(host, session, QUESTION, "refresh", async () => {
+      await new Promise<void>((resolve) => (done = resolve))
+
+      return { isChanged: true }
+    })
+    await promisesRun(20)
+
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+    release()
+    await promisesRun(20)
+    expect(seen.shown).toEqual([QUESTION.subject, null, QUESTION.subject])
+    done()
+
+    expect(await answered).toEqual({ choice: "Merge", instructions: "acme/web" })
+    expect(seen.engine).toEqual([])
+  })
+
+  test("in Claude Code's own dialog, a check that fails outright is told as its problem would be", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false, engine: async () => "Merge" })
+
+    const answered = await ask(host, session, QUESTION, "refresh", async () => {
+      throw new Error("gh: connection refused")
+    })
+
+    expect(answered).toBe(null)
+    expect(seen.notes).toEqual(["gh: connection refused"])
+  })
+
+  test("in Claude Code's own dialog, Cancel is no answer to carry out either", async () => {
+    const session = sessionOf()
+    const { host } = hostOf({ isShown: false, engine: async () => "Cancel" })
+    const checked: Answer[] = []
+
+    const answered = await ask(host, session, QUESTION, "refresh", async (answer) => {
+      checked.push(answer)
+
+      return { problem: "never" }
+    })
+
+    expect(answered).toEqual({ choice: "Cancel", instructions: "" })
+    expect(checked).toEqual([])
+  })
+
+  test("in Claude Code's own dialog, an answer that passes its check is the answer, nothing told", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false, engine: async () => "Merge" })
+    const checked: string[] = []
+
+    const answered = await ask(host, session, QUESTION, "refresh", async (answer) => {
+      checked.push(String(answer.choice))
+
+      return { isChanged: true }
+    })
+
+    expect(answered).toEqual({ choice: "Merge", instructions: "" })
+    expect(checked).toEqual(["Merge"])
+    expect(seen.notes).toEqual([])
+  })
+})
+
+describe("a question given up as /prs shows something else", () => {
+  test("one open in the pane is cancelled, and the window goes back to no row of the list it covered", async () => {
+    const session = sessionOf()
+    session.listOffset = 40
+    const { host } = hostOf()
+    const answered = ask(host, session, QUESTION, "refresh")
+    await promisesRun(20)
+
+    dropAsked(session)
+
+    expect(await answered).toBe(null)
+    expect(session.goingBack).toBe(null)
+    expect(session.listOffset).toBe(0)
+    expect(session.asking).toBe(null)
+  })
+
+  test("its answer being carried out is no longer wanted", async () => {
+    const session = sessionOf()
+    const { host } = hostOf()
+    let isWanted = () => true
+    const answered = ask(host, session, QUESTION, "refresh", async (_answer, wanted) => {
+      isWanted = wanted
+      await promisesRun(50)
+
+      return { isChanged: true }
+    })
+    await promisesRun(20)
+    answerAsked(session, { choice: "Merge", instructions: "acme/web" })
+
+    dropAsked(session)
+
+    expect(isWanted()).toBe(false)
+    expect(await answered).toBe(null)
+  })
+
+  test("one that only tells, asked where the pane doesn't show, is told instead: Claude Code's dialog would pad it", async () => {
+    const session = sessionOf()
+    const { host, seen } = hostOf({ isShown: false })
+    const tells: Question = { ...QUESTION, choices: ["OK"], main: "OK" }
+
+    expect(await ask(host, session, tells, "refresh")).toEqual({ choice: "OK", instructions: "" })
+    expect(seen.engine).toEqual([])
+    expect(seen.notes).toEqual([`${tells.subject} — ${tells.text}`])
+  })
+
+  test("one answered that still shows while it is put away is let go at once", async () => {
+    const session = sessionOf()
+    const { host, hold, release } = hostOf()
+    const answered = ask(host, session, QUESTION, "refresh")
+    await promisesRun(20)
+    // Its put-away hangs, and so does the wait that would let it go.
+    hold("list")
+    hold("wait")
+    answerAsked(session, { choice: "Merge", instructions: "" })
+    await promisesRun(20)
+    expect(session.asking?.isAnswered).toBe(true)
+
+    dropAsked(session)
+
+    expect(session.asking).toBe(null)
+    release()
+    expect(await answered).toEqual({ choice: "Merge", instructions: "" })
+  })
+
+  test("another may be asked at once, and the given up one's late put-away leaves it open", async () => {
+    const session = sessionOf()
+    const { host, hold, release } = hostOf()
+    const first = ask(host, session, QUESTION, "refresh")
+    await promisesRun(20)
+    hold("list")
+    hold("wait")
+    answerAsked(session, { choice: "Merge", instructions: "" })
+    await promisesRun(20)
+
+    expect(dropAsked(session)).toBe(true)
+    const next: Question = { ...QUESTION, subject: "#7 Another" }
+    void ask(host, session, next, "refresh")
+    await promisesRun(20)
+    release()
+    await first
+    await promisesRun(20)
+
+    expect(session.asking?.question.subject).toBe("#7 Another")
+  })
+
+  test("one asked in Claude Code's own dialog stays", async () => {
+    const session = sessionOf()
+    let answer = (_text: string) => {}
+    const { host } = hostOf({ isShown: false, engine: () => new Promise((resolve) => (answer = resolve)) })
+    const answered = ask(host, session, QUESTION, "refresh")
+    await promisesRun(20)
+
+    dropAsked(session)
+    expect(await settled(answered)).toBe("pending")
+    answer("Merge")
+
+    expect(await answered).toEqual({ choice: "Merge", instructions: "" })
+  })
+})
 
 describe("asking in the pane", () => {
   test("a question with more answers than Claude Code's own dialog takes stays in the pane, though it's behind", async () => {
@@ -251,7 +568,9 @@ describe("asking in the pane", () => {
       isInPane: false,
       fieldKey: "answer-text-1",
       draft: "",
-      picks: []
+      picks: [],
+      checking: null,
+      problem: null
     }
 
     expect(await isQuestionOpen(hostOf({ panes: [] }).host, session)).toBe(true)
@@ -421,6 +740,31 @@ describe("a question that offers names, where the pane doesn't show", () => {
     expect(await ask(answering("the whole team").host, sessionOf(), PEOPLE, "request-7")).toBeNull()
   })
 
+  test("a question with a field of its own takes what is typed under Other as typed there; a decline cancels", async () => {
+    const field = { label: "Or type one", placeholder: "owner/name", submitLabel: "Show", otherHint: "Type one." }
+    const repos: Question = {
+      ...PEOPLE,
+      header: "Repositories",
+      subject: "",
+      text: "Which repository's pull requests should the pane show?",
+      choices: ["Show", "Cancel"],
+      main: "Show",
+      picking: { names: ["acme/app", "acme/web"], isSingle: true, initial: [0], needsPick: false, startsOn: "names" },
+      field
+    }
+
+    const typed = answering(" acme/r5 ")
+    expect(await ask(typed.host, sessionOf(), repos, "repo")).toEqual({ choice: "Show", instructions: "acme/r5" })
+    // The names say what may be typed instead; a question about no one pull request leads with its text.
+    expect(typed.seen.engine[0]).toBe("Which repository's pull requests should the pane show? Type one.")
+    expect(await ask(answering("never mind").host, sessionOf(), repos, "repo")).toBeNull()
+    expect(await ask(answering("acme/web").host, sessionOf(), repos, "repo")).toEqual({
+      choice: "Show",
+      instructions: "",
+      picks: ["acme/web"]
+    })
+  })
+
   test("a lone name is offered beside Cancel, not padded with Yes and No", async () => {
     const lone: Question = { ...PEOPLE, picking: { ...PEOPLE.picking!, names: ["lou"] } }
     const yes = hostOf({ isShown: false, engine: async () => "lou" })
@@ -550,7 +894,9 @@ describe("the pane closing while it asks", () => {
         isInPane,
         fieldKey: "f",
         draft: "",
-        picks: []
+        picks: [],
+        checking: null,
+        problem: null
       }
     })
 

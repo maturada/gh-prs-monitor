@@ -54,6 +54,17 @@ export async function goBack(host: BackHost, mark: string | null, pressed: strin
   }
 }
 
+// The pane's window at its top, and the keyboard onto `key` where the pane holds it: where a question starts it as it
+// shows, the button pressed once an answer changed what the pane shows, or Repositories once Back left a visit;
+// elsewhere the person goes on as they were.
+export async function topAndFocus(
+  host: { scrollToTop: () => Promise<unknown>; focus: (key: string) => Promise<unknown> },
+  key: string
+): Promise<void> {
+  await host.scrollToTop().catch(() => undefined)
+  await host.focus(key).catch(() => undefined)
+}
+
 // The pane closed: opened again, its window starts at the top, and goes back nowhere.
 export function forgetWindow(session: Pick<Session, "listOffset" | "goingBack">): void {
   session.listOffset = 0

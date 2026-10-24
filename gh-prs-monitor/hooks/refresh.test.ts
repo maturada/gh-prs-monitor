@@ -4,7 +4,7 @@ import type { PluginOptions, ProcessRunResult } from "claude-code"
 import { describe, expect, test } from "claude-code/testing"
 
 import type { Activity, CheckoutAt, MergedPull, PullsSnapshot } from "../types"
-import { ALERT_KINDS, changesBetween } from "./alerts"
+import { ALERT_KINDS, batchLines, changesBetween } from "./alerts"
 import type { ClosedState } from "./ended"
 import { GH_MISSING } from "./gh"
 import { checkShared, ensurePolling, lookBack, refresh, refreshInTurn, retry, retryMinutes, takeKind } from "./refresh"
@@ -332,9 +332,11 @@ function hostWith(
       calls.push("remember")
       options.atRemember?.()
     },
+    noteFolder: async () => undefined,
     isDrawn: async () => options.isDrawn ?? true,
     isPaneOpen: async () => options.isPaneOpen ?? true,
     isPaneShown: async () => true,
+    isVisiting: async () => false,
     setStatus: async (text) => {
       state.status = text
     },
@@ -344,12 +346,10 @@ function hostWith(
     notify: async (text, timeoutMs) => {
       state.notes.push({ text, timeoutMs })
     },
-    announce: async (_, lines, areChanges) => {
+    announce: async (batches) => {
       calls.push("announce")
-      state.toasts.push(...lines)
-      if (areChanges) {
-        state.changes.push(...lines)
-      }
+      state.toasts.push(...batches.flatMap((batch) => batchLines(batch)))
+      state.changes.push(...batches.flatMap((batch) => (batch.kind === "events" ? batchLines(batch) : [])))
     },
     lookUpBranch: async (_, branch, head) => {
       state.branchLookups.push([branch, head])

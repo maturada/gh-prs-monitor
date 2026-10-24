@@ -22,7 +22,7 @@ and real-git copy the plugin folder they are given before they run it; the test 
 | `version-check.py <base>` | that a change to the plugin raises its version and gives it a CHANGELOG section | CI, on pull requests |
 | `pr-check.py` | a pull request's branch name and description | CI, on pull requests |
 | `release-notes.py <version>` | a version's CHANGELOG section, the notes of its GitHub release | the release job |
-| [`screenshots/`](screenshots/README.md) | the README's composite screenshots: their rules, and a render made ready for the plugin | when the UI changes |
+| [`screenshots/`](screenshots/README.md) | the README's pictures: how to shoot and cut a screenshot, and the card that holds it | when the UI changes |
 
 Needs Claude Code, git, Python 3, zsh, rsync and perl (macOS has the last three), and for the simulator and
 real-git [Bun](https://bun.sh).

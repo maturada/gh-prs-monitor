@@ -1,22 +1,47 @@
 # Acting on GitHub
 
-Your own pull requests get a button when their state calls for one and your access allows it: merge what is ready,
-update a branch that fell behind, re-run a flaky check, ask someone to review it. Every button asks first, in the
-plugin's dialog (below), saying exactly what will happen; Cancel or Escape writes nothing. Resolve Comments, Fix CI,
-Resolve Conflicts and Review have pages of their own: [Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md),
+The buttons on your pull requests do the next thing for you: merge what is ready, update a branch that fell behind,
+re-run a flaky check, ask someone to review. A button shows when the pull request's state calls for it and your access
+allows it.
+
+Every button that writes to GitHub asks first, in [the plugin's dialog](#the-dialog), and says what it will do. Cancel
+or Escape writes nothing.
+
+Resolve Comments, Fix CI, Resolve Conflicts and Review start a skill (a guided workflow Claude runs for you) and have
+pages of their own: [Resolve Comments](resolve-comments.md), [Fix CI](fix-ci.md),
 [Resolve Conflicts](resolve-conflicts.md), [Review](review.md).
 
 ## The buttons
 
-| Button | When | What it does |
+| Button | What it does | When it shows |
 |---|---|---|
-| **Merge** | ready to merge, or waiting for review where the base requires none and GitHub says it can merge (checks green, no comments open); you can push to the repository, which allows a merge method; and auto-merge isn't on | Merges with the method you pick. |
-| **Auto-Merge** | approved but held back (checks running, or a requirement such as a second approval), GitHub lets you turn on auto-merge, and it isn't on yet | Turns on auto-merge, so GitHub merges once nothing holds it back. |
-| **Update Branch** | behind its base, where the base must be up to date to merge or the repository always suggests updating branches, and GitHub lets you update the branch; at any stage but draft, conflicts and in the merge queue | Merges the base branch in, or rebases onto it, as you pick. |
-| **Re-Run CI** | CI failing, not a draft, and you can push to the repository | Re-runs the failed jobs of the failed GitHub Actions runs it names. |
-| **Ready For Review** | a draft, as its main button | Marks it ready for review. |
-| **Request Review** | no person is asked to review it, a bot such as Copilot aside, and nobody has reviewed it yet (its row reads "no reviewer requested", or "requested:" names only the bot), or it needs more approvals and no person is asked; GitHub suggests someone; not on a draft or in the merge queue, and you need triage access to the repository; the main button while it waits for review or for more approvals | Asks the people you pick among GitHub's suggestions (below), as GitHub's request for reviewers does. |
-| **Re-Request Review** | someone requested changes, commits came after their latest review, and they aren't asked again yet; not on a draft, and you need triage access to the repository; the main button while changes requested is the status | Asks them to review again, as GitHub's re-request does (only those who requested changes). Once everyone holding it back is asked, the row waits on them. |
+| **Merge** | Merges with the method you pick. | The pull request can merge. |
+| **Auto-Merge** | Turns on auto-merge, so GitHub merges once nothing holds it back. | Approved but held back. |
+| **Update Branch** | Merges the base branch in, or rebases onto it, as you pick. | The branch is behind its base. |
+| **Re-Run CI** | Re-runs the failed jobs of the failed GitHub Actions runs it names. | CI is failing. |
+| **Ready For Review** | Marks the draft ready for review. | The pull request is a draft (its main button). |
+| **Request Review** | Asks the people you pick among GitHub's suggestions, as GitHub's request for reviewers does. | No person is asked to review it, and GitHub suggests someone. |
+| **Re-Request Review** | Asks those who requested changes to review again, as GitHub's re-request does. | Commits came after a requested change. |
+
+### When each one shows
+
+- **Merge**: the pull request is ready to merge, or waiting for review where the base requires none and GitHub says it
+  can merge (checks green, no comments open). You can push to the repository, which allows a merge method, and
+  auto-merge isn't on.
+- **Auto-Merge**: the pull request is approved but held back, by running checks or a requirement such as a second
+  approval. GitHub lets you turn on auto-merge, and it isn't on yet.
+- **Update Branch**: the branch is behind its base, and the base must be up to date to merge or the repository always
+  suggests updating branches. GitHub lets you update the branch. It shows at any stage but draft, conflicts and in the
+  merge queue.
+- **Re-Run CI**: CI is failing, the pull request is not a draft, and you can push to the repository.
+- **Request Review**: either no person is asked to review it (a bot such as Copilot aside) and nobody has reviewed it
+  yet, so its row reads "no reviewer requested" or "requested:" names only the bot; or it needs more approvals and no
+  person is asked. GitHub suggests someone. It does not show on a draft or in the merge queue, and you need triage
+  access to the repository. It is the main button while the pull request waits for review or for more approvals.
+- **Re-Request Review**: someone requested changes, commits came after their latest review, and they aren't asked again
+  yet. It does not show on a draft, and you need triage access to the repository. It is the main button while changes
+  requested is the status. Once everyone holding the pull request back is asked, the row waits on them. It asks only
+  those who requested changes.
 
 ## Each press checks GitHub first
 
@@ -62,9 +87,9 @@ nobody was asked.
 
 Everything follows the repository's own settings on GitHub, so it works the same in any repository, on github.com and
 GitHub Enterprise. What you may do is GitHub's answer, not a guess: your permission on the repository, and whether you
-may turn on auto-merge or update the branch. A contributor's pull request from a fork gets no **Merge** or
-**Re-Run CI**. Branch protection (required reviews, required checks, an up-to-date branch) is GitHub's to enforce, and
-the [statuses](pane.md#your-pull-requests) come from GitHub's own verdict.
+may turn on auto-merge or update the branch. The merge and CI buttons are for your own pull requests; those waiting on
+your review offer **Review**. Branch protection (required reviews, required checks, an up-to-date branch) is GitHub's to
+enforce, and the [statuses](pane.md#your-pull-requests) come from GitHub's own verdict.
 
 - The merge dialog offers only the methods the repository allows (squash, merge commit, rebase), your usual one first.
 - **Auto-Merge** shows only where the repository allows auto-merge.
@@ -104,29 +129,48 @@ workflow that ran more than once on that commit, only its latest run counts, so 
 alone. Checks from a service other than GitHub Actions can't be re-run from here; the alert says so and nothing is
 asked.
 
+## Other repositories
+
+On the rows of a repository you show in the pane, the buttons work as here, except that Resolve Comments, Fix CI and
+Resolve Conflicts offer to open a new session in that repository's clone:
+[Buttons on its rows](other-repositories.md#buttons-on-its-rows).
+
 ## The dialog
 
-A pull request's buttons ask first. Review does not where it can only run here, nor does Re-Run CI when there is nothing
-it could re-run (above). The question takes the list's place in the pane where the button was pressed, framed:
+A pull request's buttons ask first. Two don't: Review, where it can only run here, and Re-Run CI, when there is nothing
+it could re-run ([Re-running CI](#re-running-ci)).
+
+The question takes the list's place in the pane where the button was pressed, framed:
 
 - what kind of question it is, and the pull request's number and title;
 - the question, with what each answer does or costs dimmed under it;
-- for Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR, a field for instructions (not in the phone
-  app); they go with the answer you then press, or Enter sends them alone;
+- for Review, Resolve Comments, Fix CI, Resolve Conflicts and Create PR, a field for instructions (not where the pane is
+  drawn somewhere that can't open a new session); they go with the answer you then press, or Enter sends them alone;
 - a button for each answer; on a confirmation, the one that does what you pressed for is drawn as the main one.
 
-Where the pane holds the keyboard, as after a press in the terminal, it moves onto the first answer, with the field one
-step back: arrow keys or Tab, then Enter. Escape cancels, as the pane's close mark does then, and leaves the pane open
-with the keyboard back at the prompt. Should the question still show after that, as when Claude Code never answers the
-plugin's call to put it away, the next Escape or close closes the pane, and it opens again on the list; an answer given
-goes ahead all the same. Once answered, the list comes back scrolled as you left it (in VS Code, to the button you
-pressed), with the keyboard back on the button where the pane holds it.
+### Answering
 
-The question is never part of the conversation or a turn, so it never interrupts Claude, and one asked while you work
-with Claude stays out of the chat. One question at a time: a button pressed while one is open says so and leaves its row
-as it was. A question taller than the pane scrolls with it. Where the pane doesn't show when the question comes,
-because it closed since the press or is behind another pane, Claude Code's own question dialog asks instead, with
-instructions typed under **Other**.
+Where the pane holds the keyboard, as after a press in the terminal, it moves onto the first answer, with the field one
+step back. Use the arrow keys or Tab, then Enter.
+
+Escape cancels, as the pane's close mark does then, and leaves the pane open with the keyboard back at the prompt.
+Should the question still show after that, as when Claude Code never answers the plugin's call to put it away, the next
+Escape or close closes the pane, and it opens again on the list. An answer given goes ahead all the same.
+
+Once answered, the list comes back scrolled as you left it (in VS Code, to the button you pressed), with the keyboard
+back on the button where the pane holds it.
+
+### Good to know
+
+- The question is never part of the conversation or a turn, so it never interrupts Claude, and one asked while you work
+  with Claude stays out of the chat.
+- One question at a time: a button pressed while one is open says so and leaves its row as it was.
+- A question taller than the pane scrolls with it.
+- Where the pane doesn't show when the question comes, because it closed since the press or is behind another pane,
+  Claude Code's own question dialog asks instead, with instructions typed under **Other**. One that only tells you
+  something, with OK alone, comes as a toast there.
+- `/prs demo`, `/prs tickets` or `/prs` with a repository cancels a question the pane is asking, as the pane then shows
+  that instead.
 
 ## While a skill is at work
 
@@ -141,3 +185,9 @@ While a bundled skill is at work, started by a pane button or typed, the list re
 every half minute and for half an hour, so replies, resolved threads and pushes show without waiting for the next check,
 and what they find is alerted like a regular check. It follows the **Refresh** setting: always in background mode, while
 the pane is open with **Refresh** set to while-open ([Settings](settings.md)), never on demand.
+
+## Where to go next
+
+- [The pane](pane.md): the rows, their statuses and which button is the main one.
+- [Settings](settings.md): what the buttons and the checks cost, and the **Refresh** setting.
+- [Other repositories](other-repositories.md): the same buttons on another repository's rows.

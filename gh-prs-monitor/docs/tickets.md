@@ -2,10 +2,12 @@
 
 **Ticket links** put each pull request's ticket one click away. Set them up once in a repository by pasting a link to
 any ticket, and every pull request whose branch or title names its key shows it on its row, as `WEB-5785 ⧉`, linked to
-the ticket in Linear, Jira or whichever tracker you use. There is no token to create and no integration to connect:
-the plugin's own code reads that one link on your machine. Create PR writes the ticket where your repository writes
-one, and Review can weigh the change against what the ticket asks. It is opt-in: until you set it up, nothing about
-tickets shows anywhere.
+the ticket in Linear, Jira or whichever tracker you use.
+
+There is no token to create and no integration to connect: the plugin's own code reads that one link on your machine.
+[Create PR](create-pr.md) writes the ticket where your repository writes one, and [Review](review.md) can weigh the
+change against what the ticket asks. It is opt-in: until you set it up, no ticket shows on a row, and Create PR offers
+to set it up once, where a branch names something like a key.
 
 ![Setting up ticket links with /prs tickets, with example data: a ticket link pasted, the pull request it would link shown, saved, and the ticket on its row](../assets/screenshots/tickets.gif)
 
@@ -16,7 +18,9 @@ browser's address bar. **Check the link** (or Enter) shows what the plugin makes
 `Tickets like WEB-5785 link to https://linear.app/acme/issue/WEB-5785`, and which pull request in your list it would
 link; **Save** keeps it.
 
-The link is read on your machine, by the plugin's code: nothing is sent anywhere, and the plugin never opens a ticket.
+The link is read on your machine, by the plugin's code: nothing is sent anywhere while you set it up, and the plugin
+never opens a ticket ([what it runs and sends](what-it-runs.md)).
+
 What it reads from the link:
 
 - **A key in the address**, as Linear, Jira, YouTrack, ClickUp's custom task IDs and most trackers write one:
@@ -48,8 +52,8 @@ so `UTF-8` or `node-20` in a branch is nobody's ticket.
 - **Ticket links on rows**, in `/config` (on by default), takes the link off the rows everywhere; the skills still use
   the links.
 
-Ticket links are kept per repository in the plugin's store on this machine, so your sessions in the terminal, the
-desktop app and VS Code all use them, and none of it goes into the repository.
+Ticket links are kept per repository in the plugin's store (where it keeps what it remembers) on this machine, so your
+sessions in the terminal, the desktop app and VS Code all use them, and none of it goes into the repository.
 
 ## In the skills
 

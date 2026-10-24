@@ -15,6 +15,7 @@ import type { RepoRef } from "./gh"
 import { CLOSED_LOOKUP_LIMIT, isWithinOnGithub, pullStates } from "./github"
 import { firstNotInMain } from "./include"
 import type { KeptNotes } from "./kept-notes"
+import { rowsOf } from "./pulls"
 import type { Session } from "./session"
 import { isAhead } from "./shared"
 import { branchTip, git, isWithin } from "./machine"
@@ -231,7 +232,7 @@ export function cleanupCandidates<T extends { number: number }>(
 }
 
 function listedNumbers(snapshot: PullsSnapshot): Set<number> {
-  return new Set([...snapshot.mine, ...snapshot.review].map((row) => row.number))
+  return new Set(rowsOf(snapshot).map((row) => row.number))
 }
 
 // Whether the worktree of a pull request that ended is /prs's to remove: it holds the pull request's own branch, and
@@ -247,7 +248,9 @@ export function mayRemoveWorktree(
 // The branches the open pull requests of this repository in the lists come from.
 function openHeads(snapshot: PullsSnapshot): Set<string> {
   return new Set(
-    [...snapshot.mine, ...snapshot.review].filter((row) => !row.isCrossRepository).map((row) => row.headRefName)
+    rowsOf(snapshot)
+      .filter((row) => !row.isCrossRepository)
+      .map((row) => row.headRefName)
   )
 }
 

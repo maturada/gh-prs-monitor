@@ -1,7 +1,8 @@
 // Author: David Matura
 
 // The keys of what the pane and the dialog draw that the flows name too: a row, a row's button, an answer, a name to
-// pick, where a question's keyboard starts, and the mark a closed question puts the window back on.
+// pick, a repository to open, where a question's keyboard starts, and the mark a closed question puts the window back
+// on.
 
 import type { PullAction, Question } from "../types"
 
@@ -28,9 +29,23 @@ export function pickKey(index: number): string {
 
 export const PICK_ALL_KEY = "pick-all"
 
-// Where the keyboard starts in a question: its field where it asks for a piece of text, its first name where it asks
-// to pick some first, else its first answer.
+// The header's Repositories button, where the keyboard goes once Back has left a visit.
+export const PICK_KEY = "repo"
+
+// The repository picker's Open on each row, keyed apart from the names that pick: a button keeps the closure of the
+// first one drawn alike (`stableButtons`), and Open opens where a name would only be picked.
+export function openKey(index: number): string {
+  return `open-${index}`
+}
+
+// Where the keyboard starts in a question: the repository picker's first Open, as its rows come before its field; its
+// field where it asks for a piece of text; its first name where it asks to pick some first; else its first answer.
 export function firstFocusKey(question: Question, fieldKey: string): string {
+  const opener = question.picking?.rows?.findIndex((row) => !row.isShown) ?? -1
+  if (opener >= 0) {
+    return openKey(opener)
+  }
+
   return question.field ? fieldKey : question.picking?.startsOn === "names" ? pickKey(0) : answerKey(0)
 }
 

@@ -27,6 +27,7 @@ describe("readSettings", () => {
       includeOutdated: false,
       isPlayingSound: false,
       isSendingSystemNotification: false,
+      isAlertingElsewhere: false,
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,
@@ -71,6 +72,7 @@ describe("readSettings", () => {
       readSettings({
         alertSound: true,
         systemNotification: true,
+        alertOtherRepos: true,
         holdWhileWorking: false,
         cleanupWorktrees: false,
         hideDrafts: true
@@ -78,6 +80,7 @@ describe("readSettings", () => {
     ).toMatchObject({
       isPlayingSound: true,
       isSendingSystemNotification: true,
+      isAlertingElsewhere: true,
       isHoldingWhileWorking: false,
       isCleaningUp: false,
       isHidingDrafts: true
@@ -99,6 +102,7 @@ describe("readSettings", () => {
       includeOutdated: true,
       isPlayingSound: false,
       isSendingSystemNotification: false,
+      isAlertingElsewhere: false,
       isHoldingWhileWorking: true,
       isCleaningUp: true,
       isHidingDrafts: false,

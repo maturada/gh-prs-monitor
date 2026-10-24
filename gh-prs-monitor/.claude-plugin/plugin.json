@@ -1,7 +1,7 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.4.0",
-  "description": "Your GitHub pull requests inside Claude Code: what needs you first, each linked to its ticket, alerts when something changes, one-press merge, update branch and re-run CI, and skills that resolve comments, fix CI, resolve conflicts, review and create pull requests",
+  "version": "1.5.0",
+  "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when they change, merge, update branch and re-run CI from the list, skills that resolve comments, fix CI, resolve conflicts, review and create pull requests, ticket links, and your other repositories too",
   "author": {
     "name": "David Matura",
     "url": "https://github.com/maturada"
@@ -12,14 +12,18 @@
   "keywords": [
     "github",
     "pull-requests",
+    "prs",
     "code-review",
     "gh",
     "notifications",
+    "alerts",
+    "ci",
+    "merge",
+    "worktrees",
     "status-line",
     "pane",
     "tickets",
-    "linear",
-    "jira"
+    "repositories"
   ],
   "icon": "./assets/icon.png",
   "documentationUrl": "https://github.com/maturada/gh-prs-monitor#documentation",
@@ -64,7 +68,7 @@
     },
     "recentChangesExpiryMinutes": {
       "type": "number",
-      "title": "Recent changes expire after (minutes)",
+      "title": "Change notes last (minutes)",
       "description": "How long the note of what changed stays at the foot of a pull request in the pane, and its dot in the compact view, from when a refresh noticed it; its ✕, one of its buttons or closing the pane clears it sooner",
       "min": 1,
       "max": 1440,
@@ -86,6 +90,12 @@
       "type": "boolean",
       "title": "Alerts as system notifications",
       "description": "Also send your alerts about pull request changes as system notifications, the way Claude Code sends its own: a banner in iTerm2, kitty or Ghostty, or in another terminal once Claude Code's notification channel is set for it. Follows Change alerts and the Alert rows; terminal only; needs Claude Code 2.1.295",
+      "default": false
+    },
+    "alertOtherRepos": {
+      "type": "boolean",
+      "title": "Alerts from other repositories",
+      "description": "Alerts from your other repositories on the folder's GitHub server, this folder's left out: a review asked of you, and on your pull requests each review given and CI failing or passing. One light request at each refresh, and at /prs and Refresh where Refresh isn't background: 1 point each, of the 5,000 an hour GitHub gives you. Follows Change alerts and the Alert rows",
       "default": false
     },
     "alertReady": {
@@ -156,7 +166,7 @@
     },
     "hideDrafts": {
       "type": "boolean",
-      "title": "Hide drafts",
+      "title": "Hide my drafts",
       "description": "Leave your own draft pull requests out of the pane, its counts and the list /prs prints; a line says how many are hidden. Drafts you are asked to review still show",
       "default": false
     },

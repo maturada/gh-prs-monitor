@@ -4,7 +4,7 @@
 // The host as register.tsx builds it (`isReplaced` before a load's writes).
 // Every host call takes virtual time, so the interleavings are those the awaits allow, ordered by random latencies.
 
-import { holdAlerts } from "../C/hooks/alerts"
+import * as alerting from "../C/hooks/alerts"
 import { storedSnapshot } from "../C/hooks/pulls"
 import { checkAgain, checkShared, ensurePolling, isCheckingMode, refresh, retry } from "../C/hooks/refresh"
 import * as refreshing from "../C/hooks/refresh"
@@ -15,8 +15,15 @@ import { readSettings } from "../C/hooks/settings"
 import type { SharedAnswer } from "../C/hooks/shared"
 import { claimFetch, notShownElsewhere, recallClaim, recallLook, recallShared, rememberLook, shareAnswer } from "../C/hooks/store"
 import type { StoreHost } from "../C/hooks/store"
+import { announce, release } from "../C/hooks/toasts"
 import { response } from "../C/hooks/testing/fixtures"
 import type { PullFixture, ResponseFixture } from "../C/hooks/testing/fixtures"
+
+// What a showing holds as lines: 1.5.0's batches (`batchLines`), or a version before's lines.
+function linesOf(shown: readonly unknown[]): string[] {
+  const batchLines = (alerting as Record<string, unknown>).batchLines as ((batch: unknown) => string[]) | undefined
+  return shown.flatMap((each) => (typeof each === "string" ? [each] : batchLines!(each)))
+}
 
 // The load after a write, by its name in the version run: `refreshInTurn` from 1.3.0, `refreshAfterWrite` before it.
 const refreshInTurn = ((refreshing as Record<string, unknown>).refreshInTurn ??
@@ -264,8 +271,9 @@ export type SimSession = {
   dispatching: Map<number, number>
   aborted: number
   makeHost: (generation: number) => { host: RefreshHost; store: StoreHost }
-  isWorking: boolean
   gone: boolean
+  // What its light check keeps between checks (`ElsewhereState`).
+  elsewhere: unknown
   // When each of its timers fired, to tell which made a request.
   fired?: { ms: number; at: number }[]
   store?: StoreHost
@@ -302,6 +310,9 @@ export type WorldOptions = {
   isReloading?: boolean
   // Sessions in this many repositories, session i in acme/r<i % repos> (one store, one GitHub state).
   repos?: number
+  // Sessions of an odd index work in another folder, acme/other, with nothing of its own, and see acme/app's review
+  // requests through the light check of other repositories, on their own timer, while drawn.
+  lightCheck?: boolean
 }
 
 export class World {
@@ -341,7 +352,9 @@ export class World {
     const clock = this.clock
     const r = this.r
     const $store = serialStore(this.store)
-    const session = createSession(readSettings({ cleanupWorktrees: false, ...settings } as never))
+    // The light check runs, and tells, only with its setting on, as a real session has it.
+    const lightCheck = this.options.lightCheck ? { alertOtherRepos: true } : {}
+    const session = createSession(readSettings({ cleanupWorktrees: false, ...lightCheck, ...settings } as never))
     session.id = name
     const sim: SimSession = {
       name,
@@ -359,8 +372,8 @@ export class World {
       dispatching: new Map(),
       aborted: 0,
       makeHost: null as never,
-      isWorking: false,
-      gone: false
+      gone: false,
+      elsewhere: null
     }
     const ok = (stdout: string) => ({
       exitCode: 0,
@@ -403,7 +416,12 @@ export class World {
         log: (line) => void sim.logs.push(line)
       }
       const liveStore = world.options.isReloading ? liveOnly(store, isLoaded) : store
-      const repoName = () => world.options.repos ? `acme/r${world.sessions.indexOf(sim) % world.options.repos}` : "acme/app"
+      const repoName = () =>
+        world.options.repos
+          ? `acme/r${world.sessions.indexOf(sim) % world.options.repos}`
+          : world.isElsewhere(sim)
+            ? "acme/other"
+            : "acme/app"
       const host: RefreshHost = {
         run: async (argv, init) => {
           if (sim.gone) throw new Error("session gone")
@@ -428,6 +446,14 @@ export class World {
               repository[`p${number}`] = { number, state: "MERGED", mergedBy: { login: "bob" }, headRefOid: "x" }
             }
             return ok(JSON.stringify({ data: { repository } }))
+          }
+          if (argv.some((arg) => arg.includes("archived:false"))) {
+            await clock.sleep(world.options.fetchMs(r))
+            return ok(world.elsewhereAnswer())
+          }
+          if (argv.some((arg) => arg.startsWith("mine=")) && world.isElsewhere(sim)) {
+            await clock.sleep(world.options.fetchMs(r))
+            return ok(response({ mine: [], requested: [], nameWithOwner: repoName() }))
           }
           if (argv.some((arg) => arg.startsWith("mine="))) {
             const start = clock.now
@@ -523,6 +549,8 @@ export class World {
         isDemo: async () => false,
         recall: (repo) => recallLook(liveStore, repo),
         remember: (repo, snapshot) => rememberLook(liveStore, repo, snapshot),
+        // The folder noted as a clone is no part of the refreshing compared here.
+        noteFolder: async () => {},
         isDrawn: async () => {
           await world.tiny()
           return sim.isDrawn
@@ -535,6 +563,8 @@ export class World {
           await world.tiny()
           return sim.isPaneOpen
         },
+        // No session here visits another repository: the folder's list is the one shown, as before visits.
+        isVisiting: async () => false,
         setStatus: async () => {
           await world.tiny()
         },
@@ -542,15 +572,11 @@ export class World {
           await isReplaced()
         },
         notify: async () => undefined,
-        // announce → holdAlerts → show → notShownElsewhere, as register.tsx has it.
-        announce: async (repo, lines) => {
+        // The plugin's own announce, as register.tsx calls it, with what the version run raises.
+        announce: (async (...raised: unknown[]) => {
           await world.tiny()
-          const now = clock.now
-          const isHolding = own.settings.isHoldingWhileWorking && sim.isWorking
-          const { shown, waiting } = holdAlerts(own.alerts, lines, now, isHolding)
-          own.alerts = waiting
-          if (shown.length > 0) await world.show(sim, liveStore, repo, shown)
-        },
+          await (announce as (...args: unknown[]) => Promise<void>)(world.toastHost(sim, liveStore), own, ...raised)
+        }) as never,
         lookUpBranch: async () => undefined,
         suggestReviewers: async () => undefined,
         cleanUp: async () => undefined,
@@ -575,23 +601,42 @@ export class World {
     return sim
   }
 
-  // As register.tsx's `show` has it: the lines no other session showed lately (`notShownElsewhere`), each a toast.
-  async show(sim: SimSession, store: StoreHost, repo: { host: string; name: string }, lines: readonly string[]): Promise<void> {
-    const fresh = await notShownElsewhere(store, repo, lines, { by: sim.session.id, pollMs: sim.session.settings.pollMs })
-    for (const line of fresh) this.toasts.push({ session: sim.name, at: this.clock.now, line })
+  // The toast host as register.tsx builds it: what no other session showed lately (`notShownElsewhere`, given what
+  // the version run hands it), each line of it a toast, counted before the toast stack folds the fourth and on.
+  toastHost(sim: SimSession, store: StoreHost) {
+    const shown = { by: sim.session.id, pollMs: sim.session.settings.pollMs }
+    return {
+      now: async () => this.clock.now,
+      notify: async () => undefined,
+      playSound: () => undefined,
+      notifySystem: () => undefined,
+      keepHeld: () => undefined,
+      // 1.5.0 limits a hold no alert comes to end with a timer, which goes with its module, as the engine's timers do,
+      // and with a session that left.
+      after: (ms: number, fire: () => Promise<void>) => {
+        const generation = sim.generation
+        this.clock.push(this.clock.now + ms, () => {
+          if (sim.gone || sim.generation !== generation) return
+          this.work.push(fire().catch((e) => this.failed(sim, e)))
+        })
+      },
+      // 1.5.0 asks with the batches, each saying when it was raised; a version before with the repository and lines.
+      notShownElsewhere: async (...asked: unknown[]) => {
+        const check = notShownElsewhere as (...args: unknown[]) => Promise<unknown[]>
+        const fresh = await check(store, ...asked, shown)
+        for (const line of linesOf(fresh)) this.toasts.push({ session: sim.name, at: this.clock.now, line })
+        return fresh
+      }
+    } as never
   }
 
   // A turn starts and ends: alerts held meanwhile show at its end (release).
   turnStart(sim: SimSession): void {
-    sim.isWorking = true
+    sim.session.runningTurns.add("turn")
   }
   turnEnd(sim: SimSession): void {
-    sim.isWorking = false
-    const session = sim.session
-    if (session.alerts.held.length === 0 || !session.repo) return
-    const held = session.alerts.held
-    session.alerts = { held: [], heldSince: null }
-    this.work.push(this.show(sim, sim.store!, session.repo, held).catch((e) => this.failed(sim, e)))
+    sim.session.runningTurns.delete("turn")
+    this.work.push(release(this.toastHost(sim, sim.store!), sim.session).catch((e) => this.failed(sim, e)))
   }
 
   // A run a reload ended is no error: the engine ends a replaced module's runs.
@@ -611,6 +656,69 @@ export class World {
   start(sim: SimSession): void {
     this.work.push(refresh(sim.host, sim.session, false).catch((e) => this.failed(sim, e)))
     this.work.push(ensurePolling(sim.host, sim.session).catch((e) => this.failed(sim, e)))
+    const poll = async () => (await this.elsewhereOf(sim))?.poll()
+    this.work.push(poll().catch((e) => this.failed(sim, e)))
+  }
+
+  // The light check's timer and its checks of the moment, the plugin's own (`pollElsewhere`, `askElsewhere`), as
+  // register.tsx runs them; loaded only where this world runs the check, as a version before has none.
+  async elsewhereOf(sim: SimSession): Promise<{ poll: () => void; ask: () => void } | null> {
+    if (!this.isElsewhere(sim)) return null
+    const { askElsewhere, pollElsewhere } = await import("../C/hooks/elsewhere")
+    const { isCheckingMode } = await import("../C/hooks/refresh")
+    const timer = {
+      every: (ms: number, tick: () => void) => sim.host.every(ms, tick),
+      background: (work: Promise<unknown>) => {
+        this.work.push(work.catch((e) => this.failed(sim, e)))
+      },
+      isDrawn: async () => !sim.gone && sim.isDrawn,
+      isCheckingMode: () => isCheckingMode(sim.host, sim.session),
+      check: () => this.checkElsewhere(sim)
+    }
+    return { poll: () => pollElsewhere(timer as never, sim.session), ask: () => askElsewhere(timer as never, sim.session) }
+  }
+
+  // Whether the session sees acme/app through its light check (`lightCheck`).
+  isElsewhere(sim: SimSession): boolean {
+    return this.options.lightCheck === true && this.sessions.indexOf(sim) % 2 === 1
+  }
+
+  // One light check, through the plugin's own, loaded only where this world runs it: a version before has none.
+  async checkElsewhere(sim: SimSession): Promise<void> {
+    const { checkElsewhere } = await import("../C/hooks/elsewhere")
+    const host = {
+      ...sim.host,
+      isLink: async () => false,
+      state: async () => sim.elsewhere as never,
+      changeState: async (change: (state: never) => unknown) => {
+        sim.elsewhere = change(sim.elsewhere as never)
+      },
+      announce: (batches: readonly unknown[]) =>
+        (announce as (...args: unknown[]) => Promise<void>)(this.toastHost(sim, sim.store!), sim.session, batches)
+    }
+    await checkElsewhere(host as never, sim.session)
+  }
+
+  // GitHub's answer to the light check: acme/app's review requests, each asking the viewer by name.
+  elsewhereAnswer(): string {
+    const nodes = this.github.current().requested.map((number) => ({
+      number,
+      title: `PR ${number}`,
+      url: `https://github.com/acme/app/pull/${number}`,
+      isDraft: false,
+      author: { login: "ann" },
+      repository: { nameWithOwner: "acme/app" },
+      statusCheckRollup: { state: "SUCCESS" },
+      viewerLatestReview: null,
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "User", login: "me" } }] }
+    }))
+    return JSON.stringify({
+      data: {
+        viewer: { login: "me" },
+        mine: { issueCount: 0, nodes: [] },
+        requested: { issueCount: nodes.length, nodes }
+      }
+    })
   }
 
   // The Refresh button.
@@ -644,10 +752,14 @@ export class World {
     session.checks.isReturning = session.checks.wasDetached
     session.checks.wasDetached = false
     const go = async () => {
+      // Awaited only where this world runs the check, so the others' timing stays as it was.
+      const light = this.isElsewhere(sim) ? await this.elsewhereOf(sim) : null
       if (await isCheckingMode(host, session)) {
         this.work.push(refresh(host, session, false).catch((e) => this.failed(sim, e)))
+        light?.ask()
       }
       await ensurePolling(host, session)
+      light?.poll()
     }
     this.work.push(go().catch((e) => this.failed(sim, e)))
   }
@@ -660,6 +772,10 @@ export class World {
       checkAgain(host, session)
       await session.checks.marking?.catch(() => undefined)
       await ensurePolling(host, session)
+      // Awaited only where this world runs the check, so the others' timing stays as it was.
+      const light = this.isElsewhere(sim) ? await this.elsewhereOf(sim) : null
+      light?.poll()
+      light?.ask()
     }
     this.work.push(go().catch((e) => this.failed(sim, e)))
   }

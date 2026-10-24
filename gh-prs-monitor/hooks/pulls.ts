@@ -135,7 +135,7 @@ type RawReview = {
   commit?: { oid?: string } | null
 } | null
 
-type RawPull = {
+export type RawPull = {
   number?: number
   title?: string
   url?: string
@@ -477,8 +477,9 @@ function mineRow(pull: Pull, merging: PullsSnapshot["merging"], now: number, opt
 type Offers = { isUpdateOffered: boolean; isAutoMergeOn: boolean }
 
 // Who is asked to review the viewer's own pull request, which its details say until it is approved or changes are
-// requested, and again while it waits on a re-review or more approvals: the reviewers requested, how many of them aren't
-// bots (`people`), or nobody, as at first or again after someone's feedback. Null where the details say nothing of it.
+// requested, and again while it waits on a re-review or more approvals: the reviewers requested, how many of them
+// aren't bots (`people`), or nobody, as at first or again after someone's feedback. Null where the details say nothing
+// of it.
 type ReviewerRequest = { named: string[]; unnamed: number; people: number } | "nobody" | "nobodyAgain" | null
 
 function reviewerRequestOf(pull: Pull, own: OwnPull, stage: MineStage): ReviewerRequest {
@@ -777,6 +778,27 @@ export function stackText(stack: PullStack): string {
   return `stack #${stack.number} ${stack.position}/${stack.size}`
 }
 
+// --- What the light check of other repositories reads of a pull request (`elsewhere.ts`), as the lists read it ---
+
+// One of the viewer's own: its author, its CI, and the latest review of each other person.
+export function ownFacts(pull: RawPull): { author: string; ci: CiState; reviews: Record<string, ReviewMark> } {
+  const author = authorOf(pull)
+
+  return {
+    author,
+    ci: ciOf(pull),
+    reviews: marksOf(reviewsOf(pull.latestReviews).filter((review) => review.login !== author))
+  }
+}
+
+// One its search found asking the viewer's review: asked by name, or of a team of theirs until they review, or begin
+// to. The viewer's latest review stands in for their verdict, which the light check doesn't ask for, and a review they
+// are still writing counts: GitHub shows it in the latest's place, so the team's request, which GitHub may keep after
+// their review, would otherwise read as asked again while they write.
+export function isAskedOf(pull: RawPull, viewer: string): boolean {
+  return requestedUsersOf(pull).includes(viewer) || !pull.viewerLatestReview?.state
+}
+
 function reviewsOf(connection: { nodes?: RawReview[] } | undefined): Review[] {
   return (connection?.nodes ?? []).flatMap((node) =>
     node?.author?.login && node.state
@@ -794,7 +816,7 @@ function reviewsOf(connection: { nodes?: RawReview[] } | undefined): Review[] {
 }
 
 // One still pending is the viewer's draft, not a review given.
-function viewerReviewOf(pull: Pull, viewer: string): Review | null {
+function viewerReviewOf(pull: RawPull, viewer: string): Review | null {
   const review = pull.viewerLatestReview
 
   return review?.state && review.state !== "PENDING"
@@ -842,7 +864,7 @@ function sizeOf(pull: Pull): string | null {
   return `+${additions} −${deletions}, ${plural(changedFiles, "file")}`
 }
 
-function requestedUsersOf(pull: Pull): string[] {
+function requestedUsersOf(pull: RawPull): string[] {
   return (pull.reviewRequests?.nodes ?? []).flatMap((node) => {
     const reviewer = node?.requestedReviewer
 
@@ -851,7 +873,7 @@ function requestedUsersOf(pull: Pull): string[] {
 }
 
 // A deleted account's pull requests and reviews keep GitHub's stand-in name.
-function authorOf(pull: Pull): string {
+function authorOf(pull: RawPull): string {
   return pull.author?.login ?? "ghost"
 }
 
@@ -909,7 +931,7 @@ function unresolvedThreadsOf(pull: Pull, options: ReadOptions): number {
 
 const CI_STATES: readonly string[] = ["SUCCESS", "FAILURE", "ERROR", "PENDING", "EXPECTED"]
 
-function ciOf(pull: Pull): CiState {
+function ciOf(pull: RawPull): CiState {
   const state = pull.statusCheckRollup?.state
 
   return state && CI_STATES.includes(state) ? (state as CiState) : null
@@ -952,7 +974,12 @@ export function withoutMerged(snapshot: PullsSnapshot, merged: MergedPull[]): Pu
 
 // A pull request as the list holds it now, in either group.
 export function rowOf(snapshot: PullsSnapshot | null, pullNumber: number): PullRow | undefined {
-  return snapshot ? [...snapshot.mine, ...snapshot.review].find((row) => row.number === pullNumber) : undefined
+  return rowsOf(snapshot).find((row) => row.number === pullNumber)
+}
+
+// Every row of a list, the viewer's own first, then those waiting on their review; none without a list.
+export function rowsOf(snapshot: PullsSnapshot | null): PullRow[] {
+  return snapshot ? [...snapshot.mine, ...snapshot.review] : []
 }
 
 // The pull request whose branch the checkout is on, as a skill run there without one finds it itself.

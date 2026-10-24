@@ -4,6 +4,7 @@
 // it, with a backslash or quote in it escaped, and instructions on one line, after `--`; and the pull request a line
 // names, read back as a skill's turn starts.
 
+import { sameRepo } from "./gh"
 import type { RepoRef } from "./gh"
 
 export function quotedArg(text: string): string {
@@ -39,12 +40,30 @@ export function pullNumberOf(ref: string, repo: RepoRef | null): number | null {
   if (number) {
     return Number(number[1])
   }
-  const address = /^https?:\/\/([^/]+)\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(ref)
-  if (!address || !repo) {
+  const address = readAddress(ref)
+  if (!address || address.number === null || !repo) {
     return null
   }
-  const [, host, name, pull] = address
-  const isHere = host!.toLowerCase() === repo.host.toLowerCase() && name!.toLowerCase() === repo.name.toLowerCase()
 
-  return isHere ? Number(pull) : null
+  return sameRepo(address, repo) ? address.number : null
+}
+
+// The repository an address on GitHub leads to, its server's name as written, and the pull request it names where it
+// leads to one (`/pull/7`, whatever follows); none for anything else, a name GitHub couldn't hold among it.
+export function readAddress(text: string): { host: string; name: string; number: number | null } | null {
+  const address = /^https?:\/\/([^/\s]+)\/([^/\s]+\/[^/\s?#]+?)(?:\.git)?(?:\/pull\/(\d+))?(?:[/?#]\S*)?$/.exec(
+    text.trim()
+  )
+  if (!address || !isRepoName(address[2]!)) {
+    return null
+  }
+  const [, host, name, number] = address
+
+  return { host: host!, name: name!, number: number === undefined ? null : Number(number) }
+}
+
+// `owner/name` as GitHub allows it: an owner of letters, digits and hyphens; a repository's name of those, `.` and
+// `_`, but `.` or `..` alone.
+export function isRepoName(name: string): boolean {
+  return /^[\w-]+\/[\w.-]+$/.test(name) && !/\/\.\.?$/.test(name)
 }

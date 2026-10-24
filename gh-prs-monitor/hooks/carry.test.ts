@@ -284,6 +284,12 @@ describe("the pull requests that left the lists GitHub is asked about", () => {
     expect(leftToAsk(before, before, snapshotOf({ mentioned: [{ number: 2, author: "ann" }] }), 30)).toEqual([1, 2])
   })
 
+  test("one only the mentions held that is a row now, as one asking your review since, is open and not asked about", () => {
+    const now = snapshotOf({ requested: [{ number: 12, author: "bob" }] })
+
+    expect(leftToAsk(source, null, now, 30)).toEqual([2, 8, 9])
+  })
+
   test("a hidden draft's row, its branch still open, is asked about from neither list", () => {
     const draft = snapshotOf({ mine: [{ number: 1, headRefName: "fix/old" }] })
     const hidden = { ...snapshotOf({}), ownHeads: [{ branch: "fix/old", oid: "o", number: 1 }] }
