@@ -82,8 +82,9 @@ def render(panels: list[Panel], out: str, scale: float) -> None:
         with open(page, "w") as file:
             file.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{STYLE}</style></head><body>'
                        f'<div class="card">{cells}</div></body></html>')
-        width = sum(panel.width for panel in panels) + 25 * (len(panels) - 1) + 52
-        # The card's padding and a caption take under 100px; clean.py trims what is left under the card.
+        # Room to spare around the card, which takes under 100px more than its panels: clean.py trims what is left
+        # beside and under it.
+        width = sum(panel.width for panel in panels) + 25 * (len(panels) - 1) + 200
         height = max(shown_height(panel) for panel in panels) + 200
         subprocess.run([CHROME, "--headless=new", "--hide-scrollbars", f"--force-device-scale-factor={scale}",
                         "--default-background-color=00000000", f"--window-size={width},{height}",

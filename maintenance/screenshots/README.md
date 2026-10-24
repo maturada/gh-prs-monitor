@@ -68,7 +68,7 @@ A panel's `width` and `height` are in CSS pixels; with a `height`, the panel sho
 rendered at 2×, or lower where an image has fewer pixels than that, so no screenshot is scaled up; a GIF's frames
 must come out the same size. It needs macOS with Google Chrome, and ffmpeg for a GIF.
 
-`clean.py` trims the rows under the card, drops text and ICC-profile chunks, and compresses the image again until no
+`clean.py` trims the space beside and under the card, drops text and ICC-profile chunks, and compresses the image again until no
 run of its bytes reads as a command the directory's scan flags (as `iex` and `irm` did in 1.0.1's `compact.png`). A
 GIF is encoded again with fewer colours until none of its bytes do. Keep each file under 5 MiB, the directory's limit
 for a file in the plugin folder.
