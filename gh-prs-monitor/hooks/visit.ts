@@ -83,7 +83,7 @@ export async function startVisit(
     return null
   }
   const before = await host.visit()
-  // Written with its first load's mark, so a pane opening on it says it is loading rather than to press Refresh; and
+  // Written with its first load's mark, so a pane opening on it says it is loading rather than to press ↻; and
   // only while it is still the latest asked for, which the write itself checks, as a visit's end may come in between.
   const loadId = randomId()
   const written = await host.changeVisit((visit) => {
@@ -282,9 +282,9 @@ function forgetVisit(session: Session, visit: Visit): void {
     forgetListSuggestions(session, visit.snapshot)
   }
   const site = visitSite("", visit.repo)
-  for (const drawn of [...session.drawnButtons.keys()]) {
+  for (const drawn of [...session.drawnElements.keys()]) {
     if (drawn.endsWith(site)) {
-      session.drawnButtons.delete(drawn)
+      session.drawnElements.delete(drawn)
     }
   }
 }

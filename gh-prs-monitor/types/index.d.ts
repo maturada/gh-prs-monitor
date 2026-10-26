@@ -171,10 +171,27 @@ export type EndedPull = {
 }
 
 // What GitHub said of the pull requests from a branch of a repository, with the checkout at commit `head`: whether one
-// is open from it, or one that ended holds that commit, so Create PR has nothing to open (`pullToOpen`). Said while
-// the list knew the branch's last pull request to end at `endedHead` (`endedHeads`), null for none: once the list
-// knows another, it is asked again.
-export type BranchPulls = { repo: string; branch: string; head: string; isTaken: boolean; endedHead: string | null }
+// is open from it, or one that ended holds that commit, so Create PR has nothing to open (`pullToOpen`); and where one
+// that merged holds it, which one and into what (`merged`, absent from one kept by an earlier version). Said while the
+// list knew the branch's last pull request to end at `endedHead` (`endedHeads`), null for none: once the list knows
+// another, it is asked again.
+export type BranchPulls = {
+  repo: string
+  branch: string
+  head: string
+  isTaken: boolean
+  endedHead: string | null
+  merged?: BranchMerge | null
+  // Where it merged: the folder of another worktree that has its base checked out, as git said when GitHub was asked;
+  // null for none.
+  baseHeldBy?: string | null
+}
+
+// A pull request merged from a branch: its number, and the branch it merged into, null where GitHub didn't say.
+export type BranchMerge = { number: number; base: string | null }
+
+// A branch at a commit whose merged note was put away with its ✕.
+export type DismissedBranch = { repo: string; branch: string; head: string }
 
 // The branch this session's checkout was on and its commit, both null where git could not tell, and when they were
 // read, so an older read never takes a newer one's place.
@@ -246,14 +263,16 @@ export type Picking = {
 }
 
 // A repository as the picker's row shows it: the group it is listed under, its name, where it is on this machine (this
-// folder, or its clone's path), how many of the viewer's own wait for them and how many ask their review, whether it
-// changed since the picker was last opened, and whether it is the one shown.
+// folder, or its clone's path), how many of the viewer's own wait for them and how many ask their review, how many are
+// open there where nothing waits, whether it changed since the picker was last opened, and whether it is the one
+// shown.
 export type RepoRow = {
   group: string
   name: string
   place: string | null
   mine: number
   requested: number
+  open: number
   isNew: boolean
   isShown: boolean
 }
@@ -298,6 +317,8 @@ declare module "claude-code" {
       // What GitHub said of the pull requests from that branch at that commit, asked once while the list knows the
       // branch's last pull request to end where it did, and again by a press of Create PR unless it said taken.
       branchPulls: BranchPulls | null
+      // The branch at a commit whose note offering to leave it, merged, was put away with its ✕.
+      dismissedBranch: DismissedBranch | null
       // Pull requests merged from the pane a moment ago.
       merged: MergedPull[]
       // The pane shows each pull request's number, title and status alone, on one line or two; the choice is kept in

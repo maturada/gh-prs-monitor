@@ -97,6 +97,7 @@ export async function ask(
       isInPane: true,
       fieldKey,
       draft: "",
+      keystroke: null,
       picks: [...(question.picking?.initial ?? [])],
       checking: null,
       problem: null

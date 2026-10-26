@@ -24,9 +24,9 @@ leaves no list to show, **Show Another Repository** opens the
 | GitHub's own message about the organization's single sign-on (SAML) or IP allow list. | The organization hides its repositories from your token: authorize it for the organization (`gh auth refresh`, or the token's SSO settings on GitHub), or connect from an allowed network, then **Retry**. |
 | The GitHub CLI is not signed in to ghe.example.com. Run: gh auth login --hostname ghe.example.com | A repository you showed is on a server `gh` isn't signed in to: run that, or show another. |
 | GitHub answered acme/web under another name again: try once more. | The repository was renamed again while the plugin looked it up: show it once more. |
-| GitHub refused the request (rate limit or permissions). / Could not reach GitHub. / GitHub took too long to answer, or had an error of its own. / GitHub sent a response that could not be read. / GitHub sent no data. / GitHub left part of the answer out, or GitHub's own message about a part it failed to work out. / The GitHub CLI did not finish (…). | Tried again by the next check (in on-demand mode, the next `/prs` or Refresh), or **Retry**. |
+| GitHub refused the request (rate limit or permissions). / Could not reach GitHub. / GitHub took too long to answer, or had an error of its own. / GitHub sent a response that could not be read. / GitHub sent no data. / GitHub left part of the answer out, or GitHub's own message about a part it failed to work out. / The GitHub CLI did not finish (…). | Tried again by the next check (in on-demand mode, the next `/prs` or ↻), or **Retry**. |
 
-After fixing a problem, press **Retry** (or **Refresh**) in the pane, or run `/prs`, to start again.
+After fixing a problem, press **Retry** (or **↻**) in the pane, or run `/prs`, to start again.
 
 ## Problems without a message
 
@@ -54,11 +54,12 @@ list the one chosen. A folder's path typed in `/prs` or the repository picker na
 remotes.
 
 **`+N elsewhere` doesn't show in the pane's header**: **Alerts from other repositories** is off (the default), or
-nothing waits for you outside the folder's repository and the one shown. The number counts a review asked of you, and
-on your own pull requests CI failing, changes requested, or an approval with the checks done.
+nothing waits for you outside the folder's repository and the one shown
+([what counts](other-repositories.md#3-elsewhere-in-the-header)).
 
-The count updates in background mode only while a terminal, the desktop app or VS Code shows the session, and in
-while-open mode only while the pane is open. A check that fails leaves the count as it was
+The count updates at each interval in background mode only while a terminal, the desktop app or VS Code shows the
+session, and in while-open mode only while the pane is open; opening the pane, ↻ and the picker read it again at once. A
+check that fails leaves the count as it was
 ([Other repositories](other-repositories.md#alerts-from-other-repositories)).
 
 **A folder isn't offered in the repository picker**: the picker lists the clones where a Claude Code session loaded its
@@ -99,8 +100,8 @@ Meanwhile the merge waits in a temporary worktree, and nothing is pushed.
 The minimum versions are in the [README](../README.md#requirements). This is what the plugin has been tried on, and what
 a few features need beyond the minimum.
 
-**Claude Code** 2.1.292 or later. The plugin is tested on 2.1.292, 2.1.295, 2.1.296 and 2.1.299 to 2.1.304, the desktop
-app's 2.1.293, and the VS Code extension's 2.1.303.
+**Claude Code** 2.1.292 or later. The plugin is tested on 2.1.292, 2.1.295, 2.1.296, 2.1.299 to 2.1.304 and 2.1.308 to
+2.1.310, the desktop app's 2.1.293 and 2.1.308, and the VS Code extension's 2.1.303 and 2.1.310.
 
 - **Alerts as system notifications** needs 2.1.295; before it, alerts show as toasts only.
 - In VS Code and editors built on it, the pane needs the Claude Code extension 2.1.299 or later, in a session that

@@ -7,6 +7,8 @@ import { ACTION_LABELS } from "./actions"
 import { isOnBranch, rowsOf, stackText } from "./pulls"
 import { CREATE_PR } from "./create-flow"
 import type { PullToOpen } from "./create-flow"
+import { SWITCH_BASE } from "./switch-base"
+import type { MergedBranch } from "./switch-base"
 import { noteEvents } from "./alerts"
 import { ago, checkingAgain, elapsed, lookedAt } from "./when"
 import { BACK_MARK, buttonKey, PICK_KEY, rowKey } from "./keys"
@@ -67,6 +69,9 @@ export type PaneView = {
   toOpen: PullToOpen | null
   // Pull requests merged from the pane a moment ago, shown where they were.
   merged: MergedPull[]
+  // The checkout's branch, where its pull request merged at its commit, which the note above the lists offers to leave
+  // (`mergedBranchOf`); null for none, and on a visit or the examples.
+  mergedBranch: MergedBranch | null
   // One line per pull request, or two in a narrow panel: its number, title and status.
   isCompact: boolean
   // The width the pane's body has, in columns.
@@ -94,11 +99,14 @@ export type PaneActions = {
   // Marks what changed on the pull request as seen, which takes its note away.
   markSeen: (pullNumber: number) => void
   toggleCompact: () => void
+  // Switches this checkout to the merged branch's base (`switchToBase`), and puts the note away (its ✕).
+  switchToBase: () => void
+  dismissMergedBranch: () => void
   // From a visit, back to the folder's list.
   back?: () => void
   // The repository picker, which the header's Repositories button and the problem box open (`repo-picker.ts`), from the
-  // button pressed (its key); none where the pane offers it not.
-  pick?: (pressed: string) => void
+  // button pressed (its key, where the keyboard goes back).
+  pick: (pressed: string) => void
 }
 
 // Wide enough for two panels of readable rows next to each other, as a pane inline at full width is; a pane
@@ -136,7 +144,9 @@ function backMark(kit: Kit, row: number): RenderElement {
 
 // Before the first list: that it is checking while a load runs, or else what to press.
 function waiting(view: PaneView): string {
-  return view.isLoading ? "Checking GitHub for pull requests…" : "Press Refresh to check GitHub for pull requests."
+  return view.isLoading
+    ? "Checking GitHub for pull requests…"
+    : `Press ${REFRESH_GLYPH} to check GitHub for pull requests.`
 }
 
 // A line on its own, centred, one line under the header from the pane's own gap as everything under it is: the line
@@ -187,11 +197,11 @@ function problemBox(kit: Kit, problem: string, view: PaneView, actions: PaneActi
       <Box {...buttonGaps(view.surface)} flexWrap="wrap">
         <Button key="retry" label="Retry" variant="primary" onPress={actions.refresh} />
         {/* With no list at all, as in a folder that is no GitHub repository, another repository's can show. */}
-        {actions.pick && !view.snapshot ? (
+        {!view.snapshot ? (
           <Button
             key="pick-repo"
             label={view.isPreparingPicker ? PREPARING_LABEL : "Show Another Repository"}
-            onPress={() => actions.pick?.("pick-repo")}
+            onPress={() => actions.pick("pick-repo")}
           />
         ) : null}
       </Box>
@@ -204,18 +214,20 @@ const BOX_CHROME = 4
 const BUTTON_CHROME = 4
 const HEADER_GAP = 2
 const WHEN_COLUMNS = "updated 00:00".length
-const REFRESH_LABEL = "Refresh"
-// The repository picker's button, which shows another repository's pull requests; and what it, or the problem box's,
-// says while the picker gets ready.
+// What Refresh and Back show, as their labels: the desktop app draws a native button from its label alone.
+const REFRESH_GLYPH = "↻"
+const BACK_GLYPH = "←"
+// The repository picker's button, which shows another repository's pull requests.
 const PICK_LABEL = "Repositories"
+// What the picker's button, or the problem box's, says while the picker gets ready.
 const PREPARING_LABEL = "Loading…"
 // What a visit's header says beside the time.
 const VISIT_NOTE = "Not this session's folder"
 
-// The repository (a link to its pull requests), the status line's counts, and what waits elsewhere; when the list
-// was read; the repository picker where the pane offers it, the switch between the full and the compact view, and
-// Refresh, which `r` presses while the pane has the keyboard, in a box of their own above the panels. A visit says it
-// isn't the session's folder, with Back to the folder's list.
+// The repository (a link to its pull requests), the status line's counts, and what waits elsewhere; when the list was
+// read; the picker, the switch between the full and the compact view, and Refresh (↻), in a box of their own above the
+// panels, `p`, `c` and `r` pressing them while the pane has the keyboard. A visit says it isn't the session's folder,
+// with Back (←, `b`) to the folder's list.
 function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
   const { Box, Text, Button, Link } = kit
   const { snapshot } = view
@@ -229,25 +241,18 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
 
   const name = snapshot?.repo ?? view.visit?.repo ?? "Pull Requests"
   const viewLabel = view.isCompact ? "Full" : "Compact"
-  // The buttons keep to one line where they can: Back names the folder's repository only where the whole row then fits
-  // the pane, else it is plain Back; a pane narrower still wraps them. Repositories is measured as the wider of itself
-  // and Loading…, so the header keeps its shape while it reads that.
-  const widthOf = (labels: readonly string[]): number =>
-    labels.reduce(
-      (sum, label) => sum + label.length + BUTTON_CHROME,
-      buttonGaps(view.surface).columnGap * (labels.length - 1)
+  // The buttons keep to one line where they can, measured by what they show: Back shows the folder's repository only
+  // where the whole row then fits the pane, else ← alone; a pane narrower still wraps them. Repositories is wider than
+  // the Loading… that stands in for it while the picker gets ready, so the header keeps its shape.
+  const widthOf = (shown: readonly string[]): number =>
+    shown.reduce(
+      (sum, each) => sum + columnsOf(each) + BUTTON_CHROME,
+      buttonGaps(view.surface).columnGap * (shown.length - 1)
     )
-  const pickMeasure = PICK_LABEL.length >= PREPARING_LABEL.length ? PICK_LABEL : PREPARING_LABEL
-  const measured = (back: string | null): string[] => [
-    ...(back ? [back] : []),
-    ...(actions.pick ? [pickMeasure] : []),
-    viewLabel,
-    REFRESH_LABEL
-  ]
+  const measured = (back: string | null): string[] => [...(back ? [back] : []), PICK_LABEL, viewLabel, REFRESH_GLYPH]
   const room = view.columns - BOX_CHROME
   const backs = view.visit && actions.back ? [backTo(view.visit.folder), backTo(null)] : [null]
   const backLabel = backs.find((each) => widthOf(measured(each)) <= room) ?? backs[backs.length - 1]!
-  const back = backLabel && actions.back ? { label: backLabel, press: actions.back } : null
   const pickLabel = view.isPreparingPicker ? PREPARING_LABEL : PICK_LABEL
   const buttonsWidth = widthOf(measured(backLabel))
   // The counts are one piece, never parted, as a narrow layout would leave a count alone; the name wraps, and where
@@ -301,24 +306,23 @@ function header(kit: Kit, view: PaneView, actions: PaneActions): RenderElement {
         flexWrap="wrap"
         {...(isStacked && !spacesByRows(view.surface) ? { marginTop: 1 } : {})}
       >
-        {back ? <Button key="back" label={back.label} onPress={back.press} /> : null}
-        {actions.pick ? (
-          <Button key={PICK_KEY} label={pickLabel} dimColor onPress={() => actions.pick?.(PICK_KEY)} />
-        ) : null}
-        <Button key="view" label={viewLabel} dimColor onPress={actions.toggleCompact} />
-        <Button key="refresh" label={REFRESH_LABEL} hotkey="r" dimColor onPress={actions.refresh} />
+        {backLabel && actions.back ? <Button key="back" label={backLabel} hotkey="b" onPress={actions.back} /> : null}
+        <Button key={PICK_KEY} label={pickLabel} hotkey="p" dimColor onPress={() => actions.pick(PICK_KEY)} />
+        <Button key="view" label={viewLabel} hotkey="c" dimColor onPress={actions.toggleCompact} />
+        <Button key="refresh" label={REFRESH_GLYPH} hotkey="r" dimColor onPress={actions.refresh} />
       </Box>
     </Box>
   )
 }
 
-// Back's label: the folder's repository it goes back to, where the folder has one.
+// Back's label: ← and the folder's repository it goes back to, where the folder has one.
 function backTo(folder: string | null): string {
-  return folder ? `Back to ${folder}` : "Back"
+  return folder ? `${BACK_GLYPH} ${folder}` : BACK_GLYPH
 }
 
 // Two panels, or, with nothing in either and Create PR neither offered nor at work, one line that says so, centred
-// under the header; and under them the pull requests that merged or closed lately.
+// under the header; above them the checkout's branch where it merged, and under them the pull requests that merged or
+// closed lately.
 function body(kit: Kit, snapshot: PullsSnapshot, view: PaneView, actions: PaneActions): RenderElement {
   const { Box } = kit
   const isEmpty = GROUPS.every((group) => entriesOf(group, snapshot, view).length === 0)
@@ -326,15 +330,52 @@ function body(kit: Kit, snapshot: PullsSnapshot, view: PaneView, actions: PaneAc
     isEmpty && snapshot.hiddenDrafts === 0 && view.toOpen === null && !view.busy[CREATE_PR]
       ? centred(kit, "empty", NOTHING_OPEN)
       : panels(kit, snapshot, view, actions)
+  const merged = mergedBranchNote(kit, snapshot, view, actions)
   const ended = endedNotes(kit, snapshot, view, actions)
 
-  return ended ? (
+  return merged || ended ? (
     <Box key="body" flexDirection="column" gap={1}>
+      {merged}
       {lists}
       {ended}
     </Box>
   ) : (
     lists
+  )
+}
+
+// The checkout's branch, merged (`view.mergedBranch`): a line above the lists naming it, its pull request and the base
+// it merged into, with Switch to the base, whose place says what it is doing while it runs, and a ✕ that puts the note
+// away for this branch at this commit.
+function mergedBranchNote(
+  kit: Kit,
+  snapshot: PullsSnapshot,
+  view: PaneView,
+  actions: PaneActions
+): RenderElement | null {
+  const { Box, Text, Button, Link } = kit
+  const merged = view.mergedBranch
+  if (merged === null) {
+    return null
+  }
+  const label = `#${merged.number}`
+  const busy = view.busy[SWITCH_BASE]
+
+  return (
+    <Box key="merged-branch" columnGap={1} flexWrap="wrap" paddingX={1}>
+      <Text wrap="wrap">{`You're on ${merged.branch}, merged into ${merged.base} as`}</Text>
+      {snapshot.url ? <Link href={`${snapshot.url}/pull/${merged.number}`} label={label} /> : <Text>{label}</Text>}
+      <Box columnGap={2} flexShrink={1} minWidth={0} marginLeft={1}>
+        {busy ? (
+          <Text dimColor wrap="wrap">
+            {busy}
+          </Text>
+        ) : (
+          <Button key="switch-base" label={`Switch to ${merged.base}`} onPress={actions.switchToBase} />
+        )}
+        <Button key="dismiss-base" label={SEEN_LABEL} plain dimColor onPress={actions.dismissMergedBranch} />
+      </Box>
+    </Box>
   )
 }
 
@@ -585,8 +626,8 @@ function rowFrame(group: Group, entries: ListEntry[], view: PaneView, rowColumns
   return { indent, gutter, layout, columns: rowColumns, surface: view.surface }
 }
 
-// The columns a text of ours takes in the terminal: one a character, two for each mark (✅ ❗ 🔍), which appears in
-// it at most once.
+// The columns a text of ours takes in the terminal: one a character, two for each mark (✅ ❗ 🔍), which appears in it
+// at most once.
 function columnsOf(text: string): number {
   return [...text].length + Object.values(MARKS).filter((mark) => text.includes(mark)).length
 }

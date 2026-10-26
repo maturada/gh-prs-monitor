@@ -20,7 +20,7 @@ list on GitHub: your open pull requests, or, for the review panel, every open pu
 including those that only mention you.
 
 With nothing open and nothing waiting, the pane says just that, centred under the header. Before the first list, the
-line there says it is checking GitHub, or, where nothing will check by itself, to press Refresh.
+line there says it is checking GitHub, or, where nothing will check by itself, to press ↻ (Refresh).
 
 Every status, and the main button each one gets, is listed under [Your Pull Requests](#your-pull-requests) and
 [Waiting On Your Review](#waiting-on-your-review) below.
@@ -50,18 +50,19 @@ rule, shows each as a card of its own.
 ## The header
 
 The header names the repository, as a link to its pull requests on GitHub, with the same counts as the status line and
-when the list was read (`updated 09:12`, or `updated yesterday 17:40` where it isn't today). **Compact** and **Refresh**
-(or `r` while the pane has the keyboard) sit beside it, or on a line of their own in a narrow pane.
+when the list was read (`updated 09:12`, or `updated yesterday 17:40` where it isn't today). **Repositories**,
+**Compact** and **↻** (Refresh) sit beside it, or on a line of their own in a narrow pane.
 
-A dim **Repositories** button beside them opens the picker for [another repository's](other-repositories.md) pull
-requests, reading **Loading…** until it shows. With **Alerts from other repositories** on
-([more](other-repositories.md#alerts-from-other-repositories)), a dim `+3 elsewhere` beside the name counts the pull
-requests in your other repositories that wait for you: a review asked of you, or one of yours with CI failing, changes
-requested, or approved with its checks done.
+**Repositories** opens the picker for [another repository's](other-repositories.md) pull requests. With **Alerts from
+other repositories** on, a dim `+3 elsewhere` beside the name counts what waits for you there
+([what counts](other-repositories.md#3-elsewhere-in-the-header)).
 
-While the pane shows another repository, its header names that one, adds a dim "Not this session's folder", and
-offers **Back to** this folder's repository, or plain **Back** in a narrow pane
-([Other repositories](other-repositories.md#showing-another-repository)).
+While the pane shows another repository, its header says "Not this session's folder" and offers **←** (Back) to this
+folder's list ([Other repositories](other-repositories.md#showing-another-repository)).
+
+While the pane has the keyboard, a key presses each of the header's buttons: `r` **↻**, `c` **Compact** or **Full**,
+`p` **Repositories**, and `b` **←** on a visit; not while a question takes the pane's place, nor in the VS Code
+extension, which has no keys for buttons. The desktop app shows each key on its button.
 
 A problem reaching GitHub shows in a box above the list ([When something is wrong](troubleshooting.md)).
 
@@ -110,6 +111,27 @@ Changes from while you were away show too, saying `in the last 15h`. The first r
 before it closed. Instead of an alert per change, one toast then tells how many pull requests changed. The alert
 settings pick which changes are marked.
 
+## A branch that merged
+
+When the branch your checkout is on has merged, at the commit you have, a note above the lists says so: `You're on
+feature/x, merged into main as #1242`, with **Switch to main** (to whichever branch it merged into, a stack's lower
+branch too) and a ✕ that puts it away for this branch at this commit. Only pull requests from this repository's own
+branches count, not a fork's. None shows where an open pull request in your lists merges into the branch, as a
+long-lived `develop`, or is open from it again; where another worktree has the base checked out; nor on `/prs`'s own
+`pr-<number>` branch, on a visit, in the examples, or in a folder with no list.
+
+**Switch to main** waits for a turn under way to end, fetches the base and switches this checkout to it: it makes your
+local base, or brings it up to GitHub's (one with commits of yours ahead is taken as it is), installs what a changed
+lockfile needs, and deletes the merged branch where it is still at the merged commit and no pull request is open from
+it; its work stays in the merged pull request on GitHub. It changes nothing, and says why, where:
+
+- you have uncommitted changes to files git tracks, or the checkout moved since the note showed;
+- your base has commits GitHub's doesn't, while GitHub's has others;
+- another worktree has the base checked out, or a file git doesn't track here is in the base's way;
+- a merge, rebase or other git operation is under way;
+- the base can't be fetched, as when it was deleted on GitHub;
+- a skill is starting here.
+
 ## Your last look
 
 Your last look is the list as you last saw it, in any session: the pane while open (and as you closed it), or a `/prs`
@@ -133,20 +155,19 @@ extension updated to one that draws gets the pane, alerts and summary by itself.
 
 ## Commands
 
-- **`/prs`** opens the pane, and Esc closes it. **Refresh**, or `r` while the pane has the keyboard, reloads it. It
-  works while a turn is running. Typed in the desktop app before its window has joined the session, as in the first
-  moments of a new one, it prints the list, and the pane opens as the window joins, within 10 minutes.
+- **`/prs`** opens the pane, and Esc closes it. **↻** reloads it. It works while a turn is running. Typed in the desktop
+  app before its window has joined the session, as in the first moments of a new one, it prints the list, and the pane
+  opens as the window joins, within 10 minutes.
 - **`/prs close`** closes the pane, as its close mark does, and takes down a question it asks: for when a click does
   nothing.
 - **`/prs demo`** shows example pull requests, one of each status, one just merged from the pane and one merged by
-  someone else, in the pane, the status line and the desktop app's band, while their alerts show one after another
-  (with the alert sound when it is on). The examples' buttons ask what the real ones ask, and send nothing to GitHub.
-  They stay until you close the pane; **Refresh** or `/prs` brings your own list back in it. Its **Repositories**
-  picker offers the examples' own list and three made-up repositories: `acme/web`, cloned at `~/code/web`, and
-  `acme/ios-app` and `acme/admin`, with no clone, `acme/admin` marked as changed. **Open** visits them, and their
-  Resolve Comments, Fix CI and Resolve Conflicts ask as a real visit's do. With **Alerts from other repositories** on, the
-  header shows `+6 elsewhere` and an alert from `acme/admin` comes after the examples' own. Nothing is read or written.
-  Where no pane shows, as with nothing attached or in an app that places no panes, it prints the example list.
+  someone else, in the pane, the status line and the desktop app's band, while their alerts show one after another (with
+  the alert sound when it is on). The examples' buttons ask what the real ones ask, and send nothing to GitHub. They
+  stay until you close the pane; **↻** or `/prs` brings your own list back in it. Its **Repositories** picker offers
+  four made-up repositories, one of them cloned; **Open** visits them, and their buttons ask as a real visit's do. With
+  **Alerts from other repositories** on, the header shows `+6 elsewhere` and one more alert follows, from another
+  repository. Nothing is read or written. Where no pane shows, as with nothing attached or in an app that places no
+  panes, it prints the example list.
 - **`/prs acme/web`** (or an address, or a folder's path) shows that repository's pull requests:
   [Other repositories](other-repositories.md).
 - `/prs demo`, `/prs acme/web` and `/prs tickets` take the place of a question the pane is asking, which is cancelled;
@@ -164,7 +185,7 @@ Anything else after `/prs` does nothing but say what it takes.
 ## Other repositories
 
 The header's **Repositories** button, or `/prs acme/web`, `/prs ~/code/web` or a pull request's address, shows another
-repository's pull requests in the pane, with **Back** to this folder's list.
+repository's pull requests in the pane, with **←** (Back) to this folder's list.
 [Other repositories](other-repositories.md)
 
 ## Main buttons

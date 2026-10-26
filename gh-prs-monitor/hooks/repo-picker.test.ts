@@ -45,7 +45,7 @@ function stateOf(pulls: ReturnType<typeof pull>[], pickedAt: number | null = nul
 }
 
 describe("the repositories the picker offers", () => {
-  test("the folder's, then the clones on this machine, then those on GitHub alone where something waits", () => {
+  test("the folder's, then the clones on this machine, then those on GitHub alone, what waits first", () => {
     const state = stateOf([
       pull(WEB, 12, { ci: "FAILURE" }),
       pull(ADMIN, 3, { isMine: false, isRequested: true, author: "bo" }),
@@ -60,18 +60,44 @@ describe("the repositories the picker offers", () => {
     ]
 
     expect(repoChoices(clones, state, APP)).toEqual([
-      { repo: APP, clone: null, mine: 0, requested: 0, isNew: false, isFolder: true },
-      { repo: WEB, clone: "/code/web", mine: 1, requested: 0, isNew: false, isFolder: false },
+      { repo: APP, clone: null, mine: 0, requested: 0, open: 0, isNew: false, isFolder: true },
+      { repo: WEB, clone: "/code/web", mine: 1, requested: 0, open: 1, isNew: false, isFolder: false },
       {
         repo: { host: "github.com", name: "acme/docs" },
         clone: "/code/docs",
         mine: 0,
         requested: 0,
+        open: 0,
         isNew: false,
         isFolder: false
       },
-      { repo: ADMIN, clone: null, mine: 0, requested: 2, isNew: false, isFolder: false },
-      { repo: IOS, clone: null, mine: 1, requested: 0, isNew: false, isFolder: false }
+      { repo: ADMIN, clone: null, mine: 0, requested: 2, open: 2, isNew: false, isFolder: false },
+      { repo: IOS, clone: null, mine: 1, requested: 0, open: 1, isNew: false, isFolder: false },
+      {
+        repo: { host: "github.com", name: "acme/quiet" },
+        clone: null,
+        mine: 0,
+        requested: 0,
+        open: 1,
+        isNew: false,
+        isFolder: false
+      }
+    ])
+  })
+
+  test("one where your pull requests wait only on others is offered too, after those where something waits", () => {
+    const QUIET = { host: "github.com", name: "acme/quiet" }
+    const state = stateOf([
+      pull(QUIET, 1),
+      pull(QUIET, 2, { ci: "PENDING" }),
+      pull(IOS, 7, { ci: "FAILURE" }),
+      pull(IOS, 8)
+    ])
+
+    expect(repoChoices([], state, APP).map((choice) => [choice.repo.name, choice.mine, choice.open])).toEqual([
+      ["acme/app", 0, 0],
+      ["acme/ios-app", 1, 2],
+      ["acme/quiet", 0, 2]
     ])
   })
 
@@ -94,7 +120,7 @@ describe("the repositories the picker offers", () => {
 
   test("a folder with no repository starts with the clones; with no light check read, only clones", () => {
     expect(repoChoices([{ root: "/code/web", repo: WEB }], null, null)).toEqual([
-      { repo: WEB, clone: "/code/web", mine: 0, requested: 0, isNew: false, isFolder: false }
+      { repo: WEB, clone: "/code/web", mine: 0, requested: 0, open: 0, isNew: false, isFolder: false }
     ])
   })
 
@@ -135,6 +161,7 @@ describe("the picker's question", () => {
           place: "this folder",
           mine: 0,
           requested: 0,
+          open: 0,
           isNew: false,
           isShown: false
         },
@@ -144,10 +171,20 @@ describe("the picker's question", () => {
           place: "/code/web",
           mine: 1,
           requested: 0,
+          open: 1,
           isNew: true,
           isShown: true
         },
-        { group: "On GitHub", name: "acme/admin", place: null, mine: 0, requested: 1, isNew: false, isShown: false }
+        {
+          group: "On GitHub",
+          name: "acme/admin",
+          place: null,
+          mine: 0,
+          requested: 1,
+          open: 1,
+          isNew: false,
+          isShown: false
+        }
       ]
     })
     expect(question.choices).toEqual(["Show", "Cancel"])
@@ -161,6 +198,7 @@ describe("the picker's question", () => {
       clone: null,
       mine: 1,
       requested: 0,
+      open: 1,
       isNew: false,
       isFolder: false
     }))
@@ -179,6 +217,7 @@ describe("the picker's question", () => {
       clone: null,
       mine: 0,
       requested: 0,
+      open: 1,
       isNew: false,
       isFolder: false
     }))
@@ -187,6 +226,16 @@ describe("the picker's question", () => {
     expect(repoPickerQuestion(many, null, 4).detail).toBe("2 more aren't listed here.")
     expect(repoPickerQuestion(many, null, 4).field?.otherHint).toContain("under Other")
     expect(repoPickerQuestion(many, null).picking?.names).toHaveLength(6)
+  })
+
+  test("Claude Code's own dialog says how many are open where nothing waits, and matches the answer by it", () => {
+    const quiet = repoChoices([], stateOf([pull({ host: "github.com", name: "acme/quiet" }, 1), pull(IOS, 7)]), null)
+    const names = repoPickerQuestion(quiet, null).picking?.names
+
+    expect(names).toEqual(["acme/quiet  1 open", "acme/ios-app  1 open"])
+    expect(choiceOf({ choice: "Show", instructions: "", picks: [names![0]!] }, quiet)).toEqual({
+      repo: { host: "github.com", name: "acme/quiet" }
+    })
   })
 
   test("names each repository's server where they are on more than one, and the home folder as ~", () => {
@@ -260,7 +309,7 @@ describe("the picker as it asks", () => {
       pressed: [] as string[]
     }
     const host: PickerHost = {
-      checkQuietly: async () => {},
+      check: async () => {},
       elsewhere: async () => null,
       markPicked: async () => {},
       clones: async () => [{ root: "/Users/me/code/web", repo: WEB }],
@@ -311,7 +360,7 @@ describe("the picker as it asks", () => {
   test("a press while it gets ready asks nothing more", async () => {
     const session = createSession(readSettings({}))
     const check = held()
-    const { host, seen } = pickerHost(null, { checkQuietly: () => check.gate })
+    const { host, seen } = pickerHost(null, { check: () => check.gate })
 
     const first = askPick(host, session, "repo")
     await askPick(host, session, "repo")
@@ -324,7 +373,7 @@ describe("the picker as it asks", () => {
   test("a check that fails while it gets ready leaves its button ready to press again", async () => {
     const session = createSession(readSettings({}))
     const { host, seen } = pickerHost(null, {
-      checkQuietly: async () => {
+      check: async () => {
         throw new Error("GitHub out of reach")
       }
     })
@@ -392,7 +441,7 @@ describe("the picker as it asks", () => {
     let marks = 0
     const { host, seen } = pickerHost(null, {
       isAsking: async () => true,
-      checkQuietly: async () => {
+      check: async () => {
         checks += 1
       },
       markPicked: async () => {

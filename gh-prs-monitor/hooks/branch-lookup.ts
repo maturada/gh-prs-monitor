@@ -2,18 +2,20 @@
 
 // GitHub's lookup of the pull requests from the session's branch that the lists don't show (`BranchPulls`), as one
 // that merged or closed before they looked: the query and its reading, the request, and the lookup a load asks where
-// Create PR would show, and Create PR's press asks again unless GitHub said one is open. One lookup per branch and
-// commit at a time, its answer kept for the next.
+// Create PR would show or the list saw one from the branch end (for the note on a merged branch), and Create PR's press
+// asks again unless GitHub said one is open. One lookup per branch and commit at a time, its answer kept for the next.
 
-import type { BranchPulls, PullsSnapshot } from "../types"
+import type { BranchMerge, BranchPulls, PullsSnapshot } from "../types"
 import { isWithin } from "./machine"
 import type { Host } from "./machine"
+import { heldBranches, toplevel } from "./checkout"
 import { branchPullsOf, isAnswered, wantsBranchLookup } from "./create-flow"
 import { firstLine, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { GhFailure, ghRun, graphqlArgv, isWithinOnGithub, problemOf } from "./github"
 import { storedSnapshot } from "./pulls"
 import type { BranchLook, Session } from "./session"
+import { listWorktrees } from "./worktrees"
 
 // What GitHub's lookup of a branch's pull requests reaches beyond git and gh (`Host`): the list, GitHub's last answer
 // about the branch (`BranchPulls`), kept for the next, and the debug log. A load asks it too (`RefreshHost`).
@@ -45,12 +47,13 @@ export async function lookUpBranch(
   if (snapshot === null || branch === null || head === null || !wantsBranchLookup(snapshot, branch, head)) {
     return null
   }
-  const asked = branchPullsOf(snapshot, branch, head, false)
+  const asked = branchPullsOf(snapshot, branch, head, false, null)
   const key = `${branch} ${head} ${asked.endedHead}`
   if (session.branchLookup?.key !== key) {
     const done = isBranchTaken(host, repo, branch, head).then(
-      async (isTaken): Promise<BranchLook> => {
-        const looked = { ...asked, isTaken }
+      async ({ isTaken, merged }): Promise<BranchLook> => {
+        const baseHeldBy = merged?.base ? await holderOf(host, merged.base) : null
+        const looked = { ...asked, isTaken, merged, baseHeldBy }
         await host.keepBranchPulls(looked)
 
         return { looked }
@@ -74,28 +77,40 @@ export async function lookUpBranch(
   return (await session.branchLookup?.done) ?? null
 }
 
-// The latest pull requests from a branch, to find one open, or the latest that ended. GitHub lists forks' of the same
-// name among them, which come from other branches, and can be many for a common one (`patch-1`): a hundred, still one
-// rate-limit point, leaves room for them. The pull requests GitHub has commit `head` in tell, at no further cost, one
-// merged whose commits this clone never fetched, as pushed from elsewhere or GitHub's "Update branch"; each one's merge
-// commit tells apart the commit its merge made on the base, which GitHub counts among its commits too.
+// The folder of another worktree that has `base` checked out, where switching this checkout to it can't happen; null
+// for none, or where git can't tell, as the switch itself checks again.
+async function holderOf(host: Host, base: string): Promise<string | null> {
+  try {
+    return heldBranches(await listWorktrees(host), await toplevel(host)).get(base) ?? null
+  } catch {
+    return null
+  }
+}
+
+// The latest pull requests from a branch, to find one open, or the latest that ended, and where one merged, into what.
+// GitHub lists forks' of the same name among them, which come from other branches, and can be many for a common one
+// (`patch-1`): a hundred, still one rate-limit point, leaves room for them. The pull requests GitHub has commit `head`
+// in tell, at no further cost, one merged whose commits this clone never fetched, as pushed from elsewhere or GitHub's
+// "Update branch"; each one's merge commit tells apart the commit its merge made on the base, which GitHub counts among
+// its commits too.
 export const BRANCH_PULLS_QUERY = `query($owner: String!, $name: String!, $branch: String!, $head: GitObjectID!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, first: 100, orderBy: { field: CREATED_AT, direction: DESC }) {
-      nodes { number state headRefOid isCrossRepository }
+      nodes { number state headRefOid baseRefName isCrossRepository }
     }
     object(oid: $head) {
-      ... on Commit { associatedPullRequests(first: 5) { nodes { number state mergeCommit { oid } } } }
+      ... on Commit { associatedPullRequests(first: 5) { nodes { number state baseRefName mergeCommit { oid } } } }
     }
   }
 }`
 
-// What GitHub said of the pull requests from a branch (`BRANCH_PULLS_QUERY`): whether one is open, whether one merged
-// holds the commit asked about among its own, and the latest that ended: how, and at what commit.
+// What GitHub said of the pull requests from a branch (`BRANCH_PULLS_QUERY`): whether one is open, the merged one that
+// holds the commit asked about among its own (`heldBy`), and the latest that ended: how, at what commit, and where it
+// merged, which one and into what.
 export type BranchAnswer = {
   isOpen: boolean
-  isHeadMerged: boolean
-  ended: { state: "MERGED" | "CLOSED"; head: string } | null
+  heldBy: BranchMerge | null
+  ended: { state: "MERGED" | "CLOSED"; head: string; merge: BranchMerge | null } | null
 }
 
 // GitHub's answer about commit `head`; null where it can't be read.
@@ -104,6 +119,7 @@ export function readBranchPulls(json: string, head: string): BranchAnswer | null
     number?: unknown
     state?: unknown
     headRefOid?: unknown
+    baseRefName?: unknown
     isCrossRepository?: unknown
     mergeCommit?: { oid?: unknown } | null
   } | null
@@ -123,30 +139,50 @@ export function readBranchPulls(json: string, head: string): BranchAnswer | null
   }
   const own = (nodes as Node[]).filter((node) => node?.isCrossRepository === false)
   const ended = own.find((node) => node?.state === "MERGED" || node?.state === "CLOSED")
-  const merged = new Set(own.filter((node) => node?.state === "MERGED").map((node) => node?.number))
+  // By number, so one GitHub sent with none, which can't be named, holds nothing.
+  const merged = new Set(
+    own.flatMap((node) => (node?.state === "MERGED" && typeof node.number === "number" ? [node.number] : []))
+  )
   const associated = raw.data?.repository?.object?.associatedPullRequests?.nodes
   // Another branch's merged pull request may hold it too, as the base's commit a branch started from; and the commit a
   // merge made on the base is no commit of the branch's, though a branch name used again may be reset to it.
-  const isHeadMerged =
-    Array.isArray(associated) &&
-    (associated as Node[]).some((node) => merged.has(node?.number) && node?.mergeCommit?.oid !== head)
+  const holder = Array.isArray(associated)
+    ? (associated as Node[]).find(
+        (node) => typeof node?.number === "number" && merged.has(node.number) && node.mergeCommit?.oid !== head
+      )
+    : undefined
 
   return {
     isOpen: own.some((node) => node?.state === "OPEN"),
-    isHeadMerged,
+    heldBy: holder ? mergeOf(holder) : null,
     ended:
       ended && typeof ended.headRefOid === "string"
-        ? { state: ended.state as "MERGED" | "CLOSED", head: ended.headRefOid }
+        ? {
+            state: ended.state as "MERGED" | "CLOSED",
+            head: ended.headRefOid,
+            merge: ended.state === "MERGED" ? mergeOf(ended) : null
+          }
         : null
   }
 }
 
+// A merged pull request as GitHub listed it: its number, and the branch it merged into where GitHub named one.
+function mergeOf(node: { number?: unknown; baseRefName?: unknown }): BranchMerge | null {
+  return typeof node.number === "number"
+    ? { number: node.number, base: typeof node.baseRefName === "string" ? node.baseRefName : null }
+    : null
+}
+
 const UNREAD_BRANCH = "GitHub's answer about the branch's pull requests could not be read."
 
-// One open from the branch, or one that ended at commit `head` or after it, so the branch holds nothing new: a merged
-// one with the commit among its own, as GitHub says (`readBranchPulls`), or the latest that ended. Rejects where
-// GitHub, or git, could not be asked.
-export async function isBranchTaken(host: Host, repo: RepoRef, branch: string, head: string): Promise<boolean> {
+// Whether a branch is taken (`isBranchTaken`), and the merged pull request that takes it, if one does.
+type BranchTaken = { isTaken: boolean; merged: BranchMerge | null }
+
+// Whether the branch is taken: one open from it, or one that ended at commit `head` or after it, so the branch holds
+// nothing new: a merged one with the commit among its own, as GitHub says (`readBranchPulls`), or the latest that
+// ended. Where one merged takes it, which one and into what (`merged`). Rejects where GitHub, or git, could not be
+// asked.
+export async function isBranchTaken(host: Host, repo: RepoRef, branch: string, head: string): Promise<BranchTaken> {
   const asked = await ghRun(host, graphqlArgv(repo, BRANCH_PULLS_QUERY, { branch, head }), 30_000)
   const found = asked.ran?.exitCode === 0 ? readBranchPulls(asked.ran.stdout, head) : null
   if (found === null) {
@@ -154,18 +190,18 @@ export async function isBranchTaken(host: Host, repo: RepoRef, branch: string, h
       ? new GhFailure(asked.problem, asked.said)
       : new GhFailure({ message: UNREAD_BRANCH, isPermanent: false }, firstLine(asked.ran.stderr))
   }
-  if (found.isOpen || found.isHeadMerged) {
-    return true
+  if (found.isOpen || found.heldBy !== null) {
+    return { isTaken: true, merged: found.isOpen ? null : found.heldBy }
   }
   if (found.ended === null) {
-    return false
+    return { isTaken: false, merged: null }
   }
   const within = await isWithin(host, head, found.ended.head)
   // Where git can't place the two, a merged one doesn't hold `head`, as GitHub didn't list it among its own commits
-  // (`isHeadMerged`, above); only a closed one is compared on GitHub.
+  // (`heldBy`, above); only a closed one is compared on GitHub.
   if (within !== "unknown" || found.ended.state === "MERGED") {
-    return within === "within"
+    return within === "within" ? { isTaken: true, merged: found.ended.merge } : { isTaken: false, merged: null }
   }
 
-  return isWithinOnGithub(host, repo, head, found.ended.head)
+  return { isTaken: await isWithinOnGithub(host, repo, head, found.ended.head), merged: null }
 }

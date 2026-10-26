@@ -133,7 +133,8 @@ describe("Create PR", () => {
     branch: "feature/x",
     head: "h1",
     isTaken,
-    endedHead: null
+    endedHead: null,
+    merged: null
   })
 
   test("a press asks GitHub about the branch again, unless it said one is open from it", async () => {

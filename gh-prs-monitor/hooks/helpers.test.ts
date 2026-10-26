@@ -50,7 +50,7 @@ import {
   START_REVIEW
 } from "./review-flow"
 import { snapshotOf } from "./testing/fixtures"
-import { stableButtons } from "./stable-buttons"
+import { stableButtons, stableInputs } from "./stable-elements"
 import { answerChoices, choicesKey, readChoices } from "./create-choices"
 import type { KeptChoices } from "./create-choices"
 import { linksOf } from "./list"
@@ -860,6 +860,40 @@ describe("a new session", () => {
   })
 })
 
+describe("stableInputs", () => {
+  const drawn = new Map()
+  // A stand-in for the engine's Input: each one built is a new element, as each gets a handle of its own.
+  let built = 0
+  const Input = ((props: { key: string; label?: string; value?: string; onSubmit: () => void }) => ({
+    type: "Input",
+    props,
+    press: { handle: ++built }
+  })) as unknown as Parameters<typeof stableInputs>[2]
+  const submit = (): void => undefined
+  const field = (value: string, label = "Type one") => ({ key: "answer-text-1", label, value, onSubmit: submit })
+
+  test("drawn again for a keystroke on its surface, a field with another value is the same element", () => {
+    const one = stableInputs(drawn, "terminal:q", Input, false)(field(""))
+
+    expect(stableInputs(drawn, "terminal:q", Input, true)(field("acm"))).toBe(one)
+  })
+
+  test("any other drawing builds it afresh, with its value: a surface drawing it anew shows what was typed", () => {
+    const one = stableInputs(drawn, "terminal:r", Input, false)(field(""))
+    const again = stableInputs(drawn, "terminal:r", Input, false)(field("acm"))
+
+    expect(again).not.toBe(one)
+    expect((again as unknown as { props: { value: string } }).props.value).toBe("acm")
+  })
+
+  test("a field that reads otherwise, or at another site, is built afresh even for a keystroke", () => {
+    const one = stableInputs(drawn, "terminal:s", Input, false)(field(""))
+
+    expect(stableInputs(drawn, "terminal:s", Input, true)(field("", "Checking…"))).not.toBe(one)
+    expect(stableInputs(drawn, "desktop:s", Input, true)(field(""))).not.toBe(one)
+  })
+})
+
 describe("stableButtons", () => {
   const drawn = new Map()
   // A stand-in for the engine's Button: each one built is a new element, as each gets a handle of its own.
@@ -873,8 +907,8 @@ describe("stableButtons", () => {
 
   test("a button drawn again as it was is the same element, its first closure kept", () => {
     const first = () => undefined
-    const one = stableButtons(drawn, "terminal:a", Button)({ key: "refresh", label: "Refresh", onPress: first })
-    const again = stableButtons(drawn, "terminal:a", Button)({ key: "refresh", label: "Refresh", onPress: press })
+    const one = stableButtons(drawn, "terminal:a", Button)({ key: "refresh", label: "↻", onPress: first })
+    const again = stableButtons(drawn, "terminal:a", Button)({ key: "refresh", label: "↻", onPress: press })
 
     expect(again).toBe(one)
     expect((again as unknown as { props: { onPress: unknown } }).props.onPress).toBe(first)
@@ -1125,6 +1159,7 @@ describe("putting the pane's window back after a question", () => {
       isInPane: true,
       fieldKey: "answer-text",
       draft: "",
+      keystroke: null,
       picks: [],
       checking: null,
       problem: null

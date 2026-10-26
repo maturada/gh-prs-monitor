@@ -5,7 +5,7 @@ import { describe, expect, test } from "claude-code/testing"
 import type { Engine } from "claude-code/testing"
 
 import type { Answer, Question } from "../types"
-import { answerOpen, questionView } from "./dialog"
+import { answerOpen, answersKeystroke, questionView } from "./dialog"
 import { answerKey, openKey, PICK_ALL_KEY, pickKey } from "./keys"
 import { pickerActions, pickerView } from "./picker"
 import type { PickerActions } from "./picker"
@@ -16,7 +16,7 @@ import { repoPickerQuestion } from "./repo-picker"
 import { createSession } from "./session"
 import type { Session } from "./session"
 import { readSettings } from "./settings"
-import { stableButtons } from "./stable-buttons"
+import { stableButtons } from "./stable-elements"
 import { drawnNodes, PLUGIN, SURFACES } from "./testing/world"
 import type { Drawn } from "./testing/world"
 
@@ -50,7 +50,8 @@ const KIND: PickingQuestion = {
   }
 }
 
-// The repository picker: the folder's acme/app, shown; its clone of acme/web; acme/admin on GitHub, asking a review.
+// The repository picker: the folder's acme/app, shown; its clone of acme/web, two of yours there waiting on others;
+// acme/admin on GitHub, asking a review.
 const REPOS = repoPickerQuestion(
   [
     {
@@ -58,6 +59,7 @@ const REPOS = repoPickerQuestion(
       clone: null,
       mine: 0,
       requested: 0,
+      open: 0,
       isNew: false,
       isFolder: true
     },
@@ -66,6 +68,7 @@ const REPOS = repoPickerQuestion(
       clone: "/code/web",
       mine: 0,
       requested: 0,
+      open: 2,
       isNew: false,
       isFolder: false
     },
@@ -74,6 +77,7 @@ const REPOS = repoPickerQuestion(
       clone: null,
       mine: 0,
       requested: 1,
+      open: 1,
       isNew: true,
       isFolder: false
     }
@@ -191,6 +195,7 @@ function plain(draw: (kit: QuestionKit) => RenderElement) {
       expect(button).toBeDefined()
       ;(button!.props.onPress as () => void)()
     },
+    nodes: () => all(tree),
     fieldKey: () => input().key,
     type: (text: string) => (input().onInput as (text: string) => void)(text),
     enter: (text: string) => (input().onSubmit as (text: string) => void)(text)
@@ -307,10 +312,188 @@ describe("the picker as drawn", () => {
     }
   })
 
-  test("the repository picker's keyboard starts on the first Open, as its rows come before its field", async ($, on) => {
+  test("the repository picker's keyboard starts in its field, above the rows; the phone, with no field, has none", async ($, on) => {
     const draw = drawer($, on)
+    for (const surface of SURFACES) {
+      const { nodes } = await draw(REPOS, [], surface)
+      const field = nodes.findIndex((node) => node.type === "Input")
+      const firstOpen = nodes.findIndex((node) => node.props?.key === openKey(1))
+      if (surface === "mobile") {
+        expect(focused(nodes)).toEqual([])
+      } else {
+        expect(focused(nodes)).toEqual(["answer-text-1"])
+        expect(field).toBeLessThan(firstOpen)
+      }
+    }
+  })
 
-    expect(focused((await draw(REPOS, [])).nodes)).toEqual([openKey(1)])
+  // The repository picker built with plain elements, with `typed` in its field.
+  const typedIn = (typed: string, state: QuestionState = NOT_CHECKING, actions: PickerActions = NONE) =>
+    plain((kit) =>
+      repoRowsView(
+        kit,
+        REPOS,
+        REPOS.picking.rows!,
+        actions,
+        { key: "answer-text-1", read: () => typed, keep: () => {} },
+        SITE,
+        state
+      )
+    )
+  const wordsOf = (drawing: ReturnType<typeof typedIn>) =>
+    drawing
+      .nodes()
+      .filter((node) => node.type === "Text")
+      .map((node) => [node.props.children].flat().join(""))
+
+  test("typed in the field, the rows narrow to those whose name holds it, ignoring case; an empty group goes", () => {
+    const web = typedIn(" WEB ")
+
+    expect(web.labels()).toEqual(["Open", "Cancel"])
+    expect(wordsOf(web)).toEqual(expect.arrayContaining(["On this machine", "acme/web"]))
+    expect(wordsOf(web)).not.toContain("On GitHub")
+    expect(wordsOf(web)).not.toContain("acme/admin")
+    // Cleared, every row is back.
+    expect(typedIn("").labels()).toEqual(["Open", "Open", "Cancel"])
+  })
+
+  test("with no row matching, a dim line says so, and Enter shows what is typed", () => {
+    const none = typedIn("zzz")
+    const line = none
+      .nodes()
+      .find(
+        (node) =>
+          [node.props.children].flat().join("") === "No repository listed matches: Enter looks up what you typed."
+      )
+
+    expect(none.labels()).toEqual(["Cancel"])
+    expect(line?.props.dimColor).toBe(true)
+  })
+
+  test("Enter: a listed name whole opens its row; else the first row left, passing over the one shown; else what is typed", () => {
+    const seen: string[] = []
+    const actions = {
+      ...NONE,
+      open: (index: number) => seen.push(`open ${index}`),
+      answer: (answer: Answer) => seen.push(`answer ${answer.instructions}`)
+    }
+    const entered = (text: string) => typedIn(text, NOT_CHECKING, actions).enter(text)
+
+    // A listed name typed whole, in any case, opens its own row, the one shown too.
+    entered("ACME/ADMIN")
+    entered("acme/app")
+    // Otherwise what the rows left show: the first, passing over the one shown, which opens only as the one match.
+    entered("acme/a")
+    entered("acme")
+    entered("app")
+    // With no row left, looked up as typed, a folder too; empty, the first row but the one shown; spaces around it go.
+    entered("~/code/docs")
+    entered("zzz")
+    entered("")
+    entered("  web ")
+    expect(seen).toEqual([
+      "open 2",
+      "open 0",
+      "open 2",
+      "open 1",
+      "open 0",
+      "answer ~/code/docs",
+      "answer zzz",
+      "open 1",
+      "open 1"
+    ])
+    // With only the one shown listed, an empty Enter has nothing to open, and answers nothing.
+    const alone = repoPickerQuestion(
+      [
+        {
+          repo: { host: "github.com", name: "acme/app" },
+          clone: null,
+          mine: 0,
+          requested: 0,
+          open: 0,
+          isNew: false,
+          isFolder: true
+        }
+      ],
+      { host: "github.com", name: "acme/app" }
+    ) as PickingQuestion
+    plain((kit) =>
+      repoRowsView(
+        kit,
+        alone,
+        alone.picking.rows!,
+        actions,
+        { key: "answer-text-1", read: () => "", keep: () => {} },
+        SITE,
+        NOT_CHECKING
+      )
+    ).enter("")
+    expect(seen).toHaveLength(9)
+  })
+
+  test("with repositories on several servers, owner/name typed whole opens the first row it ends, before a mere match", () => {
+    const seen: string[] = []
+    const on = (host: string, name: string) => ({
+      repo: { host, name },
+      clone: null,
+      mine: 1,
+      requested: 0,
+      open: 1,
+      isNew: false,
+      isFolder: false
+    })
+    const onTwo = repoPickerQuestion(
+      [
+        on("github.com", "acme/web"),
+        on("github.com", "acme/api-docs"),
+        on("ghe.example.com", "acme/api"),
+        on("github.com", "acme/api")
+      ],
+      null
+    ) as PickingQuestion
+    const entered = (text: string) =>
+      plain((kit) =>
+        repoRowsView(
+          kit,
+          onTwo,
+          onTwo.picking.rows!,
+          {
+            ...NONE,
+            open: (index) => seen.push(`open ${index}`),
+            answer: (a) => seen.push(`answer ${a.instructions}`)
+          },
+          { key: "answer-text-1", read: () => text, keep: () => {} },
+          SITE,
+          NOT_CHECKING
+        )
+      ).enter(text)
+
+    entered("acme/web")
+    entered("acme/api")
+    entered("github.com/acme/api")
+    expect(seen).toEqual(["open 0", "open 2", "open 3"])
+  })
+
+  test("the phone, which draws no field, narrows nothing by what was typed elsewhere", () => {
+    const phone = plain((kit) =>
+      repoRowsView(
+        { ...kit, Input: undefined },
+        REPOS,
+        REPOS.picking.rows!,
+        NONE,
+        { key: "answer-text-1", read: () => "zzz", keep: () => {} },
+        SITE,
+        NOT_CHECKING
+      )
+    )
+
+    expect(phone.labels()).toEqual(["Open", "Open", "Cancel"])
+  })
+
+  test("the row being opened stays drawn while it says Checking…, whatever is typed", () => {
+    const opening = { checking: { choice: "Show", instructions: "", picks: [REPOS.picking.names[2]!] }, problem: null }
+
+    expect(typedIn("web", opening).labels()).toEqual(["Open", "Checking…", "Cancel"])
   })
 
   test("while an answer is carried out: the row opened says Checking…, else the field's Enter does", async ($, on) => {
@@ -346,6 +529,33 @@ describe("the picker as drawn", () => {
     expect(refused.some((node) => node.type === "Text" && node.children?.[0] === "⚠ kim can't review it.")).toBe(true)
   })
 
+  test("a repository where nothing waits says how many are open, dim; one where something waits says what", async ($, on) => {
+    const draw = drawer($, on)
+    for (const surface of SURFACES) {
+      const { nodes } = await draw(REPOS, [], surface)
+      const text = (said: string) => nodes.find((node) => node.type === "Text" && node.children?.[0] === said)
+      expect(text("2 open")?.props?.dimColor).toBe(true)
+      expect(text("🔍 1 to review")?.props?.dimColor).toBeFalsy()
+      expect(nodes.some((node) => node.type === "Text" && node.children?.[0] === "0 open")).toBe(false)
+    }
+    // In the compact view, as short.
+    const compact = plain((kit) =>
+      repoRowsView(
+        kit,
+        REPOS,
+        REPOS.picking.rows!,
+        NONE,
+        { key: "answer-text-1", read: () => "", keep: () => {} },
+        { ...SITE, isCompact: true },
+        NOT_CHECKING
+      )
+    )
+    const said = compact.nodes().filter((node) => node.type === "Text")
+    const saying = (words: string) => said.find((node) => [node.props.children].flat().join("") === words)
+    expect(saying("2 open")?.props.dimColor).toBe(true)
+    expect(saying("🔍 1")).toBeDefined()
+  })
+
   test("the repository picker on every surface: a row each, by group, Open on all but the one shown, and Cancel", async ($, on) => {
     const draw = drawer($, on)
     for (const surface of SURFACES) {
@@ -363,6 +573,9 @@ describe("the picker as drawn", () => {
       expect(cards.length).toBe(surface === "terminal" ? 0 : 3)
       expect(nodes.some((node) => node.type === "Input")).toBe(surface !== "mobile")
       expect(texts.includes("To type one, use the computer: this app has no text field.")).toBe(surface === "mobile")
+      // The field leads where it is drawn; on the phone, which draws none, that line comes under the rows, as before.
+      const noField = texts.indexOf("To type one, use the computer: this app has no text field.")
+      expect(surface !== "mobile" || noField > texts.indexOf("✓ Shown")).toBe(true)
     }
   })
 })
@@ -381,6 +594,7 @@ describe("the picker's presses", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
+      keystroke: null,
       picks: [...question.picking.initial],
       checking: null,
       problem: null
@@ -500,6 +714,7 @@ describe("the open question in the pane", () => {
       isInPane: true,
       fieldKey: "answer-text-1",
       draft: "",
+      keystroke: null,
       picks: [...(question.picking?.initial ?? [])],
       checking: null,
       problem: null
@@ -523,7 +738,7 @@ describe("the open question in the pane", () => {
 
     return plain((kit) =>
       questionView(
-        { ...kit, Button: stableButtons(session.drawnButtons, "terminal:pane:question", kit.Button) },
+        { ...kit, Button: stableButtons(session.drawnElements, "terminal:pane:question", kit.Button) },
         session,
         question,
         SITE,
@@ -594,6 +809,44 @@ describe("the open question in the pane", () => {
     expect(pane.session.asking?.picks).toEqual([1])
     earlier.press(answerKey(1))
     expect(pane.answers).toEqual([{ choice: "Cancel", instructions: "", picks: ["Full Review"] }])
+  })
+
+  test("a drawing answers the keystroke it read on its own surface, and clears it unless a newer one landed", () => {
+    const session = createSession(readSettings({}))
+    openOn(session, REPOS, [])
+    const first = { surface: "terminal" }
+    const newer = { surface: "terminal" }
+
+    session.asking!.keystroke = first
+    expect(answersKeystroke(session, first, "desktop")).toBe(false)
+    expect(session.asking!.keystroke).toBe(first)
+    expect(answersKeystroke(session, first, "terminal")).toBe(true)
+    expect(session.asking!.keystroke).toBe(null)
+    // A keystroke that landed while the drawing for the one before was under way waits for its own drawing.
+    session.asking!.keystroke = newer
+    expect(answersKeystroke(session, first, "terminal")).toBe(true)
+    expect(session.asking!.keystroke).toBe(newer)
+    expect(answersKeystroke(session, null, "terminal")).toBe(false)
+  })
+
+  test("typed in the repository picker's field, the pane is drawn again, narrowed; another question's only keeps it", () => {
+    const pane = paneOf(REPOS)
+
+    pane.draw().type("adm")
+    expect(pane.session.asking?.draft).toBe("adm")
+    expect(pane.redraws()).toBe(1)
+    expect(pane.draw().labels()).toEqual(["Open", "Cancel"])
+    const other = paneOf(KIND)
+    other.draw().type("look closer")
+    expect(other.redraws()).toBe(0)
+  })
+
+  test("a keystroke is kept as typed on the surface its field was drawn for, whatever the engine says of it", () => {
+    const pane = paneOf(REPOS)
+    const desktop = plain((kit) => questionView(kit, pane.session, REPOS, { ...SITE, surface: "desktop" }, () => {}))
+
+    desktop.type("adm")
+    expect(pane.session.asking?.keystroke).toEqual({ surface: "desktop" })
   })
 
   test("its field is the open question's: what is typed is kept there and goes with the answer pressed", () => {

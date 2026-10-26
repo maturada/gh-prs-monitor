@@ -2,6 +2,30 @@
 
 Each version of gh-prs-monitor, newest first. Versions follow [semantic versioning](https://semver.org).
 
+## 1.6.0 (26.10.2026)
+
+- **Switch to main after a merge**: when the branch your checkout is on has merged, at the commit you have, a note above
+  the lists says so, with **Switch to main** (or whichever branch it merged into) and a ✕. It waits for a turn under
+  way, fetches the base, switches this checkout to it, installs what a changed lockfile needs, and deletes the merged
+  branch where it is still at the merged commit and no pull request is open from it. Where something stands in the
+  way, as uncommitted changes or the base checked out in another worktree, it changes nothing and says why.
+  [A branch that merged](gh-prs-monitor/docs/pane.md#a-branch-that-merged)
+- **The repository picker lists the repositories you are part of**: those with a pull request of yours open or a
+  review asked of you, not only those where something waits; a row where nothing does says how many are open there,
+  `2 open`. A field above the rows narrows them as you type, and Enter opens the one whose name you typed, else the
+  first row left, else looks up what you typed as `/prs` does.
+  [The repository picker](gh-prs-monitor/docs/other-repositories.md#the-repository-picker)
+- **↻ and ←**: the header's Refresh is ↻ and Back is ←, in the desktop app too. While the pane has the keyboard, `r`,
+  `c`, `p` and `b` press ↻, **Compact** or **Full**, **Repositories** and ←, but in the VS Code extension; the desktop
+  app shows each key on its button. [The header](gh-prs-monitor/docs/pane.md#the-header)
+- **New commits since your review** are marked ↑ in alerts and notes, as ↻ is now Refresh.
+- **`/prs demo`**'s picker offers four made-up repositories, one where your pull requests only wait on others.
+- **`+N elsewhere` and the picker showed what had ended** in another repository until the next timed check, in
+  background mode, as ↻ didn't read other repositories again. With **Alerts from other repositories** on, opening the
+  pane and ↻ now read them at once in every **Refresh** mode, and opening the picker always does, 1 point each.
+- **Docs**: shorter and plainer where the header and the picker are described, the same for every app; what Switch to
+  main runs and keeps is in [What it runs](gh-prs-monitor/docs/what-it-runs.md) and [Privacy](PRIVACY.md).
+
 ## 1.5.0 (24.10.2026)
 
 - **Other repositories in the pane**: the header's **Repositories** button, or `/prs` with `owner/name`, an address or

@@ -56,6 +56,70 @@ async function paneOn($: Engine, on: On, world: World) {
 }
 
 describe("the repository picker", () => {
+  test("typing in its field narrows its rows as the pane draws them, and Enter opens the one left", async ($, on) => {
+    // Nobody answers for the person: the picker stays open for them to type.
+    const world = worldWith()
+    const { clock, ui } = await paneOn($, on, world)
+    const inputOf = async (pane: { drawn: () => Promise<unknown> }) =>
+      drawnNodes(await pane.drawn()).find((node) => node.type === "Input") as
+        | (Drawn & { press?: { handle?: unknown } })
+        | undefined
+
+    await pressDrawn(clock, ui, "repo")
+    await clock.settle()
+    const desktop = await mountPane($, "desktop")
+    const field = fieldKey(drawnNodes(await ui.drawn()))
+    const terminalField = (await inputOf(ui))?.press?.handle
+    const desktopField = (await inputOf(desktop))?.press?.handle
+    await ui.input({ key: field, text: "adm", kind: "change" })
+    await clock.settle()
+
+    const words = wordsIn(drawnNodes(await ui.drawn()))
+    expect(words).toContain("acme/admin")
+    expect(words).not.toContain("acme/web")
+    // The terminal, typed on, keeps its field, so a keystroke or Enter on the drawing it shows still lands; the desktop
+    // app's is drawn afresh, showing what was typed.
+    expect((await inputOf(ui))?.press?.handle).toBe(terminalField)
+    expect((await inputOf(desktop))?.press?.handle).not.toBe(desktopField)
+    expect((await inputOf(desktop))?.props?.value).toBe("adm")
+    // Typed on in the desktop app, it keeps its own; the terminal's, drawn first, is drawn afresh with what was typed.
+    const terminalNow = (await inputOf(ui))?.press?.handle
+    const desktopNow = (await inputOf(desktop))?.press?.handle
+    await desktop.input({ key: field, text: "admi", kind: "change" })
+    await clock.settle()
+    expect((await inputOf(desktop))?.press?.handle).toBe(desktopNow)
+    expect((await inputOf(ui))?.press?.handle).not.toBe(terminalNow)
+    expect((await inputOf(ui))?.props?.value).toBe("admi")
+    // A drawing no keystroke asked for, as the desktop app's pane shown again, draws it afresh too.
+    await desktop.unmount()
+    const shownAgain = await mountPane($, "desktop")
+    expect((await inputOf(shownAgain))?.press?.handle).not.toBe(desktopNow)
+    expect((await inputOf(shownAgain))?.props?.value).toBe("admi")
+    await shownAgain.unmount()
+    await ui.input({ key: field, text: "admi" })
+    await clock.settle()
+    expect(await ui.find({ type: "Link", text: "acme/admin" })).toBeDefined()
+  })
+
+  test(
+    "+N elsewhere counts what waits there, and the picker's check counts it again, so it drops what ended",
+    { options: { alertOtherRepos: true } },
+    async ($, on) => {
+      const world = worldWith({ answer: "Cancel" })
+      const { clock, ui } = await paneOn($, on, world)
+      const header = async () => wordsIn(drawnNodes(await ui.find({ key: "header" })))
+      expect(await header()).toContain("+1 elsewhere")
+      // acme/admin's review was answered elsewhere since the last check.
+      world.elsewhere = {}
+      world.others = { ...world.others, "github.com/acme/admin": {} }
+
+      await pressDrawn(clock, ui, "repo")
+      await clock.settle()
+
+      expect(await header()).not.toContain("elsewhere")
+    }
+  )
+
   test("lists the folder's, then its clones, then GitHub alone, a row each; the one opened shows", async ($, on) => {
     const world = worldWith({ answer: "Show", picks: ["acme/web"] })
     const { clock, ui } = await paneOn($, on, world)
@@ -500,6 +564,45 @@ describe("the repository picker", () => {
       await clock.settle()
 
       expect(world.rows).toContain("acme/admin 🔍 1 to review Open")
+    }
+  )
+
+  test(
+    "with the alerts from other repositories on, opening the picker checks them again, so it lists what waits now",
+    { options: { alertOtherRepos: true } },
+    async ($, on) => {
+      const world = worldWith({ answer: "Cancel" })
+      const { clock, ui } = await paneOn($, on, world)
+      // acme/admin's pull request closed since the last check, within the background's three minutes.
+      world.elsewhere = {}
+      world.others = { ...world.others, "github.com/acme/admin": {} }
+
+      await pressDrawn(clock, ui, "repo")
+      await clock.settle()
+
+      expect(world.rows).toEqual(["acme/app this folder ✓ Shown", "acme/web ~/code/web Open"])
+    }
+  )
+
+  test(
+    "with the alerts from other repositories on, what the picker's check finds is alerted, as any check's is",
+    { options: { alertOtherRepos: true } },
+    async ($, on) => {
+      const world = worldWith({ answer: "Cancel" })
+      const { clock, seen, ui } = await paneOn($, on, world)
+      const told = seen.toasts.length
+      // A review asked of you in acme/docs since the last check.
+      world.elsewhere = {
+        requested: [
+          ...(world.elsewhere?.requested ?? []),
+          { repo: "acme/docs", number: 5, title: "Guide", author: "cy" }
+        ]
+      }
+
+      await pressDrawn(clock, ui, "repo")
+      await clock.settle()
+
+      expect(seen.toasts.slice(told)).toEqual([expect.stringContaining("acme/docs#5 Guide")])
     }
   )
 

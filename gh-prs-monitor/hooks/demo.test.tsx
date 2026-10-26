@@ -108,7 +108,7 @@ describe("/prs demo", () => {
       "⚠ #1238 Rename the settings fields — merge conflicts",
       "✓ #1230 PDF export — merged by a-teammate, #1242 is next in stack #30",
       "⌕ #1240 Activity cards on the home feed (a-teammate) — review requested",
-      "↻ #1241 Shareable invite links — new commits since your review",
+      "↑ #1241 Shareable invite links — new commits since your review",
       "@ #1243 Cache the map tiles offline (a-teammate) — you were mentioned",
       "Since yesterday 17:40, 9 pull requests changed — see /prs"
     ])
@@ -670,7 +670,7 @@ describe("the examples' other repositories", () => {
     expect(await header(ui)).not.toContain("elsewhere")
   })
 
-  test("the picker offers the examples' own, acme/web cloned here, then two on GitHub alone, one new; it reads and keeps nothing", async ($, on) => {
+  test("the picker offers the examples' own, acme/web cloned here, then three on GitHub alone, one new, one where nothing waits; it reads and keeps nothing", async ($, on) => {
     const { clock, world, ui, isUntouched } = await examplesOn($, on, { answer: "Cancel" })
 
     await pressDrawn(clock, ui, "repo")
@@ -679,7 +679,8 @@ describe("the examples' other repositories", () => {
       "Example pull requests this folder ✓ Shown",
       "acme/web ❗ 2 yours 🔍 1 to review ~/code/web Open",
       "acme/ios-app ❗ 1 yours 🔍 1 to review Open",
-      "acme/admin • 🔍 1 to review Open"
+      "acme/admin • 🔍 1 to review Open",
+      "acme/docs 2 open Open"
     ]
     expect(world.header).toBe("Repositories")
     expect(world.rows).toEqual(rows)
@@ -697,9 +698,7 @@ describe("the examples' other repositories", () => {
       const { clock, world, ui, isUntouched } = await examplesOn($, on)
 
       await visit(clock, ui, world, WEB)
-      expect(await header(ui)).toMatch(
-        /^acme\/web .*\+3 elsewhere.*Not this session's folder Back to Example pull requests/
-      )
+      expect(await header(ui)).toMatch(/^acme\/web .*\+3 elsewhere.*Not this session's folder ← Example pull requests/)
       expect(await ui.find({ type: "Text", text: "Checkout page" })).toBeDefined()
       expect(await ui.find({ type: "Text", text: "Product images" })).toBeDefined()
       expect(await ui.find({ type: "Text", text: "Move the map to the tiles API" })).toBeUndefined()
@@ -870,20 +869,22 @@ describe("the examples' other repositories", () => {
     await $.turn.complete(skillTurnEnd("busy"))
   })
 
-  test(
-    "Refresh leaving the demo checks other repositories too, as the list's own Refresh does",
-    { options: { alertOtherRepos: true, refresh: "on-demand" } },
-    async ($, on) => {
-      const { clock, seen, ui } = await examplesOn($, on)
-      const checks = () => seen.runs.filter((run) => run.includes("archived:false")).length
-      const before = checks()
+  for (const refresh of ["background", "while-open", "on-demand"]) {
+    test(
+      `${refresh}, Refresh leaving the demo checks other repositories too, as the list's own Refresh does`,
+      { options: { alertOtherRepos: true, refresh } },
+      async ($, on) => {
+        const { clock, seen, ui } = await examplesOn($, on)
+        const checks = () => seen.runs.filter((run) => run.includes("archived:false")).length
+        const before = checks()
 
-      await ui.press({ key: "refresh" })
-      await clock.settle()
+        await ui.press({ key: "refresh" })
+        await clock.settle()
 
-      expect(checks()).toBe(before + 1)
-    }
-  )
+        expect(checks()).toBe(before + 1)
+      }
+    )
+  }
 
   test("typed in the picker's field: an example repository, or a folder in its clone, shows; another is said to be none", async ($, on) => {
     const { clock, world, seen, ui, isUntouched } = await examplesOn($, on)

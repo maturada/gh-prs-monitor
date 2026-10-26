@@ -20,14 +20,15 @@ runs and sends is on [What it runs and what it sends](what-it-runs.md).
 - **background**: from session start, every interval, with alerts and the summary.
 - **while-open**: only while the `/prs` pane is open; alerts while it is, no summary.
 - **on-demand**: only when you ask, with no alerts about the list and no summary.
-  - It checks when `/prs` runs, when Refresh (or a problem's Retry) is pressed, and after a row's button.
+  - It checks when `/prs` runs, when ↻ or a problem's Retry is pressed, and after a row's button.
   - It also checks once, with the pane open and no list in it, when a session starts, or a `/clear` or a resume starts
     a new conversation. Where an organization manages Claude Code, a plugin you install isn't told, so this one is
     left out.
-  - **Alerts from other repositories**, where it is on, still toasts what it finds at `/prs` and Refresh.
+  - **Alerts from other repositories**, where it is on, still toasts what it finds at `/prs`, ↻ and as the repository
+    picker opens.
 
 With **Share refreshes between sessions** on, the timers ask GitHub about once an interval for the repository, however
-many of your sessions show it, and the answers usually reach the others within 20 seconds. Opening the pane, Refresh,
+many of your sessions show it, and the answers usually reach the others within 20 seconds. Opening the pane, ↻,
 `/prs` and the refreshes after a button's action or a skill's turn always ask GitHub. Off, each session asks for
 itself. The terminal's, VS Code's and the desktop app's sessions share alike.
 
@@ -59,9 +60,8 @@ of its buttons or closing the pane clears it sooner.
 notification channel is set for it. It follows **Change alerts** and the **Alert** rows
 ([more](alerts.md#sound-and-system-notifications)).
 
-**Alerts from other repositories** follows **Change alerts** and the **Alert** rows too. It costs one light request at
-each check, or at `/prs` and Refresh on demand: 1 point each, of the 5,000 an hour GitHub gives you
-([more](other-repositories.md#alerts-from-other-repositories)).
+**Alerts from other repositories** follows **Change alerts** and the **Alert** rows too. Each of its checks costs 1
+point ([cost](#github)).
 
 The **Alert** rows pick the kinds. What each kind alerts, and when alerts show:
 [Alerts and the status line](alerts.md).
@@ -103,11 +103,11 @@ sessions on one repository still use about 100 points an hour between them. Ever
   over 150,000 characters, too large to share (the busiest repositories send about 110,000). What you ask for yourself
   asks GitHub in the session you ask in.
 - **The repository** is looked up once per session.
-- **Alerts from other repositories:** with the setting on, one GraphQL request of 1 point (two searches) at each
-  check, which follows **Refresh**: each interval in the background mode, each interval while the pane is open and at
-  `/prs` and Refresh in while-open, and at `/prs` and Refresh on demand. At 3 minutes, that is 20 points an hour for
-  each session, a fraction of a percent; sessions do not share it. Opening the repository picker with the setting off
-  runs it once.
+- **Alerts from other repositories:** with the setting on, one GraphQL request of 1 point (two searches) at each check,
+  which follows **Refresh**: each interval in the background mode, each interval while the pane is open in while-open,
+  none on demand; and in every mode as the pane opens and at ↻. At 3 minutes, that is 20 points an hour for each
+  session, a fraction of a percent; sessions do not share it. Opening the repository picker runs it once, with the
+  setting off too.
 - **A repository you show:** its list is one more request like the folder's at each check while it shows, as
   **Refresh** says, not shared with other sessions; showing it first looks the repository up once (`gh auth status`
   and `gh repo view`).

@@ -164,7 +164,13 @@ type WorldState = {
   commandFailure?: string
   // The pull requests from the session's branch GitHub lists, newest first, as Create PR looks them up: their number
   // (`<index + 1>` unless given), state and last commit (`head-<index>` unless given); none unless given.
-  branchPulls?: { number?: number; state: "OPEN" | "MERGED" | "CLOSED"; head?: string; isFork?: boolean }[]
+  branchPulls?: {
+    number?: number
+    state: "OPEN" | "MERGED" | "CLOSED"
+    head?: string
+    base?: string
+    isFork?: boolean
+  }[]
   // The pull requests GitHub has a commit among the commits of, by commit, as that lookup asks of the checkout's, with
   // the commit each one's merge made on the base, where it merged.
   associated?: Record<string, { number: number; state: "OPEN" | "MERGED" | "CLOSED"; mergeCommit?: string }[]>
@@ -653,6 +659,7 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
       number: pull.number ?? index + 1,
       state: pull.state,
       headRefOid: pull.head ?? `head-${index}`,
+      baseRefName: pull.base ?? "main",
       isCrossRepository: pull.isFork === true
     }))
     const head = / -f head=(\S+) /.exec(line)?.[1] ?? ""
@@ -876,6 +883,10 @@ function runOn(world: World, line: string, cwd?: string): ProcessRunResult {
     world.pullBranches = world.pullBranches?.filter((each) => each !== left)
   } else if (left) {
     return ok(`${left.tip ?? `head-${left.number}`}\n`)
+  }
+  // The branch checked out is at the checkout's commit.
+  if (world.branch && line === `git rev-parse --verify --quiet refs/heads/${world.branch}`) {
+    return ok(`${world.head ?? "local-head"}\n`)
   }
 
   return ok()

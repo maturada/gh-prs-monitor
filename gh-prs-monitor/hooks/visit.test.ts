@@ -307,7 +307,7 @@ describe("a visit", () => {
         "terminal:pane:visit:github.com/acme/web",
         "desktop:pane:visit:github.com/acme/web"
       ]) {
-        session.drawnButtons.set(site, new Map())
+        session.drawnElements.set(site, new Map())
       }
 
       if (how === "ended") {
@@ -317,7 +317,7 @@ describe("a visit", () => {
       }
 
       expect([...session.suggestedReviewers.keys()]).toEqual(["github.com/acme/app#12"])
-      expect([...session.drawnButtons.keys()]).toEqual(["terminal:pane"])
+      expect([...session.drawnElements.keys()]).toEqual(["terminal:pane"])
     })
   }
 
@@ -471,11 +471,11 @@ describe("a visit", () => {
       others: { "github.com/acme/web": { ...WEB, nameWithOwner: "acme/storefront" }, "github.com/acme/storefront": WEB }
     })
     const session = folderSession()
-    session.drawnButtons.set("terminal:pane:visit:github.com/acme/web", new Map())
+    session.drawnElements.set("terminal:pane:visit:github.com/acme/web", new Map())
 
     await visited(made, session, "acme/web")
 
-    expect([...session.drawnButtons.keys()]).toEqual([])
+    expect([...session.drawnElements.keys()]).toEqual([])
   })
 
   test("a load that fails keeps the list shown and says why, until one works", async () => {

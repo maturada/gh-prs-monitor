@@ -1,10 +1,12 @@
 // Author: David Matura
 
-// Where the pull request's head is fetched from, as gh pr checkout fetches it: a remote of this clone that names its
-// repository, or its address, with gh's credentials; and what a branch made for it pulls from and pushes to.
+// Where a pull request's head, or the base a branch merged into, is fetched from, as gh pr checkout fetches it: a
+// remote of this clone that names its repository, or its address, with gh's credentials; and what a branch made for it
+// pulls from and pushes to.
 
-// The pull request's head as fetched: the commit to check out, and what a branch made for it pulls from.
-export type FetchedPull = { commit: string; upstream: Upstream }
+// A branch as fetched, a pull request's head or the base it merged into: the commit to check out, and what a branch
+// made for it pulls from.
+export type Fetched = { commit: string; upstream: Upstream }
 
 import type { PullRow } from "../types"
 import { failureLine } from "./gh"
@@ -18,23 +20,34 @@ export type Upstream = { remote: string; merge: string; isPush: boolean }
 
 // Fetches the pull request's head as gh pr checkout does (`sourceOf`), with gh's own credentials, into the remote's
 // copy of its branch or FETCH_HEAD alone: no branch of the person's moves before the switch.
-export async function fetchPull(
-  host: Host,
-  row: PullRow,
-  repo: RepoRef,
-  cwd: string | undefined
-): Promise<FetchedPull> {
-  const source = await sourceOf(host, row, repo, cwd)
-  const fetched = await host.run([...GH_CREDENTIALS, "fetch", "--no-tags", source.from, source.refspec], {
+export async function fetchPull(host: Host, row: PullRow, repo: RepoRef, cwd: string | undefined): Promise<Fetched> {
+  return fetched(host, await sourceOf(host, row, repo, cwd), cwd, "the pull request")
+}
+
+// Fetches `base`, the branch a pull request merged into, from the remote that is its repository into that remote's
+// copy of it, as `fetchPull` fetches a head: no branch of the person's moves before the switch. Rejects where no remote
+// of this clone names the repository, or the base is no branch there any more.
+export async function fetchBase(host: Host, repo: RepoRef, base: string, cwd: string | undefined): Promise<Fetched> {
+  const remote = remoteNaming(await fetchRemotes(host, cwd), repo)
+  if (remote === null) {
+    throw new Error(`no remote of this clone names ${repo.name}`)
+  }
+
+  return fetched(host, fromRemote(remote, base), cwd, base)
+}
+
+// What `source` names once fetched with gh's own credentials (`what`, said where it fails).
+async function fetched(host: Host, source: Source, cwd: string | undefined, what: string): Promise<Fetched> {
+  const ran = await host.run([...GH_CREDENTIALS, "fetch", "--no-tags", source.from, source.refspec], {
     cwd,
     timeoutMs: 120_000
   })
-  if (fetched.exitCode !== 0) {
-    throw new Error(`the pull request could not be fetched: ${failureLine(fetched.stderr)}`)
+  if (ran.exitCode !== 0) {
+    throw new Error(`${what} could not be fetched: ${failureLine(ran.stderr)}`)
   }
   const commit = await git(host, ["rev-parse", "--verify", "--quiet", `${source.start}^{commit}`], cwd)
   if (commit.exitCode !== 0 || commit.stdout.trim() === "") {
-    throw new Error(`the pull request could not be fetched: git found no commit at ${source.start}`)
+    throw new Error(`${what} could not be fetched: git found no commit at ${source.start}`)
   }
 
   return { commit: commit.stdout.trim(), upstream: source.upstream }

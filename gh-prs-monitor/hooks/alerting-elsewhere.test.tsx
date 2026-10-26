@@ -38,11 +38,16 @@ function checks(runs: readonly string[]): string[] {
 }
 
 describe("alerts from other repositories", () => {
-  test("off, as by default, nothing is asked", async ($, on) => {
+  test("off, as by default, nothing is asked, by the timer, /prs or ↻", async ($, on) => {
     const clock = clockOf(on)
     const seen = machine($, on, worldWith())
     await startSession($)
     await clock.advance(10 * MINUTE)
+    await runPrs($, "")
+    await clock.settle()
+    const ui = await mountPane($, "terminal")
+    await ui.press({ key: "refresh" })
+    await clock.settle()
 
     expect(checks(seen.runs)).toEqual([])
   })
@@ -109,7 +114,7 @@ describe("alerts from other repositories", () => {
   )
 
   test(
-    "in the background, /prs asks nothing more: the timer alone checks",
+    "in the background, /prs checks them again too, as it reads the folder's list again",
     { options: { alertOtherRepos: true } },
     async ($, on) => {
       const clock = clockOf(on)
@@ -121,7 +126,29 @@ describe("alerts from other repositories", () => {
       await runPrs($, "")
       await clock.settle()
 
-      expect(checks(seen.runs)).toHaveLength(asked)
+      expect(checks(seen.runs)).toHaveLength(asked + 1)
+    }
+  )
+
+  test(
+    "in the background, ↻ reads them again too, so +N elsewhere leaves out what ended there since",
+    { options: { alertOtherRepos: true } },
+    async ($, on) => {
+      const clock = clockOf(on)
+      const world = worldWith()
+      machine($, on, world)
+      await startSession($)
+      await clock.settle()
+      const ui = await mountPane($, "terminal")
+      const header = async () => wordsIn(drawnNodes(await ui.find({ key: "header" })))
+      expect(await header()).toContain("+2 elsewhere")
+
+      // Both ended on GitHub: the review asked closed, and #12 merged.
+      world.elsewhere = { mine: [], requested: [] }
+      await ui.press({ key: "refresh" })
+      await clock.settle()
+
+      expect(await header()).not.toContain("elsewhere")
     }
   )
 
@@ -599,25 +626,29 @@ describe("alerts from other repositories", () => {
     }
   )
 
-  test(
-    "on demand, a visit's Refresh checks too, as its changes come from the light check alone",
-    { options: { alertOtherRepos: true, refresh: "on-demand" } },
-    async ($, on) => {
-      const clock = clockOf(on)
-      const world = worldWith({ others: { "github.com/acme/web": { mine: [{ number: 12, title: "Checkout page" }] } } })
-      const seen = machine($, on, world)
-      await startSession($)
-      await runPrs($, "acme/web")
-      await clock.settle()
-      const ui = await mountPane($, "terminal")
-      const asked = checks(seen.runs).length
+  for (const refresh of ["background", "while-open", "on-demand"]) {
+    test(
+      `${refresh}, a visit's ↻ checks too, as its changes come from the light check alone`,
+      { options: { alertOtherRepos: true, refresh } },
+      async ($, on) => {
+        const clock = clockOf(on)
+        const world = worldWith({
+          others: { "github.com/acme/web": { mine: [{ number: 12, title: "Checkout page" }] } }
+        })
+        const seen = machine($, on, world)
+        await startSession($)
+        await runPrs($, "acme/web")
+        await clock.settle()
+        const ui = await mountPane($, "terminal")
+        const asked = checks(seen.runs).length
 
-      await ui.press({ key: "refresh" })
-      await clock.settle()
+        await ui.press({ key: "refresh" })
+        await clock.settle()
 
-      expect(checks(seen.runs)).toHaveLength(asked + 1)
-    }
-  )
+        expect(checks(seen.runs)).toHaveLength(asked + 1)
+      }
+    )
+  }
 
   test(
     "while open, an app attaching again after nothing drew checks at once, as the folder's list does",

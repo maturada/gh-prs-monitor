@@ -10,7 +10,7 @@ import type { ClosedState } from "./ended"
 import { failureLine, firstLine, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { fetchPull } from "./fetch-source"
-import type { FetchedPull } from "./fetch-source"
+import type { Fetched } from "./fetch-source"
 import { hasCommit } from "./github"
 import { copyIncluded, INCLUDE_FILE } from "./include"
 import { branchName, branchTip, git } from "./machine"
@@ -309,7 +309,7 @@ async function isTakenInOtherCase(host: Host, cwd: string | undefined, name: str
 
 // The branches the other worktrees hold, the main checkout among them, with where: git keeps a branch in one
 // worktree at a time. One that is mid-rebase is listed on no branch; git's own refusal tells of it (`isHeldElsewhere`).
-function heldBranches(worktrees: readonly Worktree[], except: string): Map<string, string> {
+export function heldBranches(worktrees: readonly Worktree[], except: string): Map<string, string> {
   return new Map(
     worktrees.flatMap((worktree): [string, string][] =>
       worktree.path !== except && worktree.branch ? [[worktree.branch, worktree.path]] : []
@@ -348,7 +348,7 @@ async function moveOwn(
   repo: RepoRef,
   cwd: string | undefined,
   branch: string,
-  pull: FetchedPull
+  pull: Fetched
 ): Promise<Move> {
   const move = await moveTo(host, cwd, branch, pull)
   if (move.kind !== "diverged" || !(await losesNothing(host, row, repo, cwd, branch))) {
@@ -442,7 +442,8 @@ export async function switchHere(
   return installChanged(host, root, before, row.isCrossRepository, onInstall)
 }
 
-async function toplevel(host: Host): Promise<string> {
+// The checkout's root, which git names; rejects outside one.
+export async function toplevel(host: Host): Promise<string> {
   const ran = await git(host, ["rev-parse", "--show-toplevel"])
   if (ran.exitCode !== 0) {
     throw new Error(`this folder is not a git checkout (${firstLine(ran.stderr)})`)

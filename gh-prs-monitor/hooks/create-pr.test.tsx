@@ -378,7 +378,7 @@ describe("a branch whose pull request ended", () => {
 
   for (const alertClosed of [true, false]) {
     test(
-      `ended while the session was on another branch, at a commit pushed after the list last read it, is not offered it there${alertClosed ? "" : ", with the alert off too"}`,
+      `ended while the session was on another branch, at a commit pushed after the list last read it, is not offered it there, GitHub asked once${alertClosed ? "" : ", with the alert off too"}`,
       { options: { alertClosed } },
       async ($, on) => {
         const { world, seen, clock, ui } = await paneOn($, on, "main", {
@@ -394,7 +394,11 @@ describe("a branch whose pull request ended", () => {
         await settleAll(clock, seen)
 
         expect(await ui.find(CREATE)).toBeUndefined()
-        expect(seen.runs.filter((run) => run.includes("pullRequests(headRefName"))).toEqual([])
+        // GitHub is asked once about the branch at that commit, for the note on a merged branch, and not again.
+        await ui.press({ key: "refresh" })
+        await settleAll(clock, seen)
+        expect(await ui.find(CREATE)).toBeUndefined()
+        expect(seen.runs.filter((run) => run.includes("pullRequests(headRefName"))).toHaveLength(1)
       }
     )
   }

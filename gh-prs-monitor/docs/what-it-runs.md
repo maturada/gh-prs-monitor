@@ -21,10 +21,10 @@ It has no server, no token of its own and no telemetry, and reads no credential 
 
 - **Reads.** It reads with `gh api`: one GraphQL request for the list at each check, and a few more for how pull
   requests that left the list ended, for the pull requests of your branch, for the reviewers GitHub suggests, and for
-  what a press or a cleanup needs to see. With **Alerts from other repositories** on, there is one more at each check, a
-  search of your open pull requests and those asking your review on the folder's GitHub server; with it off, opening the
-  repository picker runs that search once. A repository you show in the pane adds a list request like the folder's at
-  each check while it shows.
+  what a press or a cleanup needs to see. With **Alerts from other repositories** on, there is one more at each check,
+  as the pane opens and at ↻, a search of your open pull requests and those asking your review on the folder's GitHub
+  server; opening the repository picker runs that search once, with the setting off too. A repository you show in the
+  pane adds a list request like the folder's at each check while it shows.
 - **Besides.** `gh repo view`, `gh config get git_protocol` and `gh --version` run besides, and for another repository
   you show, `gh auth status --active --hostname <its server>` (for a typed folder, each of its remotes' servers in turn,
   until one is signed in) and `gh repo view <its address>`. In a folder with no GitHub repository, the search of other
@@ -38,14 +38,16 @@ How many requests that comes to: [Cost](settings.md#cost).
 
 - **No hooks from the plugin.** Every git command the plugin runs itself carries `core.hooksPath=/dev/null`, so no hook
   a repository carries runs from it.
-- **Fetching.** A pull request's branch is fetched with gh's credentials (`gh auth git-credential`) in place of your own
-  credential helper, as `gh pr checkout` fetches it.
+- **Fetching.** A pull request's branch, and the base one merged into, are fetched with gh's credentials
+  (`gh auth git-credential`) in place of your own credential helper, as `gh pr checkout` fetches a branch.
 - **Reading.** Status, refs, remotes, config, the index and objects.
 - **Changing.** The git commands it runs that change something are:
-  - `git fetch` of a pull request's branch;
+  - `git fetch` of a pull request's branch, or of the base it merged into;
   - `git worktree add`, `remove` and `repair` for the skills' worktrees;
   - `git switch` to a pull request's branch, creating or resetting its local branch, in those worktrees or, with
     **Here, switch branch**, in your checkout, and `git checkout --detach` in a worktree after a step fails;
+  - `git switch` to the base a merged branch merged into, with **Switch to main**, creating your local base branch or
+    bringing it up to GitHub's, and `git branch -D` of that merged branch where nothing on it would be lost;
   - `git branch -D` in cleanup;
   - `git config` for a branch's upstream ([Settings it changes](#settings-it-changes)).
 - **The skills' hooks.** The skills' commits and pushes do run the repository's hooks; on someone else's pull request,
@@ -53,12 +55,12 @@ How many requests that comes to: [Cost](settings.md#cost).
 
 ## Installs and files
 
-**Installs.** In a worktree it makes for a skill, and after **Here, switch branch** for each project whose lockfile
-changed, it installs the dependencies with the project's own package manager, from its lockfile: `npm ci`, `pnpm`,
-`yarn`, `bun`, `flutter pub get` or `dart pub get`, `uv sync`, `poetry`, `pipenv sync`, `bundle`, `composer`,
-`dotnet restore` or `pod install` (`bundle` with `BUNDLE_FROZEN=true`), on Windows tried once more through `cmd`. These
-fetch from the project's package registries and run its install scripts, as running the install yourself would. A fork's
-pull request gets none.
+**Installs.** In a worktree it makes for a skill, and after **Here, switch branch** or **Switch to main** for each
+project whose lockfile changed, it installs the dependencies with the project's own package manager, from its lockfile:
+`npm ci`, `pnpm`, `yarn`, `bun`, `flutter pub get` or `dart pub get`, `uv sync`, `poetry`, `pipenv sync`, `bundle`,
+`composer`, `dotnet restore` or `pod install` (`bundle` with `BUNDLE_FROZEN=true`), on Windows tried once more through
+`cmd`. These fetch from the project's package registries and run its install scripts, as running the install yourself
+would. A fork's pull request gets none.
 
 **Files.**
 
@@ -85,8 +87,9 @@ pull request gets none.
 The only settings the plugin changes are git's. A `/.claude/worktrees/` line goes in the clone's `.git/info/exclude`
 when nothing ignores that folder yet. A pull request's branch it checks out, here or in a worktree, gets its upstream in
 the clone's git config where it has none, as `gh pr checkout` sets it: `branch.<name>.remote` and `merge`, `pushRemote`
-where pushes go to another remote, and `rebase` where your `branch.autoSetupRebase` asks for it. A branch that cleanup
-removes takes its settings with it.
+where pushes go to another remote, and `rebase` where your `branch.autoSetupRebase` asks for it. So does the base
+**Switch to main** makes or switches to, where it has none, from the remote that names the repository. A branch that
+cleanup removes takes its settings with it.
 
 ## The skills and their commands
 
@@ -173,8 +176,8 @@ seen of it, the alerts shown, the answers your sessions share, the compact view,
 Create PR's choices, the ticket links you set up, the folders of the clones your sessions loaded a list in (the 50
 latest, for the repository picker), and which session is asking GitHub or cleaning up a clone right now (its id and the
 clone's folder). For the session alone, in Claude Code's plugin state: the list the pane shows, a repository you show
-and its list, and what **Alerts from other repositories** read. How long each is kept, and how to remove it all, is in
-Privacy.
+and its list, what **Alerts from other repositories** read, and for a branch that merged, the worktree holding its base
+and the note you put away. How long each is kept, and how to remove it all, is in Privacy.
 
 More in [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md) and
 [Security](https://github.com/maturada/gh-prs-monitor/blob/main/SECURITY.md).

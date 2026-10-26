@@ -359,7 +359,7 @@ function reviewAlerts(
       return [{ kind: "reviewRequests", ...pull, by: row.author, symbol: "⌕", event: "review requested" }]
     }
     if (was && row.signals.hasCommitsSinceMyReview && !was.hasCommitsSinceMyReview) {
-      return [{ kind: "newCommits", ...pull, by: null, symbol: "↻", event: "new commits since your review" }]
+      return [{ kind: "newCommits", ...pull, by: null, symbol: "↑", event: "new commits since your review" }]
     }
 
     return []

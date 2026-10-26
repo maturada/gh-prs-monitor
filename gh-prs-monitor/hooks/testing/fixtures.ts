@@ -17,6 +17,8 @@ export type PullFixture = {
   isDraft?: boolean
   headRefName?: string
   headRefOid?: string
+  // The branch it merges into; main unless given.
+  baseRefName?: string
   isCrossRepository?: boolean
   // Lines added and removed, and files touched, which the review lists read; left out unless given.
   size?: { additions: number; deletions: number; files: number }
@@ -94,7 +96,7 @@ export function rawPull(
     isDraft: pull.isDraft ?? false,
     headRefName: pull.headRefName ?? `feature/branch-${pull.number}`,
     headRefOid: head,
-    baseRefName: "main",
+    baseRefName: pull.baseRefName ?? "main",
     isCrossRepository: pull.isCrossRepository ?? false,
     stackEntry: pull.stack
       ? { position: pull.stack.position, stack: { number: pull.stack.number, size: pull.stack.size } }

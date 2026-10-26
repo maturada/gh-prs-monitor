@@ -4,7 +4,7 @@
 // GitHub's lookup of the branch's pull requests; the question its button asks, and the argument line it hands the
 // create-pr skill.
 
-import type { BranchPulls, PullsSnapshot, Question } from "../types"
+import type { BranchMerge, BranchPulls, PullsSnapshot, Question } from "../types"
 import { oneLine, quotedArg } from "./args"
 import { isOnBranch } from "./pulls"
 import { prNumberOf } from "./worktrees"
@@ -108,8 +108,14 @@ export function isAnswered(
 
 // GitHub's answer about the pull requests from `branch` at commit `head`, given now, with what the list knows of the
 // branch's last one that ended.
-export function branchPullsOf(snapshot: PullsSnapshot, branch: string, head: string, isTaken: boolean): BranchPulls {
-  return { repo: snapshot.repo, branch, head, isTaken, endedHead: endedHeadOn(snapshot, branch) }
+export function branchPullsOf(
+  snapshot: PullsSnapshot,
+  branch: string,
+  head: string,
+  isTaken: boolean,
+  merged: BranchMerge | null
+): BranchPulls {
+  return { repo: snapshot.repo, branch, head, isTaken, endedHead: endedHeadOn(snapshot, branch), merged }
 }
 
 function endedHeadOn(snapshot: PullsSnapshot, branch: string): string | null {
@@ -117,11 +123,14 @@ function endedHeadOn(snapshot: PullsSnapshot, branch: string): string | null {
 }
 
 // Whether GitHub is to be asked about the pull requests from `branch` at `head` (`BRANCH_PULLS_QUERY`): where Create
-// PR would show once it says there is none.
+// PR would show once it says there is none; and where the list saw one from the branch end at that commit, for the note
+// on a merged branch to learn whether it merged, and into what. Create PR has nothing to open there either way.
 export function wantsBranchLookup(snapshot: PullsSnapshot | null, branch: string | null, head: string | null): boolean {
   if (snapshot === null || branch === null || head === null) {
     return false
   }
+  const isEndedHere =
+    branch !== snapshot.defaultBranch && snapshot.endedHeads.some((each) => each.branch === branch && each.oid === head)
 
-  return pullToOpen(snapshot, branch, head, branchPullsOf(snapshot, branch, head, false)) !== null
+  return isEndedHere || pullToOpen(snapshot, branch, head, branchPullsOf(snapshot, branch, head, false, null)) !== null
 }

@@ -8,7 +8,7 @@ import { isPickingQuestion, isPickReady, pickedNames } from "./picking"
 import { repoRowsView } from "./repo-rows"
 import { answerRow, mainLookWhile, problemLine, questionField, questionFrame } from "./question-frame"
 import type { InstructionsField, QuestionKit, QuestionSite, QuestionState } from "./question-frame"
-import type { Session } from "./session"
+import type { Keystroke, Session } from "./session"
 
 // The open question as the pane draws it in place of the list, from what the session keeps of it (`session.asking`):
 // one that offers names by the picker, drawn again (`redraw`) as a press changes the picks, the repository picker's as
@@ -20,12 +20,13 @@ export function questionView(
   site: QuestionSite,
   redraw: () => void
 ): RenderElement {
-  const field = instructionsField(session)
+  const rows = isPickingQuestion(question) ? question.picking.rows : undefined
+  // The repository picker narrows its rows to what is typed, so its field draws the pane again on each keystroke.
+  const field = instructionsField(session, site.surface, rows ? redraw : null)
   const answer = answerOpen(session)
   const state = { checking: session.asking?.checking ?? null, problem: session.asking?.problem ?? null }
   if (isPickingQuestion(question)) {
     const actions = pickerActions(session, redraw, answer)
-    const rows = question.picking.rows
 
     return rows
       ? repoRowsView(kit, question, rows, actions, field, site, state)
@@ -67,20 +68,37 @@ function dialogView(
   state: QuestionState
 ): RenderElement {
   return questionFrame(kit, question, site, [
-    questionField(kit, question, field, answer, state.checking !== null),
+    questionField(kit, question, field, answer, { isChecking: state.checking !== null }),
     problemLine(kit, site, state.problem),
     answerRow(kit, question, field, site, mainLookWhile({ variant: "primary" }, state), answer)
   ])
 }
 
-// The open question's field, kept on it: the key it is drawn under, and what was typed in it so far.
-function instructionsField(session: Session): InstructionsField {
+// Whether a drawing on `surface` answers the keystroke it read as it began (`keystroke`), and so keeps the field as it
+// was (`stableInputs`); that keystroke is then done with, unless a newer one landed while it drew.
+export function answersKeystroke(session: Session, keystroke: Keystroke | null, surface: string): boolean {
+  const isAnswering = keystroke !== null && keystroke.surface === surface
+  if (isAnswering && session.asking?.keystroke === keystroke) {
+    session.asking.keystroke = null
+  }
+
+  return isAnswering
+}
+
+// The open question's field, kept on it: the key it is drawn under, and what was typed in it so far. With `changed`,
+// where typing redraws the pane, each keystroke is kept too, as typed on the surface this field is drawn for
+// (`surface`), so the drawing for that surface keeps the field.
+function instructionsField(session: Session, surface: string, changed: (() => void) | null): InstructionsField {
   return {
     key: session.asking?.fieldKey ?? "answer-text",
     read: () => session.asking?.draft ?? "",
     keep: (text) => {
       if (session.asking) {
         session.asking.draft = text
+        if (changed) {
+          session.asking.keystroke = { surface }
+          changed()
+        }
       }
     }
   }

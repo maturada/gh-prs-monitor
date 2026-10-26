@@ -43,7 +43,7 @@ export const DEMO_TOAST_GAP_MS = 1_500
 
 // An example's ✕, which keeps its note: the examples stay as they are.
 export const DEMO_SEEN_NOTE =
-  "These are examples, so their notes stay. Close the pane, or press Refresh, for your own pull requests."
+  "These are examples, so their notes stay. Close the pane, or press ↻, for your own pull requests."
 
 // What an example's button asks: the real button's own question, about the example, from a checkout on another branch
 // with nothing uncommitted, asked from `surface` while a turn runs or none (`isWorking`); null where the real one asks
@@ -520,6 +520,7 @@ export function demoView(
       branch: null,
       toOpen: null,
       merged: [],
+      mergedBranch: null,
       tickets: null,
       visit: { repo: other.name, folder: DEMO_NAME }
     }
@@ -534,6 +535,8 @@ export function demoView(
     branch: DEMO_BRANCH,
     toOpen: DEMO_TO_OPEN,
     merged: demoMerged(snapshot, now),
+    // The examples' session sits on an open pull request's branch: no merged one to leave.
+    mergedBranch: null,
     tickets: shown.isShowingTickets ? DEMO_TICKETS : null,
     visit: null
   }
@@ -554,10 +557,11 @@ const DEMO_FOLDER: RepoRef = { host: DEMO_HOST, name: DEMO_NAME }
 // Another repository with examples: its clone on this machine, a made-up folder, or none; the viewer's own and others'.
 type OtherExamples = { name: string; clone: string | null; mine: readonly Example[]; review: readonly Example[] }
 
-// One cloned here, whose branch skills offer to open it; one on GitHub alone, whose say none is known; and one where a
-// review was asked since the picker was last opened, so it is marked new (`demoChecks`). Each has something waiting,
-// so each is counted in "+N elsewhere"; acme/web's #14 has changes requested, which the light check counts as the list
-// does, so the picker and the list agree, and a comment unresolved, for its Resolve Comments.
+// One cloned here, whose branch skills offer to open it; one on GitHub alone, whose say none is known; one where a
+// review was asked since the picker was last opened, so it is marked new (`demoChecks`); and one where your two only
+// wait on others, so the picker says how many are open. The first three have something waiting, so each is counted in
+// "+N elsewhere"; acme/web's #14 has changes requested, which the light check counts as the list does, so the picker
+// and the list agree, and a comment unresolved, for its Resolve Comments.
 const OTHERS: readonly OtherExamples[] = [
   {
     name: "acme/web",
@@ -599,6 +603,15 @@ const OTHERS: readonly OtherExamples[] = [
     review: [
       { number: 7, title: "Roles and permissions", author: "another-teammate", requested: [VIEWER], size: [58, 6, 3] }
     ]
+  },
+  {
+    name: "acme/docs",
+    clone: null,
+    mine: [
+      { number: 21, title: "Getting started guide", requested: ["a-teammate"] },
+      { number: 22, title: "API reference", ci: "PENDING", requested: ["another-teammate"] }
+    ],
+    review: []
   }
 ]
 
@@ -729,7 +742,7 @@ const DEMO_CHANGES: readonly Alert[] = [
   // It sat below #1242 in stack #30, so #1242 is next.
   change(1230, "PDF export", "closed", "✓", "merged by a-teammate, #1242 is next in stack #30"),
   change(1240, "Activity cards on the home feed", "reviewRequests", "⌕", "review requested"),
-  change(1241, "Shareable invite links", "newCommits", "↻", "new commits since your review"),
+  change(1241, "Shareable invite links", "newCommits", "↑", "new commits since your review"),
   change(1243, "Cache the map tiles offline", "mentions", "@", "you were mentioned")
 ]
 
