@@ -4,6 +4,8 @@ import { describe, expect, test } from "claude-code/testing"
 
 import type { ProcessRunResult } from "claude-code"
 
+import type { BranchPulls } from "../types"
+
 import { BRANCH_PULLS_QUERY, isBranchTaken, lookUpBranch, readBranchPulls } from "./branch-lookup"
 import type { BranchLookupHost } from "./branch-lookup"
 import { createSession } from "./session"
@@ -417,6 +419,84 @@ describe("one lookup per branch and commit at a time", () => {
       await lookUpBranch(host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
       expect(kept[0]?.baseHeldBy).toBe(isHeld ? "/repo-main" : null)
     }
+  })
+
+  // An answer kept for feature/export at tip, merged as #5 into main, with what a host is asked and keeps.
+  function keptAnswer(known: BranchPulls, worktrees: string) {
+    const asked: string[] = []
+    const kept: BranchPulls[] = []
+    const merged = {
+      data: {
+        repository: {
+          pullRequests: {
+            nodes: [{ number: 5, state: "MERGED", headRefOid: "tip", baseRefName: "main", isCrossRepository: false }]
+          }
+        }
+      }
+    }
+    const host: BranchLookupHost = {
+      ...hostAnswering((argv) => {
+        const line = argv.join(" ")
+        asked.push(line)
+        if (line.includes("worktree list")) {
+          return { exitCode: 0, stdout: worktrees }
+        }
+        if (line.includes("--show-toplevel")) {
+          return { exitCode: 0, stdout: "/repo\n" }
+        }
+        return { exitCode: 0, stdout: JSON.stringify(merged) }
+      }),
+      storedList: async () => LISTED,
+      branchPulls: async () => known,
+      keepBranchPulls: async (looked) => kept.push(looked),
+      log: () => undefined
+    }
+
+    return { host, asked, kept }
+  }
+
+  const LISTED = snapshotOf({ mine: [{ number: 1, headRefName: "fix/menu" }] })
+  const ONLY_HERE = "worktree /repo\nHEAD tip\nbranch refs/heads/feature/export\n\n"
+  const MAIN_HELD = `${ONLY_HERE}worktree /repo-main\nHEAD m1\nbranch refs/heads/main\n\n`
+
+  test("a kept answer's base is looked for in the other worktrees again at each load, kept again once that changed", async () => {
+    const known: BranchPulls = {
+      repo: LISTED.repo,
+      branch: "feature/export",
+      head: "tip",
+      isTaken: true,
+      endedHead: null,
+      merged: { number: 5, base: "main" },
+      baseHeldBy: "/repo-main"
+    }
+
+    const released = keptAnswer(known, ONLY_HERE)
+    await lookUpBranch(released.host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
+    expect(released.kept).toEqual([{ ...known, baseHeldBy: null }])
+    expect(released.asked.some((line) => line.includes("graphql"))).toBe(false)
+
+    const still = keptAnswer(known, MAIN_HELD)
+    await lookUpBranch(still.host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
+    expect(still.kept).toEqual([])
+  })
+
+  test("one kept by 1.5.0, taken with no word of what merge took it, is asked once more at a load; a press takes it", async () => {
+    const earlier: BranchPulls = {
+      repo: LISTED.repo,
+      branch: "feature/export",
+      head: "tip",
+      isTaken: true,
+      endedHead: null
+    }
+
+    const load = keptAnswer(earlier, ONLY_HERE)
+    await lookUpBranch(load.host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
+    expect(load.kept).toEqual([expect.objectContaining({ merged: { number: 5, base: "main" }, baseHeldBy: null })])
+
+    const press = keptAnswer(earlier, ONLY_HERE)
+    const look = await lookUpBranch(press.host, createSession(readSettings({})), REPO, "feature/export", "tip", true)
+    expect(look).toEqual({ looked: earlier })
+    expect(press.asked).toEqual([])
   })
 
   test("one that ends after a newer one started leaves the newer one's place, which its own end frees", async () => {

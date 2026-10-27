@@ -888,12 +888,13 @@ async function dismissMerged($: Engine, session: Session): Promise<void> {
   }
 }
 
-// What the switch to the base reaches beyond git and gh: the list, the note's busy mark, toasts, an install's notice,
-// and the checkout read again once it is done, which the note and the list's branch mark follow.
+// What the switch to the base reaches beyond git and gh: the list, the note as it stands now, its busy mark, toasts, an
+// install's notice, and the checkout read again once it is done, which the note and the list's branch mark follow.
 function switchBaseHostOf($: Engine, session: Session): SwitchBaseHost {
   return {
     ...hostOf($),
     storedList: () => read($, snapshotState),
+    offered: () => mergedBranchNow($, session),
     setBusy: (label) => setBusy($, SWITCH_BASE, label),
     notify: (text) => notify($, text, session.settings.alertMs),
     onInstall: (command) => background($, setBusy($, SWITCH_BASE, `Installing dependencies (${command})…`)),

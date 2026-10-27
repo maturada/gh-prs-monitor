@@ -125,7 +125,8 @@ local base, or brings it up to GitHub's (one with commits of yours ahead is take
 lockfile needs, and deletes the merged branch where it is still at the merged commit and no pull request is open from
 it; its work stays in the merged pull request on GitHub. It changes nothing, and says why, where:
 
-- you have uncommitted changes to files git tracks, or the checkout moved since the note showed;
+- you have uncommitted changes to files git tracks, the checkout moved since the note showed, or the note no longer
+  shows, as after its ✕ while the switch waited for a turn;
 - your base has commits GitHub's doesn't, while GitHub's has others;
 - another worktree has the base checked out, or a file git doesn't track here is in the base's way;
 - a merge, rebase or other git operation is under way;

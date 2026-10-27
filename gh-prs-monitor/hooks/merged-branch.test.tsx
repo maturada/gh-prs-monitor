@@ -85,9 +85,14 @@ describe("the note on a branch that merged", () => {
   })
 
   test("none where another worktree has the base checked out, as this checkout can't switch to it", async ($, on) => {
-    const { ui } = await mergedOn($, on, { pullWorktrees: [{ number: 99, branch: "main" }] })
-
+    const { ui, clock, seen, world } = await mergedOn($, on, { pullWorktrees: [{ number: 99, branch: "main" }] })
     expect(await ui.find(NOTE)).toBeUndefined()
+
+    // That worktree lets the base go: the next load offers it, at the same commit.
+    world.pullWorktrees = []
+    await ui.press({ key: "refresh" })
+    await settleAll(clock, seen)
+    expect(wordsIn(drawnNodes(await ui.find(NOTE)))).toContain("Switch to main")
   })
 
   test("none where it closed unmerged", async ($, on) => {
@@ -147,6 +152,21 @@ describe("the note on a branch that merged", () => {
     await $.turn.complete({ answer: "", durationMs: 1, isAborted: false, reason: "answer", turnId: "t1" } as never)
     await settleAll(clock, seen)
     expect(seen.toasts).toContain("Switched to main; feature/x deleted, as #1242 merged it.")
+  })
+
+  test("its ✕ while the switch waits for a turn stops it, the checkout left as it was", async ($, on) => {
+    const { ui, clock, seen } = await mergedOn($, on)
+
+    await $.turn.start({ text: "go", turnId: "t1" } as never)
+    await ui.press({ key: "switch-base" })
+    await settleAll(clock, seen)
+    await ui.press({ key: "dismiss-base" })
+    await settleAll(clock, seen)
+    expect(await ui.find(NOTE)).toBeUndefined()
+    await $.turn.complete({ answer: "", durationMs: 1, isAborted: false, reason: "answer", turnId: "t1" } as never)
+    await settleAll(clock, seen)
+    expect(seen.toasts).toContain("Not switched to main: the pane no longer offers it.")
+    expect(seen.toasts.filter((toast) => toast.startsWith("Switched"))).toEqual([])
   })
 
   test("none on a visit to another repository, nor in the examples", async ($, on) => {

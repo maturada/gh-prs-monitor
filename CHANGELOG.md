@@ -12,8 +12,8 @@ Each version of gh-prs-monitor, newest first. Versions follow [semantic versioni
   [A branch that merged](gh-prs-monitor/docs/pane.md#a-branch-that-merged)
 - **The repository picker lists the repositories you are part of**: those with a pull request of yours open or a
   review asked of you, not only those where something waits; a row where nothing does says how many are open there,
-  `2 open`. A field above the rows narrows them as you type, and Enter opens the one whose name you typed, else the
-  first row left, else looks up what you typed as `/prs` does.
+  `2 open`. A field above the rows, where the keyboard starts, narrows them as you type, and Enter opens the one whose
+  name you typed, else the first row left, else looks up what you typed as `/prs` does.
   [The repository picker](gh-prs-monitor/docs/other-repositories.md#the-repository-picker)
 - **↻ and ←**: the header's Refresh is ↻ and Back is ←, in the desktop app too. While the pane has the keyboard, `r`,
   `c`, `p` and `b` press ↻, **Compact** or **Full**, **Repositories** and ←, but in the VS Code extension; the desktop

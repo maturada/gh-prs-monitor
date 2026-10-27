@@ -16,9 +16,11 @@ const [person, branch, session = person] = process.argv.slice(2) as [string, str
 const base = process.env.BASE ?? "main"
 const head = process.env.OFFER_HEAD || sh(["git", "rev-parse", "HEAD"], session).stdout.trim()
 const said: string[] = []
+const offer = { repo: REPO.name, branch, head, number: 7, base }
 const host = {
   ...realHost(() => session, (argv) => failed(`unexpected gh call: ${argv.join(" ")}`)),
   storedList: async () => null,
+  offered: async () => offer,
   setBusy: async () => undefined,
   notify: async (text: string) => {
     said.push(text)
@@ -26,7 +28,7 @@ const host = {
   onInstall: () => undefined,
   changed: async () => undefined
 }
-await switchToBase(host as never, createSession(readSettings({})), REPO, { repo: REPO.name, branch, head, number: 7, base })
+await switchToBase(host as never, createSession(readSettings({})), REPO, offer)
 const now = sh(["git", "rev-parse", "--abbrev-ref", "HEAD"], session).stdout.trim()
 const kept = sh(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], session).exitCode === 0
 const at = sh(["git", "log", "-1", "--format=%s", `refs/heads/${base}`], session).stdout.trim() || "-"

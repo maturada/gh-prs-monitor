@@ -122,9 +122,11 @@ function machineFor(
   const busy: (string | null)[] = []
   const installs: string[] = []
   let changed = 0
+  let shown: MergedBranch | null = OFFER
   const host: SwitchBaseHost = {
     ...machine,
     storedList: async () => listed,
+    offered: async () => shown,
     setBusy: async (label) => {
       busy.push(label)
     },
@@ -141,7 +143,18 @@ function machineFor(
     session.switchingFor = { number: 7 }
   }
 
-  return { host, session, calls, said, busy, installs, changed: () => changed }
+  return {
+    host,
+    session,
+    calls,
+    said,
+    busy,
+    installs,
+    changed: () => changed,
+    offer: (now: MergedBranch | null) => {
+      shown = now
+    }
+  }
 }
 
 // The switch run to its end on such a machine.
@@ -342,6 +355,43 @@ describe("switching to the base", () => {
     await switching
     expect(looks).toBe(3)
     expect(ran(machine.calls, /^git switch/)).toEqual(["git switch --no-overwrite-ignore -c main b1"])
+  })
+
+  test("its note put away, or no longer offered, while it waits for a turn stops it before anything moves", async () => {
+    const machine = machineFor([])
+    machine.session.runningTurns.add("turn-1")
+    const switching = switchToBase(machine.host, machine.session, REPO, OFFER)
+    await promisesRun()
+    // Its ✕ pressed meanwhile, or a pull request opened into the branch: the pane offers it no more.
+    machine.offer(null)
+    machine.session.runningTurns.clear()
+    for (const resolve of machine.session.idleWaiters.splice(0)) {
+      resolve()
+    }
+    await switching
+
+    expect(ran(machine.calls, /^git switch|^git branch -D/)).toEqual([])
+    expect(machine.said).toEqual(["Not switched to main: the pane no longer offers it."])
+  })
+
+  test("the checkout is read again before the note's busy label goes, and a read that fails still says how it went", async () => {
+    const machine = machineFor([])
+    const order: (string | null)[] = []
+    const setBusy = machine.host.setBusy
+    machine.host.setBusy = async (label) => {
+      order.push(label)
+      await setBusy(label)
+    }
+    machine.host.changed = async () => {
+      order.push("read again")
+      throw new Error("git could not be run")
+    }
+    await switchToBase(machine.host, machine.session, REPO, OFFER)
+
+    // So the note never offers again, for a moment, the switch just made.
+    expect(order.slice(-2)).toEqual(["read again", null])
+    expect(machine.said).toEqual(["Switched to main; feature/x deleted, as #1242 merged it."])
+    expect(machine.session.switchingFor).toBe(null)
   })
 
   test("a skill starting here stops it, as its turn would work in the checkout as it moves", async () => {

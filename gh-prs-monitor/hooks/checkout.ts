@@ -307,9 +307,15 @@ async function isTakenInOtherCase(host: Host, cwd: string | undefined, name: str
   return listed.stdout.split("\n").some((ref) => ref !== wanted && folded(ref) === folded(wanted))
 }
 
+// The folder of another worktree than the one at `root` that has `branch` checked out, where `root` can't switch to it;
+// null for none.
+export async function heldElsewhere(host: Host, branch: string, root: string): Promise<string | null> {
+  return heldBranches(await listWorktrees(host), root).get(branch) ?? null
+}
+
 // The branches the other worktrees hold, the main checkout among them, with where: git keeps a branch in one
 // worktree at a time. One that is mid-rebase is listed on no branch; git's own refusal tells of it (`isHeldElsewhere`).
-export function heldBranches(worktrees: readonly Worktree[], except: string): Map<string, string> {
+function heldBranches(worktrees: readonly Worktree[], except: string): Map<string, string> {
   return new Map(
     worktrees.flatMap((worktree): [string, string][] =>
       worktree.path !== except && worktree.branch ? [[worktree.branch, worktree.path]] : []

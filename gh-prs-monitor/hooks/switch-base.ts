@@ -1,11 +1,11 @@
 // Author: David Matura
 
 // Back to the base after the checkout's branch merged: what the pane offers (`mergedBranchOf`), and the switch itself
-// (`switchToBase`), which loses nothing of the person's and leaves nothing half done: each step stops with what it
-// found, nothing changed past it, and the person is told.
+// (`switchToBase`), which loses nothing of the person's: up to the move, each step stops with what it found, nothing
+// changed past it; after it, what fails is told beside the switch. The person is told how it went either way.
 
 import type { BranchPulls, DismissedBranch, PullsSnapshot } from "../types"
-import { checkedOut, heldBranches, toplevel, uncommittedChanges } from "./checkout"
+import { checkedOut, heldElsewhere, toplevel, uncommittedChanges } from "./checkout"
 import { isAnswered } from "./create-flow"
 import { installChanged, lockedProjects } from "./deps"
 import type { LockedProjects } from "./deps"
@@ -20,7 +20,7 @@ import { switchingSaid, whenIdle } from "./session"
 import type { Session } from "./session"
 import { moveTo, moveRefusal } from "./switch"
 import type { Move } from "./switch"
-import { listWorktrees, prNumberOf } from "./worktrees"
+import { prNumberOf } from "./worktrees"
 
 // The busy mark the switch shows its progress under, in the note's place for its button.
 export const SWITCH_BASE = "switch-base"
@@ -29,11 +29,11 @@ export const SWITCH_BASE = "switch-base"
 export type MergedBranch = { repo: string; branch: string; head: string; number: number; base: string }
 
 // The branch the pane offers to leave: the checkout's, where GitHub said a merged pull request holds its commit, for
-// the list as it stands (`isAnswered`), into a base GitHub named that is another branch and no other worktree has
-// checked out (as git said when GitHub was asked), as switching there can't happen. None for a branch an open pull
-// request in the viewer's lists merges into, as a long-lived develop a release merged into main, or a stack's lower
-// branch while the upper one still targets it; none for one a pull request there is open from again, nor for /prs's
-// own `pr-<number>` checkout; none once its ✕ put the note away at this commit.
+// the list as it stands (`isAnswered`), into a base GitHub named that is another branch. None where another worktree
+// has that base checked out (as git said at the last load), as switching there can't happen. None for a branch an open
+// pull request in the viewer's lists merges into, as a long-lived develop a release merged into main, or a stack's
+// lower branch while the upper one still targets it; none for one a pull request there is open from again. None for
+// /prs's own `pr-<number>` checkout, nor once its ✕ put the note away at this commit.
 export function mergedBranchOf(
   snapshot: PullsSnapshot | null,
   branch: string | null,
@@ -65,10 +65,11 @@ export function mergedBranchOf(
 }
 
 // What a switch reaches beyond git and gh (`Host`): the list, to see whether a pull request is open from the branch
-// again; what the pane's note says while it runs; the toast that tells how it went; a reinstall starting; and the
-// checkout read again once it changed.
+// again; the note as the pane would draw it now (`mergedBranchOf`), null for none; what the note says while it runs;
+// the toast that tells how it went; a reinstall starting; and the checkout read again once it changed.
 export type SwitchBaseHost = Host & {
   storedList: () => Promise<PullsSnapshot | null>
+  offered: () => Promise<MergedBranch | null>
   setBusy: (label: string | null) => Promise<void>
   notify: (text: string) => Promise<void>
   onInstall: (command: string) => void
@@ -77,7 +78,9 @@ export type SwitchBaseHost = Host & {
 
 // Switches this checkout from the merged branch to its base, as GitHub has it, and deletes the branch where nothing of
 // it would be lost. One switch of this checkout at a time, as Here, switch branch's (`session.switchingFor`), with no
-// turn under way. The pane reads the checkout again once it is done, whatever came of it.
+// turn under way. The pane reads the checkout again once it is done, whatever came of it, before the note's busy label
+// goes, so the note never offers again, for a moment, the switch just made; a read that fails leaves the pane as it
+// was, and the toast still says how it went.
 export async function switchToBase(
   host: SwitchBaseHost,
   session: Session,
@@ -96,31 +99,22 @@ export async function switchToBase(
     said = await switched(host, session, repo, offer)
   } catch (error) {
     said = `Not switched to ${offer.base}: ${messageOf(error)}.`
-  } finally {
-    session.switchingFor = null
-    await host.setBusy(null)
   }
-  await host.changed()
+  await host.changed().catch(() => undefined)
+  session.switchingFor = null
+  await host.setBusy(null)
   await host.notify(said)
 }
 
 // The switch, step by step, and what the person is told of it. With no turn under way, what keeps the checkout from
-// moving is said at once, before GitHub is asked. The base is fetched, which moves nothing of the person's; the
-// checkout is looked at with no turn under way, and again where one began meanwhile, as a prompt queued starts one as
-// the last ends (as Here, switch branch's `isCheckoutAsAsked`), and the move follows at once.
+// moving is said at once, before GitHub is asked. The base is fetched, which moves nothing of the person's; once the
+// checkout is clear to move (`readyToMove`), the move follows at once.
 async function switched(host: SwitchBaseHost, session: Session, repo: RepoRef, offer: MergedBranch): Promise<string> {
   const { base } = offer
   const stopped = (why: string): string => `Not switched to ${base}: ${why}.`
-  // A skill pressed, whose turn has yet to start, would work in this checkout as it moves.
-  const starting = `a skill is starting here; press Switch to ${base} again once its turn ends`
   await host.setBusy(`Switching to ${base}…`)
   const root = await toplevel(host)
-  const early =
-    session.runningTurns.size > 0
-      ? null
-      : session.skills.starting.length > 0
-        ? starting
-        : await whyNotNow(host, offer, root)
+  const early = session.runningTurns.size > 0 ? null : await whyNotNow(host, session, offer, root)
   if (early !== null) {
     return stopped(early)
   }
@@ -130,23 +124,11 @@ async function switched(host: SwitchBaseHost, session: Session, repo: RepoRef, o
   } catch (error) {
     return stopped(messageOf(error))
   }
-  let why: string | null
-  let before: LockedProjects
-  do {
-    while (session.runningTurns.size > 0) {
-      await host.setBusy(`Switches to ${base} when this turn ends`)
-      await whenIdle(session)
-      await host.setBusy(`Switching to ${base}…`)
-    }
-    why = await whyNotNow(host, offer, root)
-    before = await lockedProjects(host, root)
-    if (session.skills.starting.length > 0) {
-      return stopped(starting)
-    }
-  } while (why === null && session.runningTurns.size > 0)
-  if (why !== null) {
-    return stopped(why)
+  const ready = await readyToMove(host, session, offer, root)
+  if ("why" in ready) {
+    return stopped(ready.why)
   }
+  const { before } = ready
   let move: Move
   let unset: string | null = null
   try {
@@ -173,21 +155,64 @@ async function switched(host: SwitchBaseHost, session: Session, repo: RepoRef, o
   return `Switched to ${base}; ${[left, unset, installed].filter(Boolean).join("; ")}.`
 }
 
-// What keeps the checkout from moving now, as the person is told; null for nothing. As the note was drawn, on the
-// branch at the commit GitHub said is merged; no uncommitted change, which git carries to the base without a word where
-// both have the file, and the branch goes after; and the base no other worktree holds.
-async function whyNotNow(host: SwitchBaseHost, offer: MergedBranch, root: string): Promise<string | null> {
+// The checkout once it is clear to move: any turn under way waited for, which the note says meanwhile, then looked at
+// with no turn under way (`whyNotNow`), with what its lockfiles hold before the move; looked at again where a turn
+// began meanwhile, as a prompt queued starts one as the last ends (as Here, switch branch's `isCheckoutAsAsked`).
+// Else why it can't.
+async function readyToMove(
+  host: SwitchBaseHost,
+  session: Session,
+  offer: MergedBranch,
+  root: string
+): Promise<{ before: LockedProjects } | { why: string }> {
+  for (;;) {
+    while (session.runningTurns.size > 0) {
+      await host.setBusy(`Switches to ${offer.base} when this turn ends`)
+      await whenIdle(session)
+      await host.setBusy(`Switching to ${offer.base}…`)
+    }
+    const before = await lockedProjects(host, root)
+    const why = await whyNotNow(host, session, offer, root)
+    if (why !== null) {
+      return { why }
+    }
+    if (session.runningTurns.size === 0) {
+      return { before }
+    }
+  }
+}
+
+// What keeps the checkout from moving now, as the person is told; null for nothing. On the branch at the commit GitHub
+// said is merged, as the note was drawn, and the note still offering it, as its ✕ pressed while the switch waited for a
+// turn, or a pull request opened from or into the branch, takes it back; no uncommitted change, which git carries to
+// the base without a word where both have the file, and the branch goes after; the base no other worktree holds; and
+// no skill pressed whose turn has yet to start, which would work in this checkout as it moves.
+async function whyNotNow(
+  host: SwitchBaseHost,
+  session: Session,
+  offer: MergedBranch,
+  root: string
+): Promise<string | null> {
   const now = await checkedOut(host)
   if (now.branch !== offer.branch || now.head !== offer.head) {
     return "this checkout moved since; look at the pane again"
+  }
+  const shown = await host.offered()
+  if (shown?.branch !== offer.branch || shown.head !== offer.head || shown.base !== offer.base) {
+    return "the pane no longer offers it"
   }
   const changes = await uncommittedChanges(host)
   if (changes.length > 0) {
     return `commit or stash your uncommitted changes first (${filesCount(changes.length)})`
   }
-  const holder = heldBranches(await listWorktrees(host), root).get(offer.base)
+  const holder = await heldElsewhere(host, offer.base, root)
+  if (holder !== null) {
+    return `it is checked out in ${holder}`
+  }
 
-  return holder ? `it is checked out in ${holder}` : null
+  return session.skills.starting.length > 0
+    ? `a skill is starting here; press Switch to ${offer.base} again once its turn ends`
+    : null
 }
 
 // The merged branch, deleted where nothing would be lost: still at the commit GitHub has in the merged pull request,

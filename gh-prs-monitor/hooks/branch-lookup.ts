@@ -8,14 +8,13 @@
 import type { BranchMerge, BranchPulls, PullsSnapshot } from "../types"
 import { isWithin } from "./machine"
 import type { Host } from "./machine"
-import { heldBranches, toplevel } from "./checkout"
+import { heldElsewhere, toplevel } from "./checkout"
 import { branchPullsOf, isAnswered, wantsBranchLookup } from "./create-flow"
 import { firstLine, messageOf } from "./gh"
 import type { RepoRef } from "./gh"
 import { GhFailure, ghRun, graphqlArgv, isWithinOnGithub, problemOf } from "./github"
 import { storedSnapshot } from "./pulls"
 import type { BranchLook, Session } from "./session"
-import { listWorktrees } from "./worktrees"
 
 // What GitHub's lookup of a branch's pull requests reaches beyond git and gh (`Host`): the list, GitHub's last answer
 // about the branch (`BranchPulls`), kept for the next, and the debug log. A load asks it too (`RefreshHost`).
@@ -30,7 +29,8 @@ export type BranchLookupHost = Host & {
 // merged or closed before they looked (`BranchPulls`): asked where Create PR would show, once per branch and commit
 // while the list knows of no other pull request ending there (`isAnswered`), and asked again by the next load where
 // GitHub could not be asked. A press asks again unless GitHub said there is one: one may have opened and ended since,
-// which no list showed. Null where it isn't asked about, or couldn't be.
+// which no list showed (`isKept`). Each load looks again for the base a merged one went into in the other worktrees
+// (`withBaseHolder`). Null where it isn't asked about, or couldn't be.
 export async function lookUpBranch(
   host: BranchLookupHost,
   session: Session,
@@ -41,8 +41,8 @@ export async function lookUpBranch(
 ): Promise<BranchLook | null> {
   const snapshot = storedSnapshot(await host.storedList())
   const known = await host.branchPulls()
-  if (snapshot && branch !== null && isAnswered(known, snapshot, branch, head) && (known.isTaken || !isPress)) {
-    return { looked: known }
+  if (snapshot && branch !== null && isAnswered(known, snapshot, branch, head) && isKept(known, isPress)) {
+    return { looked: await withBaseHolder(host, known) }
   }
   if (snapshot === null || branch === null || head === null || !wantsBranchLookup(snapshot, branch, head)) {
     return null
@@ -52,8 +52,7 @@ export async function lookUpBranch(
   if (session.branchLookup?.key !== key) {
     const done = isBranchTaken(host, repo, branch, head).then(
       async ({ isTaken, merged }): Promise<BranchLook> => {
-        const baseHeldBy = merged?.base ? await holderOf(host, merged.base) : null
-        const looked = { ...asked, isTaken, merged, baseHeldBy }
+        const looked = { ...asked, isTaken, merged, baseHeldBy: await baseHolder(host, merged) }
         await host.keepBranchPulls(looked)
 
         return { looked }
@@ -77,11 +76,34 @@ export async function lookUpBranch(
   return (await session.branchLookup?.done) ?? null
 }
 
-// The folder of another worktree that has `base` checked out, where switching this checkout to it can't happen; null
-// for none, or where git can't tell, as the switch itself checks again.
-async function holderOf(host: Host, base: string): Promise<string | null> {
+// Whether GitHub's answer kept is taken as it is, by a press (`isPress`) or a load: by a press where it found the branch
+// taken, as one may have opened and ended since that no list showed; by a load unless an earlier version kept it,
+// which said the branch was taken but not by what merge, which the note on a merged branch needs.
+function isKept(known: BranchPulls, isPress: boolean): boolean {
+  return isPress ? known.isTaken : !(known.isTaken && known.merged === undefined)
+}
+
+// GitHub's answer kept, with the other worktree that has the base it merged into checked out read again, as worktrees
+// come and go at the same commit; kept again where that changed.
+async function withBaseHolder(host: BranchLookupHost, known: BranchPulls): Promise<BranchPulls> {
+  const baseHeldBy = await baseHolder(host, known.merged)
+  if (baseHeldBy === (known.baseHeldBy ?? null)) {
+    return known
+  }
+  const looked = { ...known, baseHeldBy }
+  await host.keepBranchPulls(looked)
+
+  return looked
+}
+
+// The folder of another worktree that has the base `merged` went into checked out, where switching this checkout to
+// it can't happen; null for none, for no merge, or where git can't tell, as the switch itself checks again.
+async function baseHolder(host: Host, merged: BranchMerge | null | undefined): Promise<string | null> {
+  if (!merged?.base) {
+    return null
+  }
   try {
-    return heldBranches(await listWorktrees(host), await toplevel(host)).get(base) ?? null
+    return await heldElsewhere(host, merged.base, await toplevel(host))
   } catch {
     return null
   }
