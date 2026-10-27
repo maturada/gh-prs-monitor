@@ -2,7 +2,7 @@
 
 import type { Timer } from "claude-code"
 
-import type { Answer, BranchPulls, PullsSnapshot, Question } from "../types"
+import type { Answer, BranchPulls, MergedBranch, PullsSnapshot, Question } from "../types"
 import { nothingHeld } from "./alerts"
 import type { AlertBatch, HeldAlerts } from "./alerts"
 import type { CREATE_PR } from "./create-flow"
@@ -11,7 +11,7 @@ import { repoKey } from "./gh"
 import type { GhProblem, RepoRef } from "./gh"
 import type { Settings } from "./settings"
 import type { AwaitedAnswer } from "./shared"
-import type { DrawnButtons } from "./stable-buttons"
+import type { DrawnElements } from "./stable-elements"
 import type { TicketLinks } from "./tickets"
 
 // What a lookup of the pull requests from the checkout's branch came to (`branch-lookup.ts`): GitHub's answer, or what
@@ -52,8 +52,8 @@ export type Session = {
   // claims one; only a single load of its running through a `/clear`, a reload and another `/clear` still could.
   isStateEmptied: boolean
   idleWaiters: (() => void)[]
-  // The buttons the pane and the band last drew, kept so one drawn again unchanged keeps its handle.
-  drawnButtons: DrawnButtons
+  // The buttons and fields the pane and the band last drew, kept so one drawn again unchanged keeps its handle.
+  drawnElements: DrawnElements
   // The timer that takes the first note of what changed away at its time (`keepNotes`).
   notesTimer: Timer | null
   checks: Checks
@@ -70,8 +70,8 @@ export type Session = {
   visitStart: string | null
   // The repository picker getting ready (`askPick`): its button says so, and a press more does nothing.
   isPreparingPicker: boolean
-  // The pull request this checkout is being switched to, waiting for a turn to end or under way: one switch at a time.
-  switchingFor: number | null
+  // What this checkout is being switched to, waiting for a turn to end or under way: one switch at a time.
+  switchingFor: CheckoutSwitch | null
   // GitHub asked about the pull requests from the session's branch at a commit, with where the list knew the last one
   // to end (`BranchPulls`), `<branch> <commit> <ended at>`, shared by what asks the same meanwhile.
   branchLookup: { key: string; done: Promise<BranchLook> } | null
@@ -96,10 +96,14 @@ export type GoingBack = {
   offset: number
 }
 
+// A keystroke in a question's field, by the surface it came from: a token, compared by identity.
+export type Keystroke = { surface: string }
+
 // A question open: the question asked, which a press reads as it lands (`stableButtons`); what gives it its answer
 // (null when dismissed), whether it has one already, which its press has yet to put away, whether it is in the pane,
 // where the pane's close cancels it, or in Claude Code's own dialog, and its field for instructions in the pane: the
-// key it is drawn under and what was typed in it so far.
+// key it is drawn under, what was typed in it so far, and the latest keystroke by the surface it came from, whose
+// drawing it asked for keeps the field as it was (`stableInputs`): a token, so a drawing clears only its own.
 export type OpenQuestion = {
   question: Question
   answer: (answer: Answer | null) => void
@@ -107,6 +111,7 @@ export type OpenQuestion = {
   isInPane: boolean
   fieldKey: string
   draft: string
+  keystroke: Keystroke | null
   // The names picked so far, by index, where the question offers some to pick (`picker.tsx`); none elsewhere.
   picks: number[]
   // The answer being carried out before the question closes (`ask`'s `check`), and why the last one kept the question
@@ -238,7 +243,7 @@ export function createSession(settings: Settings): Session {
     fromBefore: new Set(),
     isStateEmptied: false,
     idleWaiters: [],
-    drawnButtons: new Map(),
+    drawnElements: new Map(),
     notesTimer: null,
     checks: {
       isStopped: false,
@@ -284,4 +289,22 @@ export function createSession(settings: Settings): Session {
 // An id no other load or session shares, for the moment: until a session's own is read, and for a load of the module.
 export function randomId(): string {
   return Math.random().toString(36).slice(2)
+}
+
+// Once no turn of the main loop runs.
+export async function whenIdle(session: Session): Promise<void> {
+  if (session.runningTurns.size > 0) {
+    await new Promise<void>((resolve) => session.idleWaiters.push(resolve))
+  }
+}
+
+// A switch of this checkout: to a pull request's branch (Here, switch branch), or to the base a merge left it on, from
+// the note that offered it, whose ✕ stops it before the move (`putAwaySwitch`).
+export type CheckoutSwitch = { number: number } | { offer: MergedBranch; putAway: () => void }
+
+// What is switching this checkout, as the person is told.
+export function switchingSaid(switching: CheckoutSwitch): string {
+  return "number" in switching
+    ? `#${switching.number} is switching this checkout`
+    : `this checkout is switching to ${switching.offer.base}`
 }

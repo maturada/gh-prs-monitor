@@ -1,6 +1,6 @@
 {
   "name": "gh-prs-monitor",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Your GitHub pull requests inside Claude Code: what needs you first, alerts when they change, merge, update branch and re-run CI from the list, skills that resolve comments, fix CI, resolve conflicts, review and create pull requests, ticket links, and your other repositories too",
   "author": {
     "name": "David Matura",
@@ -34,7 +34,7 @@
     "refresh": {
       "type": "string",
       "title": "Refresh",
-      "description": "background: check from session start, with alerts and the summary. while-open: check only while the /prs pane is open. on-demand: check only when /prs runs, Refresh or Retry is pressed, after a row's button, and once when a session starts, or /clear or a resume starts a new conversation, with the pane open and no list in it",
+      "description": "background: check from session start, with alerts and the summary. while-open: check only while the /prs pane is open. on-demand: check only when /prs runs, ↻ or Retry is pressed, after a row's button, and once when a session starts, or /clear or a resume starts a new conversation, with the pane open and no list in it",
       "options": ["background", "while-open", "on-demand"],
       "default": "background"
     },
@@ -49,7 +49,7 @@
     "shareRefresh": {
       "type": "boolean",
       "title": "Share refreshes between sessions",
-      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval, in every app alike; opening the pane, Refresh, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
+      "description": "Sessions in the same repository take turns asking GitHub and share its answers, so the timers ask GitHub about once per interval, in every app alike; opening the pane, ↻, /prs, a button's action and a skill's turns always ask GitHub; off, each session asks for itself",
       "default": true
     },
     "notify": {
@@ -95,7 +95,7 @@
     "alertOtherRepos": {
       "type": "boolean",
       "title": "Alerts from other repositories",
-      "description": "Alerts from your other repositories on the folder's GitHub server, this folder's left out: a review asked of you, and on your pull requests each review given and CI failing or passing. One light request at each refresh, and at /prs and Refresh where Refresh isn't background: 1 point each, of the 5,000 an hour GitHub gives you. Follows Change alerts and the Alert rows",
+      "description": "Alerts from your other repositories on the folder's GitHub server, this folder's left out: a review asked of you, and on your pull requests each review given and CI failing or passing. One light request at each check, as the pane opens, at ↻ and as the repository picker opens: 1 point each, of the 5,000 an hour GitHub gives you. Follows Change alerts and the Alert rows",
       "default": false
     },
     "alertReady": {

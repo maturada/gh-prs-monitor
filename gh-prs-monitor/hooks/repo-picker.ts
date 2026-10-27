@@ -16,22 +16,25 @@ import { homeShort } from "./paths"
 import { CANCEL, ENGINE_OPTIONS, isDecline } from "./question"
 import type { Session } from "./session"
 import type { NotedClone } from "./store"
+import { repoCounts } from "./summary"
 import { readRepoInput } from "./visit"
 
 // A repository the picker offers: its clone on this machine, if any; how many of the viewer's own wait for them, and
-// how many ask their review; whether something changed since the picker was last opened; and whether it is the
-// folder's own.
+// how many ask their review; how many of its pull requests the light check holds, the viewer's or asking their review,
+// waiting or not; whether something changed since the picker was last opened; and whether it is the folder's own.
 export type RepoChoice = {
   repo: RepoRef
   clone: string | null
   mine: number
   requested: number
+  open: number
   isNew: boolean
   isFolder: boolean
 }
 
 // The folder's repository first; then those cloned on this machine, the latest noted first; then those on GitHub alone
-// where something waits. Within the clones and those on GitHub, what waits for the viewer comes first.
+// where the viewer has a pull request open or a review asked. Within the clones and those on GitHub, what waits for
+// the viewer comes first.
 export function repoChoices(
   clones: readonly { root: string; repo: RepoRef }[],
   elsewhere: ElsewhereState | null,
@@ -47,6 +50,7 @@ export function repoChoices(
       clone,
       mine: waiting.filter((pull) => pull.isMine).length,
       requested: waiting.filter((pull) => pull.isRequested).length,
+      open: own.length,
       isNew: elsewhere?.pickedAt != null && own.some((pull) => pull.changedAt > elsewhere.pickedAt!),
       isFolder: false
     }
@@ -57,13 +61,13 @@ export function repoChoices(
     choiceOf(clone.repo, clone.root)
   )
   const onGitHub = firstOfEach(
-    pulls.filter(needsYou).map((pull) => pull.repo),
+    pulls.map((pull) => pull.repo),
     repoKey,
     taken
   ).map((repo) => choiceOf(repo, null))
 
   return [
-    ...(folder ? [{ repo: folder, clone: null, mine: 0, requested: 0, isNew: false, isFolder: true }] : []),
+    ...(folder ? [{ repo: folder, clone: null, mine: 0, requested: 0, open: 0, isNew: false, isFolder: true }] : []),
     ...waitingFirst(cloned),
     ...waitingFirst(onGitHub)
   ]
@@ -121,7 +125,7 @@ export function repoPickerQuestion(
     main: SHOW,
     instructions: null,
     field: {
-      label: offered.length > 0 ? "Or type one" : "Type one",
+      label: "Type one",
       placeholder: "owner/name, an address, or a folder",
       submitLabel: SHOW,
       otherHint: `${offered.length > 0 ? "Or type" : "Type"} owner/name, an address, or a folder's path under Other.`
@@ -154,21 +158,19 @@ function rowsOf(choices: readonly RepoChoice[], home: string | null, shown: Repo
     place: placeOf(choice, home),
     mine: choice.mine,
     requested: choice.requested,
+    open: choice.open,
     isNew: choice.isNew,
     isShown: shown !== null && sameRepo(choice.repo, shown)
   }))
 }
 
 // Each repository as Claude Code's own dialog lists it, on one line: its name, where it is on this machine, what waits
-// there, and whether it changed lately.
+// there or, where nothing does, how many are open, and whether it changed lately.
 function labelsOf(choices: readonly RepoChoice[], home: string | null): string[] {
   const names = namesOf(choices)
 
   return choices.map((choice, index) => {
-    const counts = [
-      ...(choice.mine > 0 ? [`${choice.mine} yours`] : []),
-      ...(choice.requested > 0 ? [`${choice.requested} to review`] : [])
-    ].join(" · ")
+    const counts = repoCounts(choice, "words")?.text
     const place = placeOf(choice, home)
 
     return [
@@ -223,8 +225,8 @@ export function choiceOf(
 // What the picker reaches beyond its own reading (`register.tsx`): the light check, its state, the clones, the folder's
 // and the shown repository, the pane, the dialog, and showing what the person picked.
 export type PickerHost = {
-  // The light check once, telling nothing, where its setting is off.
-  checkQuietly: () => Promise<void>
+  // The light check once, joining one under way; it tells what it finds only where its setting is on.
+  check: () => Promise<void>
   elsewhere: () => Promise<ElsewhereState | null>
   // Notes the picker opened at `at`, which marks what changes after it as new the next time.
   markPicked: (at: number) => Promise<void>
@@ -253,18 +255,16 @@ export type PickerHost = {
 }
 
 // The repository picker, which the header's Repositories button and the problem box open: the folder's repository, the
-// clones noted on this machine still cloned, and those on GitHub alone where something waits (`pickerQuestion`). Its
-// button says Loading… while it gets ready, and a press more does nothing then; with a question open already, it gets
-// nothing ready, as that would read GitHub and use up what is marked new for a picker that isn't asked. What the person
-// picks or types shows before the picker closes, and what keeps it from showing is said in it, which stays open to pick
-// or type again. `pressed` is the button that opened it.
+// clones noted on this machine still cloned, and those on GitHub alone where you are part of an open pull request
+// (`pickerQuestion`). Its button says Loading… while it gets ready, and a press more does nothing then; with a question
+// open already, it gets nothing ready, as that would read GitHub and use up what is marked new for a picker that isn't
+// asked. What the person picks or types shows before the picker closes, and what keeps it from showing is said in it,
+// which stays open to pick or type again. `pressed` is the button that opened it.
 export async function askPick(host: PickerHost, session: Session, pressed: string): Promise<void> {
   if (session.isPreparingPicker) {
     return
   }
-  const asked = await whilePreparing(host, session, async () =>
-    (await host.isAsking()) ? null : pickerQuestion(host, session)
-  )
+  const asked = await whilePreparing(host, session, async () => ((await host.isAsking()) ? null : pickerQuestion(host)))
   if (!asked) {
     await host.notify(OPEN_QUESTION_NOTE)
 
@@ -311,17 +311,12 @@ async function whilePreparing<T>(host: PickerHost, session: Session, prepare: ()
 }
 
 // The picker's question, with the choices and home folder its answer is read with: the light check first, run once
-// now where it is off, telling nothing, else waited for where one is under way, as /prs starts one on demand, so the
-// picker offers what it finds. Opening it marks what is new for the next time.
+// now, so the picker offers what waits now rather than what the background's timer last read. Opening it marks what is
+// new for the next time.
 async function pickerQuestion(
-  host: PickerHost,
-  session: Session
+  host: PickerHost
 ): Promise<{ question: Question; choices: RepoChoice[]; home: string | null }> {
-  if (!session.settings.isAlertingElsewhere) {
-    await host.checkQuietly()
-  } else {
-    await session.elsewhere.inFlight?.catch(() => undefined)
-  }
+  await host.check()
   const folder = await host.folder()
   const choices = repoChoices(await host.clones(), await host.elsewhere(), folder)
   await host.markPicked(await host.now())

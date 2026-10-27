@@ -1,10 +1,10 @@
 # Real git: the plugin's checkouts, copies and cleanup on throwaway repositories
 
-The test suite answers git with a fake host. These cases run the plugin's own code (`switchHere`, `prepareWorktree`,
-`copyIncluded`, `firstNotInMain`, `removePullWorktree`, `ensureDependencies`, `mainRoot`, `readClone`, `readFolder`,
-`checkClone`) against real git, in repositories made for each case: a bare `acme/app.git` standing in for GitHub, a
-teammate's clone that pushes the pull request's branch, and the person's clone the plugin works in. GitHub's API is
-answered by the harness from the bare repository; nothing reaches the network.
+The test suite answers git with a fake host. These cases run the plugin's own code (`switchHere`, `switchToBase`,
+`prepareWorktree`, `copyIncluded`, `firstNotInMain`, `removePullWorktree`, `ensureDependencies`, `mainRoot`,
+`readClone`, `readFolder`, `checkClone`) against real git, in repositories made for each case: a bare `acme/app.git`
+standing in for GitHub, a teammate's clone that pushes the pull request's branch, and the person's clone the plugin
+works in. GitHub's API is answered by the harness from the bare repository; nothing reaches the network.
 
 Each case states what should happen in its title (`=== … : kept`, `removed`, `copied …`), and the switch cases print
 what the plugin did beside what plain git and gh's own checkout steps do in the same clone, and what each lost:
@@ -40,7 +40,8 @@ network the first time), so it runs only when named.
 
 | Sets | What they cover |
 |---|---|
-| `switch-*` | **Here, switch branch**: ignored files in the way, uncommitted changes, local branches of the head's name, forks and their upstreams, sparse and linked checkouts, a folder mid-rebase, hooks a fork's code carries, the install after a switch |
+| `switch-*` (but `switch-base`) | **Here, switch branch**: ignored files in the way, uncommitted changes, local branches of the head's name, forks and their upstreams, sparse and linked checkouts, a folder mid-rebase, hooks a fork's code carries, the install after a switch |
+| `switch-base` | **Switch to main** after a squash merge: no local base, one ahead or gone its own way, one another worktree holds, uncommitted, untracked and ignored files, a branch pushed without `-u`, a fork's remote |
 | `worktree*` | /prs's own worktree: made, reused, updated, refused, links in the way, a sparse clone |
 | `include-*` | what `.worktreeinclude` copies, and that cleanup compares exactly what the copy took |
 | `cleanup*` | when a merged pull request's worktree is removed and when it is kept: copies the same or edited, what tools make again |

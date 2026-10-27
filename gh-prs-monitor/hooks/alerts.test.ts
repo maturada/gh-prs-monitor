@@ -328,7 +328,7 @@ describe("pullAlerts", () => {
     const after = snapshotOf({ reviewed: [{ number: 5, author: "ann", headRefOid: "def", reviews: [review] }] })
 
     expect(pullAlerts(before, after)).toEqual([
-      { kind: "newCommits", text: "↻ #5 Pull request 5 — new commits since your review" }
+      { kind: "newCommits", text: "↑ #5 Pull request 5 — new commits since your review" }
     ])
   })
 })

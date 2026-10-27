@@ -1,7 +1,8 @@
 // Author: David Matura
 
-// The one refusing switch that moves a folder onto a branch at the pull request's commit, and what git says when it
-// refuses: the files in the way, the change it would lose, or the operation under way.
+// The one refusing switch that moves a folder onto a branch at a fetched commit, a pull request's head or the base one
+// merged into, and what git says when it refuses: the files in the way, the change it would lose, or the operation
+// under way.
 
 // Where a checkout happens: /prs's own worktree, or the folder the person chose to switch ("Here, switch branch"),
 // with where the pull request's own worktree would be.
@@ -10,9 +11,9 @@ export type CheckoutPlace = { kind: "worktree" } | { kind: "here"; ownWorktree: 
 import { failureLine } from "./gh"
 import { branchTip, foldersOf, git, GIT, namesIn } from "./machine"
 import type { Host } from "./machine"
-import type { FetchedPull, Upstream } from "./fetch-source"
+import type { Fetched, Upstream } from "./fetch-source"
 
-// What came of moving a folder onto a branch at the pull request's commit.
+// What came of moving a folder onto a branch at a fetched commit.
 export type Move =
   | { kind: "moved" }
   | { kind: "diverged" }
@@ -22,26 +23,26 @@ export type Move =
   | { kind: "busy"; operation: string }
   | { kind: "failed"; reason: string }
 
-// Puts the folder at `cwd` on `branch` at the pull request's commit in one `git switch --no-overwrite-ignore`, which
+// Puts the folder at `cwd` on `branch` at the commit `fetched` names in one `git switch --no-overwrite-ignore`, which
 // checks every path before it writes any: where the commit has a file git doesn't track here, as an ignored `.env`
 // (which a switch otherwise writes over without a word, and switching back deletes), or an uncommitted change it
 // would overwrite, git refuses and nothing changes, the branch included. It refuses as well in a folder in the middle
 // of a merge, a rebase, a cherry-pick, a revert or `git am`, whose next step would land on the new branch. A sparse
 // checkout is checked first (`untrackedInTheWay`). A branch there already is only fast-forwarded, or taken as it is
 // where it holds commits beyond GitHub's, unless `isForced`, and keeps what it pulls from; one made here pulls from
-// where gh pr checkout would have it pull.
+// where the fetch says (`fetched.upstream`), as gh pr checkout would have it pull.
 export async function moveTo(
   host: Host,
   cwd: string | undefined,
   branch: string,
-  pull: FetchedPull,
+  fetched: Fetched,
   { isForced = false }: { isForced?: boolean } = {}
 ): Promise<Move> {
   const tip = await branchTip(host, branch, cwd)
-  let onto = tip === "" ? ["-c", branch, pull.commit] : ["-C", branch, "--no-track", pull.commit]
-  let target = pull.commit
-  if (tip !== "" && tip !== pull.commit && !isForced) {
-    const relation = await relationOf(host, cwd, tip, pull.commit)
+  let onto = tip === "" ? ["-c", branch, fetched.commit] : ["-C", branch, "--no-track", fetched.commit]
+  let target = fetched.commit
+  if (tip !== "" && tip !== fetched.commit && !isForced) {
+    const relation = await relationOf(host, cwd, tip, fetched.commit)
     if (relation !== "behind" && relation !== "ahead") {
       return relation
     }
@@ -64,7 +65,7 @@ export async function moveTo(
   }
   const merge = await git(host, ["config", "--get", `branch.${branch}.merge`], cwd)
   if (merge.stdout.trim() === "") {
-    await setUpstream(host, cwd, branch, pull.upstream)
+    await setUpstream(host, cwd, branch, fetched.upstream)
   }
 
   return { kind: "moved" }
@@ -200,15 +201,30 @@ function isHeldElsewhere(stderr: string): boolean {
 // Why a move failed, worded for where it was to happen, or null when it did not. A local branch that went its own
 // way from the pull request stops it until it is reset or deleted; nothing here does either when that could lose work.
 export function failureOf(move: Move, branch: string, place: CheckoutPlace): string | null {
-  const where = place.kind === "here" ? "this checkout" : "the worktree"
-  const apart = place.kind === "here" ? `, or choose "Worktree, this session"` : ""
+  if (move.kind === "moved") {
+    return null
+  }
+  if (move.kind === "diverged") {
+    return `the local branch ${branch} has gone its own way from the pull request: reset or delete it once nothing of yours is on it`
+  }
+
+  return moveRefusal(move, {
+    where: place.kind === "here" ? "this checkout" : "the worktree",
+    theirs: "the pull request's branch",
+    apart: place.kind === "here" ? `, or choose "Worktree, this session"` : ""
+  })
+}
+
+// Why git refused a move, but for a branch gone its own way, which each move words for itself: the files or changes in
+// the way in `where`, of `theirs`, the branch moved to, or an operation under way, each with a way around it (`apart`)
+// after what to do; else git's own words.
+export function moveRefusal(
+  move: Exclude<Move, { kind: "moved" | "diverged" }>,
+  { where, theirs, apart }: { where: string; theirs: string; apart: string }
+): string {
   switch (move.kind) {
-    case "moved":
-      return null
-    case "diverged":
-      return `the local branch ${branch} has gone its own way from the pull request: reset or delete it once nothing of yours is on it`
     case "inTheWay":
-      return `that would overwrite ${namedFew(move.paths)} in ${where}, which git doesn't track and the pull request's branch does: move ${move.paths.length === 1 ? "it" : "them"} aside${apart}`
+      return `that would overwrite ${namedFew(move.paths)} in ${where}, which git doesn't track and ${theirs} does: move ${move.paths.length === 1 ? "it" : "them"} aside${apart}`
     case "changed":
       return `that would overwrite uncommitted changes to ${namedFew(move.paths)} in ${where}: commit or stash them first${apart}`
     case "busy":

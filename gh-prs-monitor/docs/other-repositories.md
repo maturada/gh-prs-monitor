@@ -4,7 +4,7 @@ Your pull requests rarely live in one repository. The pane can show another repo
 conversation, and an optional light check tells you about reviews and CI in all of them, while this folder's list goes
 on as it was.
 
-![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, and beside it acme/web's pull requests shown with Back](../assets/screenshots/visit.png)
+![The Repositories picker listing this folder's repository, a clone on this machine and three repositories on GitHub, and beside it acme/web's pull requests shown with ← to go back](../assets/screenshots/visit.png)
 
 ## Showing another repository
 
@@ -26,7 +26,7 @@ list. A worktree, or a folder inside a clone, works too. A remote set in a file 
 a relative path starts at the session's folder; on Windows, `C:\code\web` and backslashes work too.
 
 Showing one is a visit. Its header shows the repository's name and counts, a dim "Not this session's folder", and
-**Back to acme/app**, or plain **Back** where that doesn't fit. **Back**, or `/prs` with this folder's own repository,
+**← acme/app** (Back), or **←** alone where that doesn't fit. **←**, or `/prs` with this folder's own repository,
 shows this folder's list again. Where a problem leaves no list to show, as when the folder has no GitHub repository,
 the problem box offers **Show Another Repository**.
 
@@ -56,19 +56,23 @@ as the pane groups pull requests:
 
 - **On this machine**: this folder's repository, marked "this folder", then the clones where a session loaded its list,
   with their path (`~` is the home folder);
-- **On GitHub**: repositories with no clone here where something waits for you, as the
-  [light check](#alerts-from-other-repositories) last found them.
+- **On GitHub**: repositories with no clone here where you have a pull request open or a review asked of you, as the
+  [light check](#alerts-from-other-repositories) last found them (your 30 latest, and the 30 latest asking your
+  review).
 
-Each row shows what waits for you there, as `❗ 2 yours  🔍 1 to review`, and a dot after the name when one of its pull
-requests changed since you last opened the picker (from its second opening on). Within the clones, and within those on
-GitHub, what waits comes first. Where the repositories are on more than one GitHub server, each name starts with its
-server. In the **Compact** view, each row is a line: the name, the counts in short (`🔍 1`) and **Open**.
+Each row shows what waits for you there, as `❗ 2 yours  🔍 1 to review`, or, where nothing does, how many are open
+there, dim (`2 open`); and a dot after the name when one of its pull requests changed since you last opened the picker
+(from its second opening on). Within the clones, and within those on GitHub, what waits comes first. Where the
+repositories are on more than one GitHub server, each name starts with its server. In the **Compact** view, each row is
+a line: the name, the counts in short (`🔍 1`) and **Open**.
 
-**Open** on a row shows that repository; the one showing now reads **✓ Shown**. The text field under the rows takes
-`owner/name`, an address or a folder's path, as `/prs` does, and Enter shows it; with no repository to list, the field
-asks alone, with a **Show** button. While the repository is looked up, Open, Enter or Show reads **Checking…**. What
-keeps it from showing, a name mistyped, one you have no access to, or a folder in no clone, is said in the picker,
-which stays open to pick or type again. **Cancel** leaves the pane as it was.
+**Open** on a row shows that repository; the one showing now reads **✓ Shown**. Typing in the field above the rows
+narrows them (`web` finds `acme/web`). Enter opens the repository whose full name you typed. Otherwise it opens the
+first row left, the one showing only where no other is left. With no row left, it looks up what you typed as `/prs`
+does: `owner/name`, an address or a folder's path. A repository that isn't listed but whose name is part of a listed
+one's (`acme/a` beside `acme/app`) opens by its address or `/prs acme/a`, as Enter here opens the listed one. What
+keeps a repository from showing, as a name mistyped or one you have no access to, is said in the picker, which
+stays open. **Cancel** leaves the pane as it was.
 
 Where the pane can't show the picker, as when it closed since the press, Claude Code's own dialog asks instead: four
 repositories at most, the rest typed under **Other**. What you pick there opens the pane again, and what keeps it from
@@ -80,10 +84,10 @@ that repository, or the old name it had there when GitHub renamed or moved it; a
 repository counts as this folder. The picker knows a clone once a session there has loaded its list; until then, type
 its path or `owner/name`.
 
-**What it costs.** With Alerts from other repositories on, the picker lists what the light check last read. With it
-off, opening the picker runs that check once (1 point of the 5,000 an hour GitHub gives you) and alerts nothing; what
-it read is kept, while the plugin stays loaded, only to mark what changed the next time. Until the picker shows, its
-button reads **Loading…**.
+**What it costs.** Opening the picker runs the light check once (1 point of the 5,000 an hour GitHub gives you), so it
+lists what waits now. With Alerts from other repositories on, what that check finds is alerted as any check's is; with
+it off, it alerts nothing, and what it read is kept, while the plugin stays loaded, only to mark what changed the next
+time.
 
 ## Buttons on its rows
 
@@ -137,9 +141,10 @@ worked read it.
 ### When it runs, and what it costs
 
 One GraphQL request with two searches, 1 point of the 5,000 an hour GitHub gives you ([cost](settings.md#cost)). It
-follows **Refresh**: **background** checks at each interval; **while-open** at each interval while the pane is open,
-and at `/prs` and Refresh; **on-demand** at `/prs` and Refresh. In on-demand mode too, what it finds comes as toasts,
-as no list in the pane shows it.
+follows **Refresh**: **background** checks at each interval; **while-open** at each interval while the pane is open;
+**on-demand** on no timer. In every mode it checks too as the pane opens (`/prs`, the band), at ↻, and as the picker
+opens, so `+N elsewhere` and the picker show what waits now. In on-demand mode too, what it finds comes as toasts, as
+no list in the pane shows it.
 
 It leaves out archived repositories, this folder's own, and, with **Hide my drafts** on, your own drafts. In a folder
 with no GitHub repository, it checks the server `gh` uses by default, where `gh` is signed in to it.

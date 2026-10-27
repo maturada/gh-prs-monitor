@@ -38,14 +38,10 @@ export function openKey(index: number): string {
   return `open-${index}`
 }
 
-// Where the keyboard starts in a question: the repository picker's first Open, as its rows come before its field; its
-// field where it asks for a piece of text; its first name where it asks to pick some first; else its first answer.
+// Where the keyboard starts in a question: its field where it asks for a piece of text, as the repository picker
+// does above its rows, typing there narrowing them; its first name where it asks to pick some first; else its first
+// answer. A surface drawing no field (the phone) has no keyboard to start.
 export function firstFocusKey(question: Question, fieldKey: string): string {
-  const opener = question.picking?.rows?.findIndex((row) => !row.isShown) ?? -1
-  if (opener >= 0) {
-    return openKey(opener)
-  }
-
   return question.field ? fieldKey : question.picking?.startsOn === "names" ? pickKey(0) : answerKey(0)
 }
 

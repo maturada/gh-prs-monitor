@@ -98,3 +98,24 @@ export function summaryText(counts: SummaryCounts): string | undefined {
 
 // Two no-break spaces between the counts: VS Code draws the line as a web page does, folding plain spaces into one.
 const COUNT_GAP = "\u00a0\u00a0"
+
+// What the repository picker says of a repository: what waits for the viewer there, their own (`yours`) and the
+// reviews asked of them, with the marks the header counts by (`marks`), in short for the compact view (`short`), or in
+// words alone for Claude Code's own dialog (`words`); where nothing waits, how many are open there, of the viewer's or
+// asking their review. None where it holds none.
+export function repoCounts(
+  { mine, requested, open }: { mine: number; requested: number; open: number },
+  style: "marks" | "short" | "words"
+): { text: string; isWaiting: boolean } | null {
+  const said = (mark: string, count: number, words: string): string =>
+    style === "words" ? `${count} ${words}` : `${mark} ${count}${style === "short" ? "" : ` ${words}`}`
+  const waits = [
+    ...(mine > 0 ? [said(MARKS.needsYou, mine, "yours")] : []),
+    ...(requested > 0 ? [said(MARKS.toReview, requested, "to review")] : [])
+  ]
+  if (waits.length > 0) {
+    return { text: waits.join(style === "words" ? " · " : "  "), isWaiting: true }
+  }
+
+  return open > 0 ? { text: `${open} open`, isWaiting: false } : null
+}

@@ -7,7 +7,7 @@ list, or hand the work to a skill.
 
 [//]: # (header end)
 
-![Claude Code in a terminal: an alert that #1242 is ready to merge, beside the /prs pane listing CI failing, conflicts and changes requested, each with its buttons](assets/screenshots/hero.png)
+![Claude Code in a terminal: an alert that #1242 is ready to merge, beside the /prs pane listing what needs you, CI failing and conflicts first, each with its buttons](assets/screenshots/hero.png)
 
 CI failed, a review came in, a teammate asked for your review: gh-prs-monitor tells you in the session you are already
 in. `/prs` opens your pull requests with what needs you on top and a button for the next step: merge, re-run CI or ask
@@ -53,7 +53,9 @@ rest. gh-prs-monitor is a Claude Code plugin, installed with `/plugin`, not a `g
 Your pull requests are sorted by what they need: failing and conflicting first, then what waits on you, then what is
 ready to merge. The ones waiting on your review have a list of their own, and what someone else merged or closed lately
 is noted under them. Failing checks, conflicts and unresolved comments link to where you deal with them on GitHub, and a
-note under a row says what changed lately. **Compact** puts each on one line. [The pane](docs/pane.md)
+note under a row says what changed lately. **Compact** puts each on one line. Once the branch you're on has merged, the
+pane offers **Switch to main** (or whichever branch it merged into), deleting the merged branch where nothing would be
+lost. [The pane](docs/pane.md)
 
 ![The /prs pane in the Claude desktop app: your pull requests, what needs you on top, each with its status and buttons](assets/screenshots/lists.png)
 
@@ -106,12 +108,12 @@ would be lost. Review and Create PR run here or in a new session. [Where the ski
 
 ### Your other repositories
 
-Check on another repository without leaving this one. Press **Repositories** in the pane's header, beside Refresh, or
-type `/prs acme/web`, `/prs ~/code/web` or a pull request's address; its buttons work there too, and **Back** returns to
+Check on another repository without leaving this one. Press **Repositories** in the pane's header, or type
+`/prs acme/web`, `/prs ~/code/web` or a pull request's address; its buttons work there too, and **←** (Back) returns to
 this folder's list. Turn on **Alerts from other repositories** in `/config` for alerts about reviews and CI in the
 others, and a `+3 elsewhere` count in the header. [Other repositories](docs/other-repositories.md)
 
-![The Repositories picker listing this folder's repository, a clone on this machine and two repositories on GitHub, and beside it acme/web's pull requests shown with Back](assets/screenshots/visit.png)
+![The Repositories picker listing this folder's repository, a clone on this machine and three repositories on GitHub, and beside it acme/web's pull requests shown with ← to go back](assets/screenshots/visit.png)
 
 ### Your tickets, one click away
 
@@ -193,10 +195,10 @@ telemetry, and reads no credential to sign in with.
 
 | What | How |
 |---|---|
-| Reading GitHub | `gh api`: one GraphQL request for the list at each check, and a few more for what a press, a cleanup or the list needs to see; with **Alerts from other repositories** on, one more at each check, searching your other repositories (once when the picker opens with it off); a repository you show, one more list while it shows. `gh repo view`, `gh auth status`, `gh config get` and `gh --version` besides. |
+| Reading GitHub | `gh api`: one GraphQL request for the list at each check, and a few more for what a press, a cleanup or the list needs to see; with **Alerts from other repositories** on, one more at each check, as the pane opens and at ↻, searching your other repositories (once when the picker opens, with it off too); a repository you show, one more list while it shows. `gh repo view`, `gh auth status`, `gh config get` and `gh --version` besides. |
 | Writing to GitHub | `gh pr merge`, `gh pr update-branch`, `gh pr ready`, `gh run rerun` and `gh api`, each after you confirm it. |
-| git | Its own commands run with hooks off: fetching a pull request's branch with gh's credentials (`gh auth git-credential`), the skills' worktrees, switching a checkout to a pull request's branch, removing branches in cleanup, a branch's upstream in git config, and a `/.claude/worktrees/` line in `.git/info/exclude`. |
-| Installs | A worktree's dependencies, and after **Here, switch branch** a changed lockfile's, with the project's own package manager: these fetch from its registries and run its install scripts. None for a fork's pull request. |
+| git | Its own commands run with hooks off: fetching a pull request's branch, or the base it merged into, with gh's credentials (`gh auth git-credential`), the skills' worktrees, switching a checkout to a pull request's branch or back to its base after a merge, removing branches in cleanup and the merged branch **Switch to main** leaves, a branch's upstream in git config, and a `/.claude/worktrees/` line in `.git/info/exclude`. |
+| Installs | A worktree's dependencies, and after **Here, switch branch** or **Switch to main** a changed lockfile's, with the project's own package manager: these fetch from its registries and run its install scripts. None for a fork's pull request. |
 | Files | Copies the ignored files `.worktreeinclude` names into a new worktree; leaves a `.gh-prs-monitor-lock` marker where an install succeeded; removes worktrees once their pull request is done and nothing in them would be lost; reads a few files to pick an install, and the git config of your clones and of a folder you type. |
 | The skills | Run in your conversation, through Claude Code's tools and your permission settings, and commit, push, reply and post only on your yes. A button that starts one runs only that skill's own slash command. |
 | Claude Code | Follows session and turn events and the skills' commands, reading none of the conversation but a skill command's arguments; opens a new session through Claude Code's own links; gives the skills two tools of its own. |
@@ -207,7 +209,8 @@ It keeps, in Claude Code's plugin store on your machine: the last list and what 
 repositories you looked at last, the alerts shown, the answers your sessions share and which session is asking GitHub or
 cleaning up a clone right now, the view you chose, your Create PR choices and ticket links, what cleanups left, and the
 folders of the 50 clones your sessions loaded a list in last, with each one's repository. For the session alone, Claude
-Code's plugin state holds a repository you show and what **Alerts from other repositories** read.
+Code's plugin state holds a repository you show, what **Alerts from other repositories** read, and a merged branch's
+note you put away.
 
 Every command, file and setting it touches, in full: [What it runs and what it sends](docs/what-it-runs.md). More in
 [Privacy](https://github.com/maturada/gh-prs-monitor/blob/main/PRIVACY.md) and

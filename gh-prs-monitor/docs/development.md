@@ -9,7 +9,8 @@ needs as plain functions the hooks module hands in, its host: `RefreshHost` for 
 press and the writes, `SkillHost` for a skill's run, `BranchLookupHost`, `SuggestionsHost` for GitHub's suggested
 reviewers, `DialogHost`, `BackHost` for the window going back to its row, `ToastHost`, `StoreHost`, `KeptChoices` for
 the create-pr skill's choices, `TicketsHost` for `/prs tickets`, `TicketToolHost` for the skills' ticket tool,
-`ReportHost` for `/prs report`, `VisitHost` for a visit, `ElsewhereHost` for the check of other repositories, and
+`ReportHost` for `/prs report`, `VisitHost` for a visit, `PickerHost` for the repository picker, `ElsewhereHost` and
+`ElsewhereTimerHost` for the check of other repositories and when it runs, `SwitchBaseHost` for Switch to main, and
 `Host` (`machine.ts`) for git and gh.
 register.tsx builds each (`refreshHostOf($, session)`, `pressHostOf`, …). A member passes the call on, a few with a
 guard of their own (a load of the module a reload replaced shows no list, problem or loading mark; an end mark is
@@ -51,7 +52,8 @@ hooks/carry.ts            what a load's list carries over from the lists before 
                           them GitHub is asked how they ended
 hooks/toasts.ts           the alerts on their way to the person: held while a turn runs, then toasts, the sound and a
                           system notification for each repository, those another session showed lately left out
-hooks/summary.ts          the counts the status line, the band and the pane's header show
+hooks/summary.ts          the counts the status line, the band and the pane's header show, and a repository's in the
+                          picker
 hooks/list.ts             the list /prs prints where no pane shows, the words both lists use, and a panel's rows
 hooks/autocomplete.ts     the pull requests `#` offers in the prompt box, from the list held; off for now, its hook
                           commented out in register.tsx
@@ -77,7 +79,8 @@ hooks/skill-runs.ts       the bundled skills' runs: Review, Resolve Comments, Fi
                           turn's life (its row marked while it works, given back as it ends, the list following it);
                           on another repository's pull request, the new session opened in its clone
 hooks/branch-lookup.ts    GitHub's lookup of the pull requests from the session's branch the lists don't show, which
-                          a load and Create PR's press ask: its query, the answer read, and the request
+                          a load and Create PR's press ask: its query, the answer read (with where one merged, for the
+                          note on a merged branch), and the request
 hooks/suggestions.ts      the people GitHub suggests to review your own pull requests nobody was asked to review, at
                           first or for more approvals, which a load asks once it shows the list: which rows want them,
                           the request, the answer read, kept for each row's head commit and reviews
@@ -101,9 +104,10 @@ hooks/new-session.ts      the links that open a new session, VS Code's editor's 
 hooks/report.ts           /prs report: where to report, and the versions a bug report asks for
 hooks/checkout.ts         the checkouts the branch skills work in: /prs's worktree for a pull request, or a switch of
                           this checkout to its branch
-hooks/fetch-source.ts     where the pull request's head is fetched from, as gh pr checkout fetches it, and what a branch
-                          made for it pulls from
-hooks/switch.ts           the one refusing switch onto the pull request's commit, and what git says when it refuses
+hooks/fetch-source.ts     where a pull request's head, or the base one merged into, is fetched from, as gh pr checkout
+                          fetches it, and what a branch made for it pulls from
+hooks/switch.ts           the one refusing switch onto a fetched commit, and what git says when it refuses
+hooks/switch-base.ts      the note on a merged branch: what the pane offers, and Switch to main, which loses nothing
 hooks/cleanup.ts          the worktrees and branches of pull requests that ended, cleaned up by one session of a clone
                           at a time, and the notes on what stayed, told once across sessions
 hooks/kept-notes.ts       those notes as the store keeps them, and their check when read back
@@ -133,7 +137,8 @@ hooks/picking.ts          the rules of a question answered by picking names firs
                           the main answer may go, the names an answer carries
 hooks/picker.tsx          that question as the pane draws it, in that frame: the names that pick, Select All and
                           Clear, and an answer that carries the names picked
-hooks/repo-rows.tsx       the repository picker as the pane draws it: a row each, grouped, with Open, and the field
+hooks/repo-rows.tsx       the repository picker as the pane draws it: the field, typing in it narrowing the rows, and a
+                          row each, grouped, with Open
 hooks/keys.ts             the keys of what the pane and the dialog draw that the flows name too, and where a
                           question's keyboard starts
 hooks/dialog-flow.ts      the dialog as it runs: one question at a time, in the pane or Claude Code's own dialog, an
@@ -144,7 +149,8 @@ hooks/question.ts         what a question is about, text typed in place of a cho
                           runs (this session or a new one), and how many options Claude Code's own dialog offers
 hooks/layout.ts           what each surface draws differently: text in cells or a font, space by rows or steps, a box
                           out of the flow, toasts, and the colours VS Code names otherwise
-hooks/stable-buttons.ts   a button drawn again unchanged kept as the same element, so its handle outlives a redraw
+hooks/stable-elements.ts  a button or field drawn again unchanged kept as the same element, so its handle outlives
+                          a redraw
 hooks/*.test.ts           the modules' logic, apart from the engine (helpers.test.ts holds the small ones')
 hooks/*.test.tsx          the hooks module, by area, against the machine in hooks/testing/
 hooks/testing/            that machine (gh, git and the system answering from a world each test sets up), the
@@ -192,6 +198,10 @@ changes one is where to look first.
   scope: no variable or parameter in `hooks/register.tsx` takes the name of a function there that is handed `$`.
 - The desktop app presses a button by the handle of the drawing it shows, and a redraw that builds the button anew
   drops that handle: `stableButtons` hands an unchanged button back as the same element.
+- A text field is held by its handle as a button is. Handed back as the same element, it keeps the text typed in it on
+  screen; built anew, a surface shows its `value`. So the repository picker, which redraws on each keystroke, keeps the
+  field only in the drawing that keystroke's surface asked for, and every other drawing builds it with what was typed
+  (`stableInputs`, `answersKeystroke`).
 - A plugin's own `$.command.run` does not pass through its own `command.run` hooks, so a skill a pane button starts
   marks its row itself (`runSkill`), while a typed one is caught by the hooks.
 - A pane is `isPlaced` once a surface draws it and `isShown` while it is in front, not a tab behind another. A visit

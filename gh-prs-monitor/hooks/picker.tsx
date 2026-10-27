@@ -68,7 +68,7 @@ export function pickerView(
 
   return questionFrame(kit, question, site, [
     names,
-    questionField(kit, question, field, actions.answer, state.checking !== null),
+    questionField(kit, question, field, actions.answer, { isChecking: state.checking !== null }),
     problemLine(kit, site, state.problem),
     answerRow(kit, question, field, site, main, actions.answer)
   ])

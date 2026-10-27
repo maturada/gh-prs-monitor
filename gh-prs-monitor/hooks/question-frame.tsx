@@ -1,8 +1,8 @@
 // Author: David Matura
 
-// What every question the pane asks is drawn with, in place of the list: its frame, its field, its answers' row, Checking…
-// while an answer is carried out, and what kept one from working; which the plugin's dialog (`dialog.tsx`), the picker
-// (`picker.tsx`) and the repository picker's rows (`repo-rows.tsx`) fill.
+// What every question the pane asks is drawn with, in place of the list: its frame, its field, its answers' row,
+// Checking… while an answer is carried out, and what kept one from working; which the plugin's dialog (`dialog.tsx`),
+// the picker (`picker.tsx`) and the repository picker's rows (`repo-rows.tsx`) fill.
 
 import type {
   BoxProps,
@@ -98,14 +98,14 @@ export function questionFrame(
 // A question's field: its own where it asks for a piece of text, which says what its Enter does beside it; else one
 // for instructions where it takes them, which says under it where they go; none where the surface draws no field (the
 // phone), which a question asking for text then says. Enter answers with what was typed, read as an answer where it
-// names one (`readAnswer`); an empty Enter is no answer, so the question stays. While what it gave is checked
-// (`isChecking`), its Enter says so.
+// names one (`readAnswer`), unless the caller gives an Enter of its own (`submit`); an empty Enter is no answer, so the
+// question stays. While what it gave is checked (`isChecking`), its Enter says so.
 export function questionField(
   kit: QuestionKit,
   question: Question,
   field: InstructionsField,
   answer: (answer: Answer) => void,
-  isChecking = false
+  { isChecking = false, submit }: { isChecking?: boolean; submit?: (text: string) => void } = {}
 ): RenderElement | null {
   const { Box, Text, Input } = kit
   const input = question.field
@@ -137,7 +137,9 @@ export function questionField(
         value={field.read()}
         onInput={field.keep}
         onSubmit={(text) => {
-          if (text.trim() !== "") {
+          if (submit) {
+            submit(text)
+          } else if (text.trim() !== "") {
             answer(readAnswer(text, question.choices))
           }
         }}

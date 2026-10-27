@@ -53,7 +53,7 @@ import { readSessionAnswer } from "./question"
 import type { SessionPlace } from "./question"
 import { isBackToReview, readReviewAnswer, backToReviewQuestion, reviewArgs, reviewPlaceQuestion } from "./review-flow"
 import type { ReviewStart } from "./review-flow"
-import { FOLDER_LIST, followFrom } from "./session"
+import { FOLDER_LIST, followFrom, switchingSaid, whenIdle } from "./session"
 import type { ListRef, Mark, Session, SkillFollow, SkillMark, SkillStart } from "./session"
 import type { NotedClone } from "./store"
 
@@ -135,13 +135,6 @@ async function followSkill(host: SkillHost, session: Session, follow: SkillFollo
   follow.lastFollowAt = now
   // Nobody asked for this refresh, so what it finds is alerted, as the timer's is.
   await host.refresh(true)
-}
-
-// Once no turn of the main loop runs.
-async function whenIdle(session: Session): Promise<void> {
-  if (session.runningTurns.size > 0) {
-    await new Promise<void>((resolve) => session.idleWaiters.push(resolve))
-  }
 }
 
 // The command waits for a running turn to end, which the row says meanwhile. Once it has run, the skill's turn is the
@@ -403,16 +396,15 @@ async function workHere(work: BranchWork, switchFrom: AskedCheckout | null): Pro
   const { host, session, skill, row } = work
   const press = ACTION_LABELS[skill]
   if (session.switchingFor !== null) {
-    const other = `#${session.switchingFor}`
     await host.notify(
-      `#${row.number}: ${other} is switching this checkout; press ${press} again once it is done`,
+      `#${row.number}: ${switchingSaid(session.switchingFor)}; press ${press} again once it is done`,
       session.settings.alertMs
     )
 
     return
   }
   if (switchFrom !== null) {
-    session.switchingFor = row.number
+    session.switchingFor = { number: row.number }
   }
   try {
     let deps: string | undefined
@@ -557,7 +549,7 @@ export async function createPull(host: SkillHost, session: Session, surface: str
     const looked = look && "looked" in look ? look.looked : null
     const snapshot = storedSnapshot(await host.storedList())
     // Where GitHub could not be asked, the create-pr skill looks again before it opens one.
-    const unknown = snapshot && branch && head ? branchPullsOf(snapshot, branch, head, false) : null
+    const unknown = snapshot && branch && head ? branchPullsOf(snapshot, branch, head, false, null) : null
     const toOpen = pullToOpen(snapshot, branch, head, looked ?? unknown)
     if (!toOpen) {
       await host.notify(NOTHING_TO_OPEN_NOTE, session.settings.alertMs)

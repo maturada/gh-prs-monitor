@@ -189,7 +189,7 @@ describe("the pane", () => {
   })
 
   for (const surface of ["terminal", "desktop", "vscode"] as const) {
-    test(`the header links the repository, counts like the status line, offers the picker, and r refreshes (${surface})`, async ($, on) => {
+    test(`the header links the repository, counts like the status line, offers the picker on p, switches the view on c, and r refreshes (${surface})`, async ($, on) => {
       const clock = clockOf(on)
       machine($, on, { github: GITHUB, branch: "main", uncommitted: 0 })
       await startSession($)
@@ -198,14 +198,25 @@ describe("the pane", () => {
       const ui = await mountPane($, surface)
 
       expect((await ui.find({ type: "Link", text: "acme/app" }))?.props.href).toBe("https://github.com/acme/app/pulls")
-      expect((await ui.find({ key: "repo" }))?.props.label).toBe("Repositories")
+      const repo = await ui.find({ key: "repo" })
+      const view = await ui.find({ key: "view" })
+      // Nothing waits elsewhere: Repositories is dim, as a secondary control.
+      expect([
+        repo?.props.label,
+        repo?.props.hotkey,
+        repo?.props.dimColor,
+        view?.props.label,
+        view?.props.hotkey
+      ]).toEqual(["Repositories", "p", true, "Compact", "c"])
       expect(await ui.find({ type: "Text", text: "✅ 1  ❗ 1  🔍 1" })).toBeDefined()
-      expect((await ui.find({ key: "refresh" }))?.props.hotkey).toBe("r")
+      const refresh = await ui.find({ key: "refresh" })
+      // The glyph is its label, which the desktop app draws on its native button.
+      expect([refresh?.props.label, refresh?.children ?? [], refresh?.props.hotkey]).toEqual(["↻", [], "r"])
     })
   }
 
   test(
-    "+N elsewhere counts what waits for you in other repositories, where the light check is on",
+    "+N elsewhere counts what waits for you in other repositories, where the light check is on, dim beside the counts",
     { options: { alertOtherRepos: true } },
     async ($, on) => {
       const clock = clockOf(on)
@@ -226,7 +237,21 @@ describe("the pane", () => {
 
       const ui = await mountPane($, "terminal")
 
-      expect(await ui.find({ type: "Text", text: "+3 elsewhere" })).toBeDefined()
+      expect((await ui.find({ type: "Text", text: "+3 elsewhere" }))?.props.dimColor).toBe(true)
+      expect(wordsIn(drawnNodes(await ui.find({ key: "header-title" })))).toContain("+3 elsewhere")
+      const repo = await ui.find({ key: "repo" })
+      expect([repo?.props.label, repo?.props.dimColor]).toEqual(["Repositories", true])
+      await ui.unmount()
+      // Counted beside the name and counts, it widens them: the header's buttons go under them sooner.
+      const direction = async (columns: number) => {
+        const narrow = await mountPane($, "terminal", columns)
+        const header = await narrow.find({ key: "header" })
+        await narrow.unmount()
+
+        return header?.props.flexDirection
+      }
+      expect(await direction(79)).toBe("column")
+      expect(await direction(80)).toBe("row")
     }
   )
 
@@ -721,8 +746,8 @@ describe("the pane", () => {
     }
 
     // The buttons a cell apart are part of the width, Repositories too: one column less and they no longer fit.
-    expect(await direction(59)).toBe("column")
-    expect(await direction(60)).toBe("row")
+    expect(await direction(53)).toBe("column")
+    expect(await direction(54)).toBe("row")
   })
 
   test("the name wraps, and the counts go under it whole where both don't fit side by side", async ($, on) => {
@@ -774,8 +799,8 @@ describe("the pane", () => {
     await startSession($)
     await clock.settle()
 
-    // At 58 columns "updated 01:00" no longer fits beside the buttons, though "refreshing…" would.
-    const ui = await mountPane($, "terminal", 58)
+    // At 52 columns "updated 01:00" no longer fits beside the buttons, though "refreshing…" would.
+    const ui = await mountPane($, "terminal", 52)
     expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe("column")
     world.slowGithubMs = 20_000
     await ui.press({ key: "refresh" })
@@ -811,7 +836,7 @@ describe("the pane", () => {
     }
   )
 
-  // At 65 columns "updated 08:50" fits beside the buttons, and "updated yesterday 17:40" doesn't.
+  // At 59 columns "updated 08:50" fits beside the buttons, and "updated yesterday 17:40" doesn't.
   for (const [fetchedAt, time, direction] of [
     [new Date(2026, 9, 12, 17, 40).getTime(), "updated yesterday 17:40", "column"],
     [new Date(2026, 9, 13, 8, 50).getTime(), "updated 08:50", "row"]
@@ -826,7 +851,7 @@ describe("the pane", () => {
         keptOverReload(on, { snapshot: { ...keptList(github)!, fetchedAt } })
         await startSession($)
 
-        const ui = await mountPane($, "terminal", 65)
+        const ui = await mountPane($, "terminal", 59)
         expect(await ui.find({ type: "Text", text: time })).toBeDefined()
         expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe(direction)
       }

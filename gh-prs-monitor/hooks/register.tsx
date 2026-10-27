@@ -8,7 +8,7 @@
 import { atom, read, update } from "claude-code"
 import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOpenResult } from "claude-code"
 
-import type { Activity, CheckoutAt, PullAction, PullRow, PullsSnapshot, Question, Visit } from "../types"
+import type { Activity, CheckoutAt, MergedBranch, PullAction, PullRow, PullsSnapshot, Question, Visit } from "../types"
 import { ACTION_LABELS } from "./actions"
 import { nextNoteExpiry, nothingHeld, readHeld, recentNotes } from "./alerts"
 // TBD: with `#` in the prompt, off for now (`prompt.autocomplete` below).
@@ -41,7 +41,7 @@ import {
   demoView,
   DEMO_TO_OPEN
 } from "./demo"
-import { questionView } from "./dialog"
+import { answersKeystroke, questionView } from "./dialog"
 import { ask, askInEngineDialog, closeAsked, drawnQuestion, dropAsked, isQuestionOpen } from "./dialog-flow"
 import type { DialogHost } from "./dialog-flow"
 import { askElsewhere, checkElsewhere, pollElsewhere, readElsewhereState, withPickedAt } from "./elsewhere"
@@ -72,13 +72,15 @@ import {
 } from "./refresh"
 import type { RefreshHost } from "./refresh"
 import { createSession, FOLDER_LIST, followFrom, randomId } from "./session"
-import type { ListRef, Mark, Session, SkillStart } from "./session"
+import type { Keystroke, ListRef, Mark, Session, SkillStart } from "./session"
 import { readSettings } from "./settings"
 import { createPull, openClone, review, SKILLS, skillTurnEnded, skillTurnStarted, workOnBranch } from "./skill-runs"
 import type { SkillHost } from "./skill-runs"
 import { askPick, elsewhereCount } from "./repo-picker"
 import type { PickerHost } from "./repo-picker"
-import { stableButtons } from "./stable-buttons"
+import { stableButtons, stableInputs } from "./stable-elements"
+import { mergedBranchOf, putAwaySwitch, SWITCH_BASE, switchToBase, switchUnderWay } from "./switch-base"
+import type { SwitchBaseHost } from "./switch-base"
 import {
   claimCleanup,
   claimFetch,
@@ -152,6 +154,8 @@ const activityState = atom({ plugin: "gh-prs-monitor", key: "activity" } as cons
 const checkoutState = atom({ plugin: "gh-prs-monitor", key: "checkout" } as const, null)
 const branchPullsState = atom({ plugin: "gh-prs-monitor", key: "branchPulls" } as const, null)
 const mergedState = atom({ plugin: "gh-prs-monitor", key: "merged" } as const, [])
+// The merged branch whose note was put away last, one at a time: another put away offers the one before again.
+const dismissedBranchState = atom({ plugin: "gh-prs-monitor", key: "dismissedBranch" } as const, null)
 const compactState = atom({ plugin: "gh-prs-monitor", key: "isCompact" } as const, false)
 const paneAskedState = atom({ plugin: "gh-prs-monitor", key: "paneAskedAt" } as const, null)
 const turnsState = atom({ plugin: "gh-prs-monitor", key: "turns" } as const, [])
@@ -407,7 +411,7 @@ export const register: Register = (on, options) => {
     }
 
     const { Box, Text, Button, Link } = $.ui.resolve(e)
-    const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:band`, Button), Link }
+    const kit = { Box, Text, Button: stableButtons(session.drawnElements, `${e.surface}:band`, Button), Link }
 
     return drawBand(kit, counts, () => background($, showFolderList($, session)))
   })
@@ -510,12 +514,14 @@ export const register: Register = (on, options) => {
   // Each drawing takes its buttons (`stableButtons`) last, once nothing is awaited, so drawings taken in turn finish in
   // the same order.
   on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
+    // The keystroke this drawing answers, read before anything is awaited, as another may land meanwhile.
+    const typing = session.asking?.keystroke ?? null
     // A question takes the list's place until it is answered (`ask`).
     const question = drawnQuestion(session, await read($, dialogState))
     if (question !== null) {
       const isCompact = await read($, compactState)
 
-      return drawQuestion(session, e, question, isCompact, $.ui.resolve(e), () => $.ui.invalidate("ui.render"))
+      return drawQuestion(session, e, question, isCompact, $.ui.resolve(e), () => $.ui.invalidate("ui.render"), typing)
     }
     // Where the window stands over the list, for a question to put it back there (`backToRow`): the terminal's drawing
     // says; elsewhere the drawing carries what the app last sent, and the `ui.scroll` hook keeps it as each move lands.
@@ -532,23 +538,29 @@ export const register: Register = (on, options) => {
   })
 }
 
-// The open question in the pane (`questionView`), its buttons kept stable across redraws.
+// The open question in the pane (`questionView`), its buttons kept stable across redraws, and its field across the one
+// the latest keystroke on this surface asked for (`typing`), which is then cleared, unless another landed since.
 function drawQuestion(
   session: Session,
   e: RenderInput<"Pane">,
   question: Question,
   isCompact: boolean,
   elements: ReturnType<Engine["ui"]["resolve"]>,
-  redraw: () => void
+  redraw: () => void,
+  typing: Keystroke | null
 ): RenderElement {
   const { Box, Text, Button } = elements
+  const isTyping = answersKeystroke(session, typing, e.surface)
   const kit = {
     Box,
     Text,
-    Button: stableButtons(session.drawnButtons, `${e.surface}:pane:question`, Button),
+    Button: stableButtons(session.drawnElements, `${e.surface}:pane:question`, Button),
     // The engine completes every surface's table, an element a surface lacks drawing nothing, so the phone app,
     // which has no field, is told by its surface; the table's own check only narrows its type.
-    Input: e.surface !== "mobile" && "Input" in elements ? elements.Input : undefined
+    Input:
+      e.surface !== "mobile" && "Input" in elements
+        ? stableInputs(session.drawnElements, `${e.surface}:pane:question:field`, elements.Input, isTyping)
+        : undefined
   }
   // Escape cancels where the pane holds the keyboard; at the prompt it may stop Claude's turn instead.
   const isEscapable = e.surface === "terminal" && e.props.isFocused
@@ -574,7 +586,7 @@ async function drawDemo($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     visited
   })
   const site = `${e.surface}:pane:demo${visited === null ? "" : `:${visited}`}`
-  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, site, Button), Link }
+  const kit = { Box, Text, Button: stableButtons(session.drawnElements, site, Button), Link }
 
   return drawPane(
     kit,
@@ -585,6 +597,9 @@ async function drawDemo($: Engine, session: Session, e: RenderInput<"Pane">): Pr
       create: () => background($, askCreateInDemo($, session, e.surface)),
       markSeen: () => background($, notify($, DEMO_SEEN_NOTE, session.settings.alertMs)),
       toggleCompact: () => background($, toggleView($)),
+      // The examples show no merged branch of the session's (`demoView`).
+      switchToBase: () => {},
+      dismissMergedBranch: () => {},
       back: () =>
         background(
           $,
@@ -615,12 +630,13 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     branch,
     toOpen: pullToOpen(snapshot, branch, head, await read($, branchPullsState)),
     merged: await read($, mergedState),
+    mergedBranch: switchUnderWay(session) ?? (await mergedBranchNow($, session)),
     tickets: shownTickets(session),
     visit: null,
     isPreparingPicker: session.isPreparingPicker,
     elsewhere: await elsewhereOf($, session, null)
   }
-  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, `${e.surface}:pane`, Button), Link }
+  const kit = { Box, Text, Button: stableButtons(session.drawnElements, `${e.surface}:pane`, Button), Link }
 
   return drawPane(
     kit,
@@ -634,6 +650,8 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
       create: () => background($, createPull(skillHostOf($, session), session, e.surface)),
       markSeen: (pullNumber) => background($, markSeen($, pullNumber)),
       toggleCompact: () => background($, toggleView($)),
+      switchToBase: () => background($, switchFromMerged($, session)),
+      dismissMergedBranch: () => background($, dismissMerged($, session)),
       pick: (pressed) => background($, askPick(pickerHostOf($, session), session, pressed))
     },
     session.goingBack?.offset ?? null
@@ -669,12 +687,18 @@ async function drawVisit($: Engine, session: Session, e: RenderInput<"Pane">, vi
     branch: null,
     toOpen: null,
     merged: visit.merged,
+    mergedBranch: null,
     tickets: session.settings.isShowingTickets ? visit.tickets : null,
     visit: { repo: visit.repo.name, folder: visit.folder },
     isPreparingPicker: session.isPreparingPicker,
     elsewhere: await elsewhereOf($, session, visit.repo)
   }
-  const kit = { Box, Text, Button: stableButtons(session.drawnButtons, visitSite(e.surface, visit.repo), Button), Link }
+  const kit = {
+    Box,
+    Text,
+    Button: stableButtons(session.drawnElements, visitSite(e.surface, visit.repo), Button),
+    Link
+  }
   const host = visitHostOf($, session)
 
   return drawPane(
@@ -688,9 +712,11 @@ async function drawVisit($: Engine, session: Session, e: RenderInput<"Pane">, vi
       act: (action, pullNumber) =>
         background($, actOn($, session, { kind: "visit", repo: visit.repo }, action, pullNumber, e.surface)),
       create: () => {},
-      // A visit's rows carry no notes of what changed.
+      // A visit's rows carry no notes of what changed, nor its header the folder's branch.
       markSeen: () => {},
       toggleCompact: () => background($, toggleView($)),
+      switchToBase: () => {},
+      dismissMergedBranch: () => {},
       back: () =>
         background(
           $,
@@ -715,7 +741,7 @@ function pickerHostOf($: Engine, session: Session): PickerHost {
   const visits = visitHostOf($, session)
 
   return {
-    checkQuietly: () => checkElsewhere({ ...elsewhereHostOf($, session), announce: async () => {} }, session),
+    check: () => checkElsewhere(elsewhereHostOf($, session), session),
     elsewhere: async () => readElsewhereState(await read($, elsewhereState)),
     markPicked: async (at) => {
       await update($, elsewhereState, (state) => withPickedAt(state, at))
@@ -776,7 +802,7 @@ async function openPane(
     await endVisitWithoutPane(visitHostOf($, session), session)
   }
   // The load under way, and its state written, before the pane draws, so its first drawing says it is checking rather
-  // than to press Refresh; the timer after, as while-open mode polls only once the pane is open. The drawing reads
+  // than to press ↻; the timer after, as while-open mode polls only once the pane is open. The drawing reads
   // state alone: a write redraws only the drawings that read it.
   const host = refreshHostOf($, session)
   if (!isLoaded && !isVisit) {
@@ -830,6 +856,54 @@ async function checkoutNow($: Engine): Promise<CheckoutAt> {
 // Kept unless a load or a press read the checkout later meanwhile (`newerCheckout`); resolves the one kept.
 async function keepCheckout($: Engine, checkout: CheckoutAt): Promise<CheckoutAt> {
   return (await update($, checkoutState, (kept) => newerCheckout(kept, checkout)))!
+}
+
+// The note above the folder's list offering to leave the checkout's branch where it merged (`mergedBranchOf`), as the
+// state holds it now. A press works it out again, as its button keeps the closure of the drawing it was first in.
+async function mergedBranchNow($: Engine, session: Session): Promise<MergedBranch | null> {
+  const checkout = await read($, checkoutState)
+
+  return mergedBranchOf(
+    listAsDrawn(session, storedSnapshot(await read($, snapshotState))),
+    checkout?.branch ?? null,
+    checkout?.head ?? null,
+    await read($, branchPullsState),
+    await read($, dismissedBranchState)
+  )
+}
+
+// Switch to the base, as the note stands at the press.
+async function switchFromMerged($: Engine, session: Session): Promise<void> {
+  const offer = await mergedBranchNow($, session)
+  if (offer !== null && session.repo !== null) {
+    await switchToBase(switchBaseHostOf($, session), session, session.repo, offer)
+  }
+}
+
+// The note's ✕: put away for this branch at this commit, and a switch it started stopped before its move, though the
+// note no longer offers it.
+async function dismissMerged($: Engine, session: Session): Promise<void> {
+  const offer = switchUnderWay(session) ?? (await mergedBranchNow($, session))
+  putAwaySwitch(session)
+  if (offer !== null) {
+    await update($, dismissedBranchState, () => ({ repo: offer.repo, branch: offer.branch, head: offer.head }))
+  }
+}
+
+// What the switch to the base reaches beyond git and gh: the list, the note as it stands now, its busy mark, toasts, an
+// install's notice, and the checkout read again once it is done, which the note and the list's branch mark follow.
+function switchBaseHostOf($: Engine, session: Session): SwitchBaseHost {
+  return {
+    ...hostOf($),
+    storedList: () => read($, snapshotState),
+    offered: () => mergedBranchNow($, session),
+    setBusy: (label) => setBusy($, SWITCH_BASE, label),
+    notify: (text) => notify($, text, session.settings.alertMs),
+    onInstall: (command) => background($, setBusy($, SWITCH_BASE, `Installing dependencies (${command})…`)),
+    changed: async () => {
+      await keepCheckout($, await checkoutNow($))
+    }
+  }
 }
 
 // The desktop app cuts a long status line short, so there the band above the prompt carries the summary; a
@@ -1454,10 +1528,10 @@ function suggestionsHostOf($: Engine): SuggestionsHost {
 }
 
 // The pull requests from the checkout's branch, as a lookup last found them, which a load, a press and a skill share.
-function branchPullsStateOf($: Engine): Pick<BranchLookupHost, "branchPulls" | "keepBranchPulls"> {
+function branchPullsStateOf($: Engine): Pick<BranchLookupHost, "branchPulls" | "changeBranchPulls"> {
   return {
     branchPulls: () => read($, branchPullsState),
-    keepBranchPulls: (looked) => update($, branchPullsState, () => looked)
+    changeBranchPulls: (change) => update($, branchPullsState, change)
   }
 }
 

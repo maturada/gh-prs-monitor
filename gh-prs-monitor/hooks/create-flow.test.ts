@@ -11,7 +11,7 @@ import type { ResponseFixture } from "./testing/fixtures"
 // GitHub said there is no pull request from `branch` at commit `head` (`BranchPulls`), while the list knew the
 // branch's last to end at `endedHead`.
 function said(branch: string, head: string, endedHead: string | null = null): BranchPulls {
-  return { repo: "acme/app", branch, head, isTaken: false, endedHead }
+  return { repo: "acme/app", branch, head, isTaken: false, endedHead, merged: null }
 }
 
 describe("the pull request Create PR could open", () => {
@@ -70,6 +70,19 @@ describe("the pull request Create PR could open", () => {
     expect(pullToOpen(ended, "fix/old", "local-head", said("fix/old", "local-head"))).toBeNull()
     expect(pullToOpen(ended, "fix/old", "local-head", said("fix/old", "local-head", "head-8"))).toBeNull()
     expect(wantsBranchLookup(ended, "fix/old", "local-head")).toBe(true)
+  })
+
+  test("GitHub is asked too where the list saw the branch's pull request end at the checkout's commit, for its note", () => {
+    const ended = snapshot && { ...snapshot, endedHeads: [{ branch: "fix/old", oid: "head-9" }] }
+
+    // Create PR has nothing to open there either way.
+    expect(pullToOpen(ended, "fix/old", "head-9", null)).toBeNull()
+    expect(wantsBranchLookup(ended, "fix/old", "head-9")).toBe(true)
+    // Not on the default branch, nor where the branch has a pull request open at another commit.
+    const onMain = snapshot && { ...snapshot, endedHeads: [{ branch: "main", oid: "head-9" }] }
+    expect(wantsBranchLookup(onMain, "main", "head-9")).toBe(false)
+    const reopened = snapshot && { ...snapshot, endedHeads: [{ branch: "fix/menu", oid: "head-9" }] }
+    expect(wantsBranchLookup(reopened, "fix/menu", "head-10")).toBe(false)
   })
 
   test("on what GitHub said as an earlier version kept it, with no ended head, where the list knows none", () => {

@@ -568,6 +568,7 @@ describe("asking in the pane", () => {
       isInPane: false,
       fieldKey: "answer-text-1",
       draft: "",
+      keystroke: null,
       picks: [],
       checking: null,
       problem: null
@@ -741,7 +742,7 @@ describe("a question that offers names, where the pane doesn't show", () => {
   })
 
   test("a question with a field of its own takes what is typed under Other as typed there; a decline cancels", async () => {
-    const field = { label: "Or type one", placeholder: "owner/name", submitLabel: "Show", otherHint: "Type one." }
+    const field = { label: "Type one", placeholder: "owner/name", submitLabel: "Show", otherHint: "Type one." }
     const repos: Question = {
       ...PEOPLE,
       header: "Repositories",
@@ -894,6 +895,7 @@ describe("the pane closing while it asks", () => {
         isInPane,
         fieldKey: "f",
         draft: "",
+        keystroke: null,
         picks: [],
         checking: null,
         problem: null

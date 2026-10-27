@@ -58,7 +58,7 @@ describe("visiting another repository", () => {
       const ui = await mountPane($, surface)
       expect(await header(ui)).toContain("acme/web")
       expect(await header(ui)).toContain("Not this session's folder")
-      expect((await ui.find({ key: "back" }))?.props.label).toBe("Back to acme/app")
+      expect((await ui.find({ key: "back" }))?.props.label).toBe("← acme/app")
       expect(wordsIn(drawnNodes(await ui.find({ key: "panel-mine" })))).toContain("Checkout page")
       expect(wordsIn(drawnNodes(await ui.find({ key: "panel-review" })))).toContain("Search box")
     }
@@ -94,11 +94,11 @@ describe("visiting another repository", () => {
     expect(buttons.map((node) => node.props?.key)).toEqual(["back", "repo", "view", "refresh"])
     expect(buttons[1]?.props?.dimColor).toBe(true)
     await ui.unmount()
-    // Beside the buttons, 61 columns with "Back to acme/app" (16 + 4) and its gap, the time's line with the note,
-    // 13 + 2 + 25, is the widest of the name's two lines: 4 + 40 + 2 + 61.
-    expect(folderRow).toBeLessThan(107)
-    expect(await stacks(106)).toBe("column")
-    expect(await stacks(107)).toBe("row")
+    // Beside the buttons, 49 columns with "← acme/app" (10 + 4) and its gap, the time's line with the note,
+    // 13 + 2 + 25, is the widest of the name's two lines: 4 + 40 + 2 + 49.
+    expect(folderRow).toBeLessThan(95)
+    expect(await stacks(94)).toBe("column")
+    expect(await stacks(95)).toBe("row")
   })
 
   test("while a visit's list loads, its header already makes room for the time the list brings", async ($, on) => {
@@ -118,7 +118,7 @@ describe("visiting another repository", () => {
     await clock.advance(30_000)
   })
 
-  test("a visit's Back too long for a narrow pane says Back alone", async ($, on) => {
+  test("a visit's Back too long for a narrow pane shows ← alone", async ($, on) => {
     const clock = clockOf(on)
     machine($, on, worldWith())
     await startSession($)
@@ -128,7 +128,7 @@ describe("visiting another repository", () => {
 
     const ui = await mountPane($, "terminal", 22)
 
-    expect((await ui.find({ key: "back" }))?.props.label).toBe("Back")
+    expect((await ui.find({ key: "back" }))?.props.label).toBe("←")
   })
 
   test("a visit's rows show no branch marker or Create PR, even on the branch the folder is on", async ($, on) => {
@@ -180,7 +180,7 @@ describe("visiting another repository", () => {
     expect(await header(ui)).toContain("Not this session's folder")
   })
 
-  test("Back names the folder's repository only where the whole row of buttons then fits; Repositories stays", async ($, on) => {
+  test("Back shows ← and the folder's repository only where the whole row of buttons then fits; Repositories stays", async ($, on) => {
     const clock = clockOf(on)
     machine($, on, worldWith())
     await startSession($)
@@ -188,19 +188,23 @@ describe("visiting another repository", () => {
     await runPrs($, "acme/web")
     await clock.settle()
 
-    // The row, each button 4 columns more than its label and a column between: "Back to acme/app", Repositories (as
-    // wide as Loading… at least), Compact and Refresh need 61 of the 4 fewer than the pane's; plain Back 49.
-    for (const [columns, back, pick] of [
-      [50, "Back", "Repositories"],
-      [64, "Back", "Repositories"],
-      [65, "Back to acme/app", "Repositories"],
-      [100, "Back to acme/app", "Repositories"]
+    // The row, each button 4 columns more than what it shows and a column between: "← acme/app", Repositories,
+    // Compact and ↻ need 49 of the 4 fewer than the pane's; ← alone 40. What it shows is its label, which the desktop
+    // app draws on its native button.
+    for (const [columns, shows, pick] of [
+      [50, "←", "Repositories"],
+      [52, "←", "Repositories"],
+      [53, "← acme/app", "Repositories"],
+      [100, "← acme/app", "Repositories"]
     ] as const) {
       const ui = await mountPane($, "terminal", columns)
-      expect([(await ui.find({ key: "back" }))?.props.label, (await ui.find({ key: "repo" }))?.props.label]).toEqual([
-        back,
-        pick
-      ])
+      const backButton = await ui.find({ key: "back" })
+      expect([
+        backButton?.props.label,
+        backButton?.children ?? [],
+        backButton?.props.hotkey,
+        (await ui.find({ key: "repo" }))?.props.label
+      ]).toEqual([shows, [], "b", pick])
       await ui.unmount()
     }
   })
@@ -213,7 +217,7 @@ describe("visiting another repository", () => {
     await runPrs($, "acme/web")
     await clock.settle()
 
-    const ui = await mountPane($, "terminal", 95)
+    const ui = await mountPane($, "terminal", 94)
     expect((await ui.find({ key: "header" }))?.props.flexDirection).toBe("column")
     await ui.unmount()
   })
@@ -360,7 +364,7 @@ describe("visiting another repository", () => {
     expect(listsOf(seen.runs, "acme/web")).toBe(asked + 1)
     const ui = await mountPane($, "terminal")
     expect(await header(ui)).toContain("Not this session's folder")
-    expect((await ui.find({ key: "back" }))?.props.label).toBe("Back to acme/app")
+    expect((await ui.find({ key: "back" }))?.props.label).toBe("← acme/app")
   })
 
   test("a row merged on a visit just before a reload shows merged for the rest of its time, then goes", async ($, on) => {
@@ -650,7 +654,7 @@ describe("visiting another repository", () => {
     await startSession($)
     await clock.settle()
 
-    expect((await (await mountPane($, "terminal")).find({ key: "back" }))?.props.label).toBe("Back to acme/app")
+    expect((await (await mountPane($, "terminal")).find({ key: "back" }))?.props.label).toBe("← acme/app")
   })
 
   test("Back reads the folder's list again only where it is older than a check's interval", async ($, on) => {

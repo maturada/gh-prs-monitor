@@ -276,7 +276,7 @@ export type ElsewhereTimerHost = {
 
 // The light check where it is on, on the refresh mode's timer, while an app draws the session and the mode has checks
 // run now, as the folder's do. A tick that asks nothing lets the next check say what waits in one line again
-// (`isReturning`). On demand there is no timer: /prs and Refresh ask (`askElsewhere`).
+// (`isReturning`). On demand there is no timer: /prs and ↻ ask (`askElsewhere`).
 export function pollElsewhere(host: ElsewhereTimerHost, session: Session): void {
   if (!session.settings.isAlertingElsewhere || session.settings.refresh === "on-demand" || session.elsewhere.timer) {
     return
@@ -294,10 +294,11 @@ async function tickElsewhere(host: ElsewhereTimerHost, session: Session): Promis
   await host.check()
 }
 
-// While open and on demand, a check also whenever the pane opens (/prs, the band, an app attaching) and at Refresh, the
-// folder's, a visit's or the examples'; in background mode the timer's checks alone.
+// A check now, in every mode, as the folder's list is read again at once: whenever the pane opens (/prs, the band, an
+// app attaching) and at ↻, the folder's, a visit's or the examples'. So "+N elsewhere" shows what waits now, which the
+// background's timer would leave as it was for up to an interval.
 export function askElsewhere(host: ElsewhereTimerHost, session: Session): void {
-  if (session.settings.isAlertingElsewhere && session.settings.refresh !== "background") {
+  if (session.settings.isAlertingElsewhere) {
     host.background(host.check())
   }
 }
@@ -317,9 +318,10 @@ export type ElsewhereHost = Host & {
 
 // One light check, joining one under way, as the timer's and the person's can meet. The first of a session, the first
 // since nothing drew (`isReturning`), or the first to tell after checks that told nothing (the picker's, with the
-// alerts from other repositories off, then turned on) says what waits in one line; later ones tell what changed. On the
-// folder's server, gh's default where the folder has no repository for good (`folderFor`); none where its repository
-// can't be looked up now. A failure goes to the debug log alone, as the folder's problems are said by its own list.
+// alerts from other repositories off, then turned on) says what waits in one line; later ones tell what changed; with
+// the setting off, none tells. On the folder's server, gh's default where the folder has no repository for good
+// (`folderFor`); none where its repository can't be looked up now. A failure goes to the debug log alone, as the
+// folder's problems are said by its own list.
 export function checkElsewhere(host: ElsewhereHost, session: Session): Promise<void> {
   session.elsewhere.inFlight ??= runCheck(host, session).finally(() => {
     session.elsewhere.inFlight = null
@@ -372,6 +374,10 @@ async function runCheck(host: ElsewhereHost, session: Session): Promise<void> {
   const isFirst = known === null || isReturning || !known.isTold
   const next = { ...nextElsewhere(before, read, await host.now()), isTold: session.settings.isAlertingElsewhere }
   await host.changeState((current) => withLaterPickedAt(next, current))
+  // With the setting off, as for the picker's check, what it read is kept and nothing is told.
+  if (!session.settings.isAlertingElsewhere) {
+    return
+  }
   if (isFirst) {
     // Said only while the alerts it reads are on, as Change alerts and the Alert rows turn them.
     const isAlerting = session.settings.alertKinds.some((kind) => CHECKED_KINDS.includes(kind))

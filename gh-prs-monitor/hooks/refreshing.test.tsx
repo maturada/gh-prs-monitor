@@ -260,12 +260,13 @@ describe("a snapshot from another version", () => {
 
     const ui = await mountPane($, "terminal")
 
-    expect(await ui.find({ type: "Text", text: "Press Refresh to check GitHub for pull requests." })).toBeDefined()
+    expect(await ui.find({ type: "Text", text: "Press ↻ to check GitHub for pull requests." })).toBeDefined()
     // One line under the header, from the pane's own gap, as everything under it is.
     expect((await ui.find({ key: "loading" }))?.props).toEqual({ key: "loading", justifyContent: "center" })
-    expect(
-      (await ui.find({ type: "Text", text: "Press Refresh to check GitHub for pull requests." }))?.props
-    ).toMatchObject({ dimColor: true, wrap: "wrap" })
+    expect((await ui.find({ type: "Text", text: "Press ↻ to check GitHub for pull requests." }))?.props).toMatchObject({
+      dimColor: true,
+      wrap: "wrap"
+    })
   })
 
   test(
@@ -670,9 +671,7 @@ describe("a load after /clear, which empties the session's state and starts no s
 
       await clock.advance(MINUTE)
       const listed = await mountPane($, "terminal")
-      expect(
-        await listed.find({ type: "Text", text: "Press Refresh to check GitHub for pull requests." })
-      ).toBeUndefined()
+      expect(await listed.find({ type: "Text", text: "Press ↻ to check GitHub for pull requests." })).toBeUndefined()
       expect(await listed.find({ type: "Text", text: "Fix the menu" })).toBeDefined()
     }
   )

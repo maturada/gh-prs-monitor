@@ -13,7 +13,15 @@ import { createSession } from "../C/hooks/session"
 import type { Session } from "../C/hooks/session"
 import { readSettings } from "../C/hooks/settings"
 import type { SharedAnswer } from "../C/hooks/shared"
-import { claimFetch, notShownElsewhere, recallClaim, recallLook, recallShared, rememberLook, shareAnswer } from "../C/hooks/store"
+import {
+  claimFetch,
+  notShownByOtherSessions,
+  recallClaim,
+  recallLook,
+  recallShared,
+  rememberLook,
+  shareAnswer
+} from "../C/hooks/store"
 import type { StoreHost } from "../C/hooks/store"
 import { announce, release } from "../C/hooks/toasts"
 import { response } from "../C/hooks/testing/fixtures"
@@ -394,8 +402,8 @@ export class World {
         await world.tiny()
         return sim.generation !== generation
       }
-      // The plugin's store as register.tsx hands it in (`storeOf`): this process's calls one at a time, the session's own
-      // clock, its debug log; a share refused where the engine's store would refuse it.
+      // The plugin's store as register.tsx hands it in (`storeOf`): this process's calls one at a time, the session's
+      // own clock, its debug log; a share refused where the engine's store would refuse it.
       const store: StoreHost = {
         get: (key) => $store.get(key),
         keys: () => $store.keys(),
@@ -601,8 +609,8 @@ export class World {
     return sim
   }
 
-  // The toast host as register.tsx builds it: what no other session showed lately (`notShownElsewhere`, given what
-  // the version run hands it), each line of it a toast, counted before the toast stack folds the fourth and on.
+  // The toast host as register.tsx builds it: what no other session showed lately (`notShownByOtherSessions`), each
+  // line of it a toast, counted before the toast stack folds the fourth and on.
   toastHost(sim: SimSession, store: StoreHost) {
     const shown = { by: sim.session.id, pollMs: sim.session.settings.pollMs }
     return {
@@ -620,10 +628,8 @@ export class World {
           this.work.push(fire().catch((e) => this.failed(sim, e)))
         })
       },
-      // 1.5.0 asks with the batches, each saying when it was raised; a version before with the repository and lines.
-      notShownElsewhere: async (...asked: unknown[]) => {
-        const check = notShownElsewhere as (...args: unknown[]) => Promise<unknown[]>
-        const fresh = await check(store, ...asked, shown)
+      notShownByOtherSessions: async (batches: Parameters<typeof notShownByOtherSessions>[1]) => {
+        const fresh = await notShownByOtherSessions(store, batches, shown)
         for (const line of linesOf(fresh)) this.toasts.push({ session: sim.name, at: this.clock.now, line })
         return fresh
       }
@@ -721,9 +727,16 @@ export class World {
     })
   }
 
-  // The Refresh button.
+  // The Refresh button: the list, and the light check where this world runs it, as register.tsx has it.
   press(sim: SimSession): void {
     this.work.push(retry(sim.host, sim.session).catch((e) => this.failed(sim, e)))
+    if (this.isElsewhere(sim)) {
+      this.work.push(
+        this.elsewhereOf(sim)
+          .then((light) => light?.ask())
+          .catch((e) => this.failed(sim, e))
+      )
+    }
   }
 
   // A write from the pane (a re-run, mark ready, ...): GitHub takes it, then the list is refreshed after it.

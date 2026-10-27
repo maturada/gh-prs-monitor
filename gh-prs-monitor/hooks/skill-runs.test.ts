@@ -30,7 +30,7 @@ function skillHostOf(list: PullsSnapshot | null, ref = "refs/heads/fix/menu") {
       marks.push([mark, text])
     },
     branchPulls: async () => null,
-    keepBranchPulls: async () => undefined,
+    changeBranchPulls: async () => undefined,
     checkoutNow: async () => ({ branch: "fix/menu", head: "head-7", at: 0 }),
     keepCheckout: async (checkout) => checkout,
     cwd: async () => "/repo",
@@ -133,7 +133,8 @@ describe("Create PR", () => {
     branch: "feature/x",
     head: "h1",
     isTaken,
-    endedHead: null
+    endedHead: null,
+    merged: null
   })
 
   test("a press asks GitHub about the branch again, unless it said one is open from it", async () => {

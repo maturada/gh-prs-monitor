@@ -18,16 +18,16 @@ first change, the pull request, and what happened, every change in turn.
 ± #144 Track video engagement — changes requested by bob
 ✗ #142 Resize images on the CDN — CI failed, merge conflicts
 ⌕ #150 Add the chart legend (ann) — review requested
-↻ #143 Move the settings page to the new… — new commits since your review
+↑ #143 Move the settings page to the new… — new commits since your review
 ✓ #141 Show the map on the article page — merged by bob
 @ #151 Cache the map tiles offline (ann) — you were mentioned
 ```
 
 Toasts are for the checks nobody asked for: the regular ones, and those that follow a skill's work.
 
-When you look for yourself, by opening `/prs` or pressing **Refresh**, what changed shows in the list instead, where you
-are already looking. In the pane it sits at the foot of each pull request. Where the pane can't show, it is at the head
-of the list `/prs` prints.
+When you look for yourself, by opening `/prs` or pressing **↻** (Refresh), what changed shows in the list instead, where
+you are already looking. In the pane it sits at the foot of each pull request. Where the pane can't show, it is at the
+head of the list `/prs` prints.
 
 ## What you are alerted about
 
@@ -43,7 +43,7 @@ raises no alert.
 | CI | ✗ checks failed, ✓ checks passed after running or failing | Alert: CI |
 | Conflicts | ⚠ new merge conflicts, also when GitHub was rechecking in between, as after a push to the base | Alert: conflicts |
 | Review requests | ⌕ you are asked to review, or asked again | Alert: review requests |
-| New commits | ↻ new commits on a pull request you reviewed without approving it (an approval takes it off your review list) | Alert: new commits |
+| New commits | ↑ new commits on a pull request you reviewed without approving it (an approval takes it off your review list) | Alert: new commits |
 | Mentions | @ someone else's open pull request mentions you, by your login, for the first time | Alert: mentions |
 | Merged and closed | ✓ merged, ✕ closed, by someone else, or merged by an auto-merge you turned on or from the merge queue: yours, and the ones on your review list. A merged one in a stack names the next one up when that one is in your lists (`#1242 is next in stack #30`). | Alert: merged and closed |
 
@@ -91,10 +91,9 @@ Code and the desktop app alike, and for the alerts from
 
 ## Other repositories
 
-Alerts cover this folder's repository. With **Alerts from other repositories** on, a light check tells you about
-reviews and CI in your other repositories too, and the pane's header counts what waits there, `+3 elsewhere`. The
-setting, what it alerts and what it costs are on
-[Other repositories](other-repositories.md#alerts-from-other-repositories).
+Alerts cover this folder's repository. With **Alerts from other repositories** on, a light check tells you about reviews
+and CI in your other repositories too, and the pane's header counts what waits there, `+3 elsewhere`. The setting,
+what it alerts and what it costs are on [Other repositories](other-repositories.md#alerts-from-other-repositories).
 
 ## Sound and system notifications
 
