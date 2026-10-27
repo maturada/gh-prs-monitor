@@ -170,6 +170,24 @@ describe("the note on a branch that merged", () => {
     expect(seen.toasts.filter((toast) => toast.startsWith("Switched"))).toEqual([])
   })
 
+  test("waiting for a turn, it stays in sight with its ✕ though the checkout moved meanwhile, and the ✕ stops it", async ($, on) => {
+    const { ui, clock, seen, world } = await mergedOn($, on)
+
+    await $.turn.start({ text: "go", turnId: "t1" } as never)
+    await ui.press({ key: "switch-base" })
+    await settleAll(clock, seen)
+    // The turn checks out another branch: the next load no longer offers the note, but the switch it started shows.
+    world.branch = "feature/y"
+    world.head = "h9"
+    await ui.press({ key: "refresh" })
+    await settleAll(clock, seen)
+    expect(await ui.find({ type: "Text", text: "Switches to main when this turn ends" })).toBeDefined()
+    await ui.press({ key: "dismiss-base" })
+    await settleAll(clock, seen)
+    expect(seen.toasts).toContain("Not switched to main: its note was put away.")
+    expect(await ui.find(NOTE)).toBeUndefined()
+  })
+
   test("none on a visit to another repository, nor in the examples", async ($, on) => {
     const { ui, clock, seen } = await mergedOn($, on, {
       others: { "github.com/acme/web": { mine: [{ number: 12, title: "Checkout page" }] } }

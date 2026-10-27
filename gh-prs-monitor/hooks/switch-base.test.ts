@@ -4,11 +4,11 @@ import { describe, expect, test } from "claude-code/testing"
 
 import type { ProcessRunResult } from "claude-code"
 
-import type { BranchPulls } from "../types"
+import type { BranchPulls, MergedBranch } from "../types"
 import { createSession } from "./session"
 import { readSettings } from "./settings"
 import { mergedBranchOf, putAwaySwitch, switchToBase } from "./switch-base"
-import type { MergedBranch, SwitchBaseHost } from "./switch-base"
+import type { SwitchBaseHost } from "./switch-base"
 import { fakeHost } from "./testing/git-host"
 import { promisesRun } from "./testing/promises"
 import type { Call } from "./testing/git-host"
@@ -315,10 +315,9 @@ describe("switching to the base", () => {
     const switching = switchToBase(machine.host, machine.session, REPO, OFFER)
     await promisesRun()
 
-    // Fetched already, which moves nothing of the person's; nothing looked at or moved while the turn runs.
+    // Nothing fetched, looked at or moved while the turn runs, as it may be running git in this checkout itself.
     expect(machine.busy).toEqual(["Switching to main…", "Switches to main when this turn ends"])
-    expect(ran(machine.calls, / fetch /)).toHaveLength(1)
-    expect(ran(machine.calls, /^git status|^git switch/)).toEqual([])
+    expect(machine.calls).toEqual([])
     machine.session.runningTurns.clear()
     for (const resolve of machine.session.idleWaiters.splice(0)) {
       resolve()
@@ -370,7 +369,7 @@ describe("switching to the base", () => {
     // The turn still runs.
     await switching
 
-    expect(ran(machine.calls, /^git status|^git worktree|^git switch|^git branch -D/)).toEqual([])
+    expect(machine.calls).toEqual([])
     expect(machine.said).toEqual(["Not switched to main: its note was put away."])
     expect(machine.session.switchingFor).toBe(null)
     expect(machine.busy.at(-1)).toBe(null)
@@ -424,6 +423,28 @@ describe("switching to the base", () => {
     ])
   })
 
+  test("a skill pressed while git looks at the checkout before the move stops it too", async () => {
+    let looks = 0
+    const machine = machineFor([
+      [
+        "git worktree list --porcelain",
+        () => {
+          // The look after the fetch, the last before the move.
+          if (looks++ === 1) {
+            machine.session.skills.starting.push({} as never)
+          }
+          return { stdout: "worktree /repo\nHEAD h1\nbranch refs/heads/feature/x\n\n" }
+        }
+      ]
+    ])
+    await switchToBase(machine.host, machine.session, REPO, OFFER)
+
+    expect(ran(machine.calls, /^git switch|^git branch -D/)).toEqual([])
+    expect(machine.said).toEqual([
+      "Not switched to main: a skill is starting here; press Switch to main again once its turn ends."
+    ])
+  })
+
   test("a skill pressed while the base is fetched stops it too, before anything moves", async () => {
     const machine = machineFor([
       [
@@ -468,7 +489,7 @@ describe("switching to the base", () => {
 
   test("a switch to the base under way says so to a second press", async () => {
     const machine = machineFor([])
-    machine.session.switchingFor = { base: "main", putAway: () => {} }
+    machine.session.switchingFor = { offer: OFFER, putAway: () => {} }
     await switchToBase(machine.host, machine.session, REPO, OFFER)
 
     expect(machine.said).toEqual(["This checkout is switching to main; press Switch to main again once it is done."])

@@ -8,7 +8,7 @@
 import { atom, read, update } from "claude-code"
 import type { EngineInterface, Register, RenderElement, RenderInput, Timer, UiOpenResult } from "claude-code"
 
-import type { Activity, CheckoutAt, PullAction, PullRow, PullsSnapshot, Question, Visit } from "../types"
+import type { Activity, CheckoutAt, MergedBranch, PullAction, PullRow, PullsSnapshot, Question, Visit } from "../types"
 import { ACTION_LABELS } from "./actions"
 import { nextNoteExpiry, nothingHeld, readHeld, recentNotes } from "./alerts"
 // TBD: with `#` in the prompt, off for now (`prompt.autocomplete` below).
@@ -79,8 +79,8 @@ import type { SkillHost } from "./skill-runs"
 import { askPick, elsewhereCount } from "./repo-picker"
 import type { PickerHost } from "./repo-picker"
 import { stableButtons, stableInputs } from "./stable-elements"
-import { mergedBranchOf, putAwaySwitch, SWITCH_BASE, switchToBase } from "./switch-base"
-import type { MergedBranch, SwitchBaseHost } from "./switch-base"
+import { mergedBranchOf, putAwaySwitch, SWITCH_BASE, switchToBase, switchUnderWay } from "./switch-base"
+import type { SwitchBaseHost } from "./switch-base"
 import {
   claimCleanup,
   claimFetch,
@@ -630,7 +630,7 @@ async function drawList($: Engine, session: Session, e: RenderInput<"Pane">): Pr
     branch,
     toOpen: pullToOpen(snapshot, branch, head, await read($, branchPullsState)),
     merged: await read($, mergedState),
-    mergedBranch: await mergedBranchNow($, session),
+    mergedBranch: switchUnderWay(session) ?? (await mergedBranchNow($, session)),
     tickets: shownTickets(session),
     visit: null,
     isPreparingPicker: session.isPreparingPicker,
@@ -880,12 +880,13 @@ async function switchFromMerged($: Engine, session: Session): Promise<void> {
   }
 }
 
-// The note's ✕: put away for this branch at this commit, and a switch it started stopped before its move.
+// The note's ✕: put away for this branch at this commit, and a switch it started stopped before its move, though the
+// note no longer offers it.
 async function dismissMerged($: Engine, session: Session): Promise<void> {
-  const offer = await mergedBranchNow($, session)
+  const offer = switchUnderWay(session) ?? (await mergedBranchNow($, session))
+  putAwaySwitch(session)
   if (offer !== null) {
     await update($, dismissedBranchState, () => ({ repo: offer.repo, branch: offer.branch, head: offer.head }))
-    putAwaySwitch(session)
   }
 }
 

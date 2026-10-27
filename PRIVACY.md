@@ -86,4 +86,4 @@ status line send nothing to a model.
 
 Open an issue: https://github.com/maturada/gh-prs-monitor/issues
 
-Last updated 26.10.2026.
+Last updated 27.10.2026.

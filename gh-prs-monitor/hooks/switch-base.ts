@@ -4,7 +4,7 @@
 // (`switchToBase`), which loses nothing of the person's: up to the move, each step stops with what it found, nothing
 // changed past it; after it, what fails is told beside the switch. The person is told how it went either way.
 
-import type { BranchPulls, DismissedBranch, PullsSnapshot } from "../types"
+import type { BranchPulls, DismissedBranch, MergedBranch, PullsSnapshot } from "../types"
 import { checkedOut, heldElsewhere, toplevel, uncommittedChanges } from "./checkout"
 import { isAnswered } from "./create-flow"
 import { installChanged, lockedProjects } from "./deps"
@@ -24,9 +24,6 @@ import { prNumberOf } from "./worktrees"
 
 // The busy mark the switch shows its progress under, in the note's place for its button.
 export const SWITCH_BASE = "switch-base"
-
-// The checkout's branch at its commit, merged as pull request `number` into `base`, of the list's repository.
-export type MergedBranch = { repo: string; branch: string; head: string; number: number; base: string }
 
 // The branch the pane offers to leave: the checkout's, where GitHub said a merged pull request holds its commit, for
 // the list as it stands (`isAnswered`), into a base GitHub named that is another branch. None where another worktree
@@ -94,7 +91,7 @@ export async function switchToBase(
     return
   }
   const putAway = putAwaySignal()
-  session.switchingFor = { base: offer.base, putAway: putAway.give }
+  session.switchingFor = { offer, putAway: putAway.give }
   let said: string
   try {
     said = await switched(host, session, repo, offer, putAway)
@@ -107,9 +104,10 @@ export async function switchToBase(
   await host.notify(said)
 }
 
-// The switch, step by step, and what the person is told of it. With no turn under way, what keeps the checkout from
-// moving is said at once, before GitHub is asked. The base is fetched, which moves nothing of the person's; once the
-// checkout is clear to move (`readyToMove`), the move follows at once.
+// The switch, step by step, and what the person is told of it. A turn under way is waited for first, as it may be
+// running git in this checkout itself (`afterTurns`); then what keeps the checkout from moving is said before GitHub is
+// asked. The base is fetched, which moves nothing of the person's; once the checkout is clear to move (`readyToMove`),
+// the move follows at once.
 async function switched(
   host: SwitchBaseHost,
   session: Session,
@@ -120,8 +118,12 @@ async function switched(
   const { base } = offer
   const stopped = (why: string): string => `Not switched to ${base}: ${why}.`
   await host.setBusy(`Switching to ${base}…`)
+  const waited = await afterTurns(host, session, offer, putAway)
+  if (waited !== null) {
+    return stopped(waited)
+  }
   const root = await toplevel(host)
-  const early = session.runningTurns.size > 0 ? null : await whyNotNow(host, session, offer, root)
+  const early = await whyNotNow(host, session, offer, root)
   if (early !== null) {
     return stopped(early)
   }
@@ -162,10 +164,9 @@ async function switched(
   return `Switched to ${base}; ${[left, unset, installed].filter(Boolean).join("; ")}.`
 }
 
-// The checkout once it is clear to move: any turn under way waited for, which the note says meanwhile, then looked at
-// with no turn under way (`whyNotNow`), with what its lockfiles hold before the move; looked at again where a turn
-// began meanwhile, as a prompt queued starts one as the last ends (as Here, switch branch's `isCheckoutAsAsked`).
-// Else why it can't: the note's ✕ pressed (`putAway`) ends a wait for a turn at once, and nothing is looked at.
+// The checkout once it is clear to move: any turn under way waited for (`afterTurns`), then looked at with no turn
+// under way (`whyNotNow`), with what its lockfiles hold before the move; looked at again where a turn began meanwhile,
+// as a prompt queued starts one as the last ends (as Here, switch branch's `isCheckoutAsAsked`). Else why it can't.
 async function readyToMove(
   host: SwitchBaseHost,
   session: Session,
@@ -174,13 +175,9 @@ async function readyToMove(
   putAway: PutAway
 ): Promise<{ before: LockedProjects } | { why: string }> {
   for (;;) {
-    while (session.runningTurns.size > 0 && !putAway.isGiven()) {
-      await host.setBusy(`Switches to ${offer.base} when this turn ends`)
-      await Promise.race([whenIdle(session), putAway.given])
-      await host.setBusy(`Switching to ${offer.base}…`)
-    }
-    if (putAway.isGiven()) {
-      return { why: "its note was put away" }
+    const waited = await afterTurns(host, session, offer, putAway)
+    if (waited !== null) {
+      return { why: waited }
     }
     const before = await lockedProjects(host, root)
     const why = await whyNotNow(host, session, offer, root)
@@ -193,22 +190,42 @@ async function readyToMove(
   }
 }
 
-// What keeps the checkout from moving now, as the person is told; null for nothing. No skill pressed whose turn has
-// yet to start, which would work in this checkout as it moves: asked first, so git runs nothing in it then, and last,
-// for one pressed while git looked. On the branch at the commit GitHub said is merged, as the note was drawn; no
-// uncommitted change, which git carries to the base without a word where both have the file, and the branch goes
-// after; the base no other worktree holds. And the note still offering it, as a pull request opened from or into the
-// branch takes it back: asked after the reasons of their own, which the person is told rather than that.
+// Any turn under way waited out, as it may be running git in this checkout itself, the note saying so meanwhile; then
+// why the checkout can't be looked at now: the note's ✕ pressed meanwhile (`putAway`), which ends the wait at once, or
+// a skill pressed whose turn has yet to start (`skillStarting`). Null where it can.
+async function afterTurns(
+  host: SwitchBaseHost,
+  session: Session,
+  offer: MergedBranch,
+  putAway: PutAway
+): Promise<string | null> {
+  while (session.runningTurns.size > 0 && !putAway.isGiven()) {
+    await host.setBusy(`Switches to ${offer.base} when this turn ends`)
+    await Promise.race([whenIdle(session), putAway.given])
+    await host.setBusy(`Switching to ${offer.base}…`)
+  }
+
+  return putAway.isGiven() ? "its note was put away" : skillStarting(session, offer)
+}
+
+// A skill pressed here whose turn has yet to start, which would work in this checkout as it moves; null for none.
+function skillStarting(session: Session, offer: MergedBranch): string | null {
+  return session.skills.starting.length > 0
+    ? `a skill is starting here; press Switch to ${offer.base} again once its turn ends`
+    : null
+}
+
+// What keeps the checkout from moving now, as the person is told; null for nothing. On the branch at the commit GitHub
+// said is merged, as the note was drawn; no uncommitted change, which git carries to the base without a word where
+// both have the file, and the branch goes after; the base no other worktree holds. The note still offering it, as a
+// pull request opened from or into the branch takes it back: asked after the reasons of their own, which the person is
+// told rather than that. And no skill pressed while git looked (`skillStarting`).
 async function whyNotNow(
   host: SwitchBaseHost,
   session: Session,
   offer: MergedBranch,
   root: string
 ): Promise<string | null> {
-  const starting = `a skill is starting here; press Switch to ${offer.base} again once its turn ends`
-  if (session.skills.starting.length > 0) {
-    return starting
-  }
   const now = await checkedOut(host)
   if (now.branch !== offer.branch || now.head !== offer.head) {
     return "this checkout moved since; look at the pane again"
@@ -226,16 +243,24 @@ async function whyNotNow(
     return "the pane no longer offers it"
   }
 
-  return session.skills.starting.length > 0 ? starting : null
+  return skillStarting(session, offer)
 }
 
 // The note's ✕, pressed while a switch to the base is under way: it stops before its move, at once where it waits for
-// a turn (`readyToMove`), so this checkout is free again for the row buttons that switch it.
+// a turn (`afterTurns`), so this checkout is free again for the row buttons that switch it.
 export function putAwaySwitch(session: Session): void {
   const switching = session.switchingFor
   if (switching !== null && "putAway" in switching) {
     switching.putAway()
   }
+}
+
+// The note a switch to the base under way was pressed on, which the pane keeps drawn while it runs, with its progress
+// and its ✕, whatever changed meanwhile; null for none.
+export function switchUnderWay(session: Session): MergedBranch | null {
+  const switching = session.switchingFor
+
+  return switching !== null && "offer" in switching ? switching.offer : null
 }
 
 // Whether the note's ✕ was pressed during a switch (`isGiven`), and a promise kept once it is (`given`).

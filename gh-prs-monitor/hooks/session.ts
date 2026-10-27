@@ -2,7 +2,7 @@
 
 import type { Timer } from "claude-code"
 
-import type { Answer, BranchPulls, PullsSnapshot, Question } from "../types"
+import type { Answer, BranchPulls, MergedBranch, PullsSnapshot, Question } from "../types"
 import { nothingHeld } from "./alerts"
 import type { AlertBatch, HeldAlerts } from "./alerts"
 import type { CREATE_PR } from "./create-flow"
@@ -298,13 +298,13 @@ export async function whenIdle(session: Session): Promise<void> {
   }
 }
 
-// A switch of this checkout: to a pull request's branch (Here, switch branch), or to the base a merge left it on, which
-// its note's ✕ stops before the move (`putAwaySwitch`).
-export type CheckoutSwitch = { number: number } | { base: string; putAway: () => void }
+// A switch of this checkout: to a pull request's branch (Here, switch branch), or to the base a merge left it on, from
+// the note that offered it, whose ✕ stops it before the move (`putAwaySwitch`).
+export type CheckoutSwitch = { number: number } | { offer: MergedBranch; putAway: () => void }
 
 // What is switching this checkout, as the person is told.
 export function switchingSaid(switching: CheckoutSwitch): string {
   return "number" in switching
     ? `#${switching.number} is switching this checkout`
-    : `this checkout is switching to ${switching.base}`
+    : `this checkout is switching to ${switching.offer.base}`
 }

@@ -2,13 +2,12 @@
 
 import type { BoxProps, ButtonProps, ElementConstructor, LinkProps, RenderElement, TextProps } from "claude-code"
 
-import type { Activity, Badge, CiMark, MergedPull, PullAction, PullRow, PullsSnapshot } from "../types"
+import type { Activity, Badge, CiMark, MergedBranch, MergedPull, PullAction, PullRow, PullsSnapshot } from "../types"
 import { ACTION_LABELS } from "./actions"
 import { isOnBranch, rowsOf, stackText } from "./pulls"
 import { CREATE_PR } from "./create-flow"
 import type { PullToOpen } from "./create-flow"
 import { SWITCH_BASE } from "./switch-base"
-import type { MergedBranch } from "./switch-base"
 import { noteEvents } from "./alerts"
 import { ago, checkingAgain, elapsed, lookedAt } from "./when"
 import { BACK_MARK, buttonKey, PICK_KEY, rowKey } from "./keys"
@@ -70,7 +69,8 @@ export type PaneView = {
   // Pull requests merged from the pane a moment ago, shown where they were.
   merged: MergedPull[]
   // The checkout's branch, where its pull request merged at its commit, which the note above the lists offers to leave
-  // (`mergedBranchOf`); null for none, and on a visit or the examples.
+  // (`mergedBranchOf`), or the one a switch under way left, so its progress and its ✕ stay in sight; null for none,
+  // and on a visit or the examples.
   mergedBranch: MergedBranch | null
   // One line per pull request, or two in a narrow panel: its number, title and status.
   isCompact: boolean

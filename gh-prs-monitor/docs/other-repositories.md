@@ -69,8 +69,9 @@ a line: the name, the counts in short (`🔍 1`) and **Open**.
 **Open** on a row shows that repository; the one showing now reads **✓ Shown**. Typing in the field above the rows
 narrows them (`web` finds `acme/web`). Enter opens the repository whose full name you typed. Otherwise it opens the
 first row left, the one showing only where no other is left. With no row left, it looks up what you typed as `/prs`
-does: `owner/name`, an address or a folder's path. One not listed whose name a listed one holds (`acme/a` beside `acme/app`) shows by its address or `/prs acme/a`.
-What keeps a repository from showing, as a name mistyped or one you have no access to, is said in the picker, which
+does: `owner/name`, an address or a folder's path. A repository that isn't listed but whose name is part of a listed
+one's (`acme/a` beside `acme/app`) opens by its address or `/prs acme/a`, as Enter here opens the listed one. What
+keeps a repository from showing, as a name mistyped or one you have no access to, is said in the picker, which
 stays open. **Cancel** leaves the pane as it was.
 
 Where the pane can't show the picker, as when it closed since the press, Claude Code's own dialog asks instead: four

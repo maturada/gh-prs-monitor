@@ -193,6 +193,10 @@ export type BranchMerge = { number: number; base: string | null }
 // A branch at a commit whose merged note was put away with its ✕.
 export type DismissedBranch = { repo: string; branch: string; head: string }
 
+// The checkout's branch at its commit, merged as pull request `number` into `base`, of the list's repository: what the
+// note above the lists offers to leave.
+export type MergedBranch = { repo: string; branch: string; head: string; number: number; base: string }
+
 // The branch this session's checkout was on and its commit, both null where git could not tell, and when they were
 // read, so an older read never takes a newer one's place.
 export type CheckoutAt = { branch: string | null; head: string | null; at: number }

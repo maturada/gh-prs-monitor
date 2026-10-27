@@ -120,7 +120,7 @@ branches count, not a fork's. None shows where an open pull request in your list
 long-lived `develop`, or is open from it again; where another worktree has the base checked out; nor on `/prs`'s own
 `pr-<number>` branch, on a visit, in the examples, or in a folder with no list.
 
-**Switch to main** waits for a turn under way to end (the note's ✕ meanwhile stops it), fetches the base and switches
+**Switch to main** waits for a turn under way to end (its ✕ stops it while it waits), fetches the base and switches
 this checkout to it: it makes your local base, or brings it up to GitHub's (one with commits of yours ahead is taken
 as it is), installs what a changed lockfile needs, and deletes the merged branch where it is still at the merged commit
 and no pull request is open from it; its work stays in the merged pull request on GitHub. It changes nothing, and says
