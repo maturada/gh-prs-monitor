@@ -106,8 +106,8 @@ export async function switchToBase(
 
 // The switch, step by step, and what the person is told of it. A turn under way is waited for first, as it may be
 // running git in this checkout itself (`afterTurns`); then what keeps the checkout from moving is said before GitHub is
-// asked. The base is fetched, which moves nothing of the person's; once the checkout is clear to move (`readyToMove`),
-// the move follows at once.
+// asked, with no turn under way (`lookedAt`). The base is fetched, which moves nothing of the person's; once the
+// checkout is clear to move (`readyToMove`), the move follows at once.
 async function switched(
   host: SwitchBaseHost,
   session: Session,
@@ -123,7 +123,7 @@ async function switched(
     return stopped(waited)
   }
   const root = await toplevel(host)
-  const early = await whyNotNow(host, session, offer, root)
+  const early = await lookedAt(host, session, offer, root, putAway)
   if (early !== null) {
     return stopped(early)
   }
@@ -164,9 +164,8 @@ async function switched(
   return `Switched to ${base}; ${[left, unset, installed].filter(Boolean).join("; ")}.`
 }
 
-// The checkout once it is clear to move: any turn under way waited for (`afterTurns`), then looked at with no turn
-// under way (`whyNotNow`), with what its lockfiles hold before the move; looked at again where a turn began meanwhile,
-// as a prompt queued starts one as the last ends (as Here, switch branch's `isCheckoutAsAsked`). Else why it can't.
+// The checkout once it is clear to move, with what its lockfiles hold before the move: looked at with no turn under
+// way (`lookedAt`), and again where a turn began while the lockfiles were read. Else why it can't.
 async function readyToMove(
   host: SwitchBaseHost,
   session: Session,
@@ -175,17 +174,31 @@ async function readyToMove(
   putAway: PutAway
 ): Promise<{ before: LockedProjects } | { why: string }> {
   for (;;) {
-    const waited = await afterTurns(host, session, offer, putAway)
-    if (waited !== null) {
-      return { why: waited }
-    }
-    const before = await lockedProjects(host, root)
-    const why = await whyNotNow(host, session, offer, root)
+    const why = await lookedAt(host, session, offer, root, putAway)
     if (why !== null) {
       return { why }
     }
+    const before = await lockedProjects(host, root)
     if (session.runningTurns.size === 0) {
       return { before }
+    }
+  }
+}
+
+// What keeps the checkout from moving, looked at with no turn under way: any turn under way waited for first
+// (`afterTurns`), and the checkout looked at again where one began meanwhile, as a prompt queued starts one as the
+// last ends (as Here, switch branch's `isCheckoutAsAsked`). Null for nothing.
+async function lookedAt(
+  host: SwitchBaseHost,
+  session: Session,
+  offer: MergedBranch,
+  root: string,
+  putAway: PutAway
+): Promise<string | null> {
+  for (;;) {
+    const why = (await afterTurns(host, session, offer, putAway)) ?? (await whyNotNow(host, session, offer, root))
+    if (why !== null || session.runningTurns.size === 0) {
+      return why
     }
   }
 }

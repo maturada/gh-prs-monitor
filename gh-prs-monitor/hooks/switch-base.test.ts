@@ -332,6 +332,33 @@ describe("switching to the base", () => {
     ])
   })
 
+  test("a turn that began while the checkout was first looked at is waited for before GitHub is asked", async () => {
+    let looks = 0
+    const machine = machineFor([
+      [
+        "git status --porcelain --untracked-files=no",
+        () => {
+          // A prompt queued starts a turn as the first look runs.
+          if (looks++ === 0) {
+            machine.session.runningTurns.add("turn-2")
+          }
+          return { stdout: "" }
+        }
+      ]
+    ])
+    const switching = switchToBase(machine.host, machine.session, REPO, OFFER)
+    await promisesRun()
+
+    expect(ran(machine.calls, / fetch /)).toEqual([])
+    machine.session.runningTurns.clear()
+    for (const resolve of machine.session.idleWaiters.splice(0)) {
+      resolve()
+    }
+    await switching
+    expect(ran(machine.calls, / fetch /)).toHaveLength(1)
+    expect(machine.said).toEqual(["Switched to main; feature/x deleted, as #1242 merged it."])
+  })
+
   test("a turn that began while the checkout was looked at is waited for, and the checkout looked at again", async () => {
     let looks = 0
     const machine = machineFor([

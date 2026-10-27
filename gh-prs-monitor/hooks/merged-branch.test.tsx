@@ -186,6 +186,12 @@ describe("the note on a branch that merged", () => {
     await settleAll(clock, seen)
     expect(seen.toasts).toContain("Not switched to main: its note was put away.")
     expect(await ui.find(NOTE)).toBeUndefined()
+    // Back on the merged branch at that commit, the note stays put away.
+    world.branch = "feature/x"
+    world.head = "h1"
+    await ui.press({ key: "refresh" })
+    await settleAll(clock, seen)
+    expect(await ui.find(NOTE)).toBeUndefined()
   })
 
   test("none on a visit to another repository, nor in the examples", async ($, on) => {
