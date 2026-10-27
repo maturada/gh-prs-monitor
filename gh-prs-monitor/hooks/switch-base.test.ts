@@ -7,7 +7,7 @@ import type { ProcessRunResult } from "claude-code"
 import type { BranchPulls } from "../types"
 import { createSession } from "./session"
 import { readSettings } from "./settings"
-import { mergedBranchOf, switchToBase } from "./switch-base"
+import { mergedBranchOf, putAwaySwitch, switchToBase } from "./switch-base"
 import type { MergedBranch, SwitchBaseHost } from "./switch-base"
 import { fakeHost } from "./testing/git-host"
 import { promisesRun } from "./testing/promises"
@@ -228,8 +228,8 @@ describe("switching to the base", () => {
     expect(said).toEqual(["Not switched to main: this checkout moved since; look at the pane again."])
   })
 
-  test("a base another worktree holds stops it, naming where", async () => {
-    const { calls, said } = await switchOn([
+  test("a base another worktree holds stops it, naming where, though the note no longer shows for it", async () => {
+    const machine = machineFor([
       [
         "git worktree list --porcelain",
         {
@@ -238,9 +238,12 @@ describe("switching to the base", () => {
         }
       ]
     ])
+    // A load since saw the worktree holding the base, which hides the note: the reason of its own is said.
+    machine.offer(null)
+    await switchToBase(machine.host, machine.session, REPO, OFFER)
 
-    expect(ran(calls, /^git switch|^git branch -D/)).toEqual([])
-    expect(said).toEqual(["Not switched to main: it is checked out in /repo-main."])
+    expect(ran(machine.calls, /^git switch|^git branch -D/)).toEqual([])
+    expect(machine.said).toEqual(["Not switched to main: it is checked out in /repo-main."])
   })
 
   test("a base GitHub has no more, or a clone with no remote naming the repository, stops it", async () => {
@@ -357,12 +360,27 @@ describe("switching to the base", () => {
     expect(ran(machine.calls, /^git switch/)).toEqual(["git switch --no-overwrite-ignore -c main b1"])
   })
 
-  test("its note put away, or no longer offered, while it waits for a turn stops it before anything moves", async () => {
+  test("its note's ✕ while it waits for a turn stops it at once, letting this checkout go, nothing looked at", async () => {
     const machine = machineFor([])
     machine.session.runningTurns.add("turn-1")
     const switching = switchToBase(machine.host, machine.session, REPO, OFFER)
     await promisesRun()
-    // Its ✕ pressed meanwhile, or a pull request opened into the branch: the pane offers it no more.
+    machine.offer(null)
+    putAwaySwitch(machine.session)
+    // The turn still runs.
+    await switching
+
+    expect(ran(machine.calls, /^git status|^git worktree|^git switch|^git branch -D/)).toEqual([])
+    expect(machine.said).toEqual(["Not switched to main: its note was put away."])
+    expect(machine.session.switchingFor).toBe(null)
+    expect(machine.busy.at(-1)).toBe(null)
+  })
+
+  test("a note that no longer shows once the turn ends, as for a pull request opened into the branch, stops it", async () => {
+    const machine = machineFor([])
+    machine.session.runningTurns.add("turn-1")
+    const switching = switchToBase(machine.host, machine.session, REPO, OFFER)
+    await promisesRun()
     machine.offer(null)
     machine.session.runningTurns.clear()
     for (const resolve of machine.session.idleWaiters.splice(0)) {
@@ -399,8 +417,8 @@ describe("switching to the base", () => {
     machine.session.skills.starting.push({} as never)
     await switchToBase(machine.host, machine.session, REPO, OFFER)
 
-    // Said before GitHub is asked, as a local stop is.
-    expect(ran(machine.calls, / fetch |^git switch/)).toEqual([])
+    // Said before git or GitHub is asked, so nothing runs in the checkout as the skill starts.
+    expect(ran(machine.calls, /^git status|^git worktree| fetch |^git switch/)).toEqual([])
     expect(machine.said).toEqual([
       "Not switched to main: a skill is starting here; press Switch to main again once its turn ends."
     ])
@@ -450,7 +468,7 @@ describe("switching to the base", () => {
 
   test("a switch to the base under way says so to a second press", async () => {
     const machine = machineFor([])
-    machine.session.switchingFor = { base: "main" }
+    machine.session.switchingFor = { base: "main", putAway: () => {} }
     await switchToBase(machine.host, machine.session, REPO, OFFER)
 
     expect(machine.said).toEqual(["This checkout is switching to main; press Switch to main again once it is done."])

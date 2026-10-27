@@ -298,8 +298,9 @@ export async function whenIdle(session: Session): Promise<void> {
   }
 }
 
-// A switch of this checkout: to a pull request's branch (Here, switch branch), or to the base a merge left it on.
-export type CheckoutSwitch = { number: number } | { base: string }
+// A switch of this checkout: to a pull request's branch (Here, switch branch), or to the base a merge left it on, which
+// its note's ✕ stops before the move (`putAwaySwitch`).
+export type CheckoutSwitch = { number: number } | { base: string; putAway: () => void }
 
 // What is switching this checkout, as the person is told.
 export function switchingSaid(switching: CheckoutSwitch): string {

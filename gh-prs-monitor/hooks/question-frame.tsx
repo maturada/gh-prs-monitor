@@ -1,8 +1,8 @@
 // Author: David Matura
 
-// What every question the pane asks is drawn with, in place of the list: its frame, its field, its answers' row, Checking…
-// while an answer is carried out, and what kept one from working; which the plugin's dialog (`dialog.tsx`), the picker
-// (`picker.tsx`) and the repository picker's rows (`repo-rows.tsx`) fill.
+// What every question the pane asks is drawn with, in place of the list: its frame, its field, its answers' row,
+// Checking… while an answer is carried out, and what kept one from working; which the plugin's dialog (`dialog.tsx`),
+// the picker (`picker.tsx`) and the repository picker's rows (`repo-rows.tsx`) fill.
 
 import type {
   BoxProps,

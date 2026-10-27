@@ -17,11 +17,12 @@ import { storedSnapshot } from "./pulls"
 import type { BranchLook, Session } from "./session"
 
 // What GitHub's lookup of a branch's pull requests reaches beyond git and gh (`Host`): the list, GitHub's last answer
-// about the branch (`BranchPulls`), kept for the next, and the debug log. A load asks it too (`RefreshHost`).
+// about the branch (`BranchPulls`), kept for the next by a change of the answer kept as it then stands, and the debug
+// log. A load asks it too (`RefreshHost`).
 export type BranchLookupHost = Host & {
   storedList: () => Promise<PullsSnapshot | null>
   branchPulls: () => Promise<BranchPulls | null>
-  keepBranchPulls: (looked: BranchPulls) => Promise<unknown>
+  changeBranchPulls: (change: (kept: BranchPulls | null) => BranchPulls | null) => Promise<unknown>
   log: (line: string) => void
 }
 
@@ -29,8 +30,8 @@ export type BranchLookupHost = Host & {
 // merged or closed before they looked (`BranchPulls`): asked where Create PR would show, once per branch and commit
 // while the list knows of no other pull request ending there (`isAnswered`), and asked again by the next load where
 // GitHub could not be asked. A press asks again unless GitHub said there is one: one may have opened and ended since,
-// which no list showed (`isKept`). Each load looks again for the base a merged one went into in the other worktrees
-// (`withBaseHolder`). Null where it isn't asked about, or couldn't be.
+// which no list showed (`isKept`). Where the answer kept is taken, the base a merged one went into is looked for again
+// in the other worktrees (`withBaseHolder`). Null where it isn't asked about, or couldn't be.
 export async function lookUpBranch(
   host: BranchLookupHost,
   session: Session,
@@ -53,7 +54,7 @@ export async function lookUpBranch(
     const done = isBranchTaken(host, repo, branch, head).then(
       async ({ isTaken, merged }): Promise<BranchLook> => {
         const looked = { ...asked, isTaken, merged, baseHeldBy: await baseHolder(host, merged) }
-        await host.keepBranchPulls(looked)
+        await host.changeBranchPulls(() => looked)
 
         return { looked }
       },
@@ -76,24 +77,34 @@ export async function lookUpBranch(
   return (await session.branchLookup?.done) ?? null
 }
 
-// Whether GitHub's answer kept is taken as it is, by a press (`isPress`) or a load: by a press where it found the branch
-// taken, as one may have opened and ended since that no list showed; by a load unless an earlier version kept it,
-// which said the branch was taken but not by what merge, which the note on a merged branch needs.
+// Whether GitHub's answer kept is taken as it is, by a press (`isPress`) or a load: by a press where it found the
+// branch taken, as one may have opened and ended since that no list showed; by a load unless an earlier version kept
+// it, which said the branch was taken but not by what merge, which the note on a merged branch needs.
 function isKept(known: BranchPulls, isPress: boolean): boolean {
   return isPress ? known.isTaken : !(known.isTaken && known.merged === undefined)
 }
 
 // GitHub's answer kept, with the other worktree that has the base it merged into checked out read again, as worktrees
-// come and go at the same commit; kept again where that changed.
+// come and go at the same commit; kept again where that changed, over this answer only, as another lookup may have
+// kept a newer one while git was asked.
 async function withBaseHolder(host: BranchLookupHost, known: BranchPulls): Promise<BranchPulls> {
   const baseHeldBy = await baseHolder(host, known.merged)
   if (baseHeldBy === (known.baseHeldBy ?? null)) {
     return known
   }
-  const looked = { ...known, baseHeldBy }
-  await host.keepBranchPulls(looked)
+  await host.changeBranchPulls((kept) => (kept !== null && isSameAsk(kept, known) ? { ...kept, baseHeldBy } : kept))
 
-  return looked
+  return { ...known, baseHeldBy }
+}
+
+// Whether two answers are about the same branch at the same commit, asked while the list knew the same last end.
+function isSameAsk(one: BranchPulls, other: BranchPulls): boolean {
+  return (
+    one.repo === other.repo &&
+    one.branch === other.branch &&
+    one.head === other.head &&
+    (one.endedHead ?? null) === (other.endedHead ?? null)
+  )
 }
 
 // The folder of another worktree that has the base `merged` went into checked out, where switching this checkout to

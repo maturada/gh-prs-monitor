@@ -120,13 +120,14 @@ branches count, not a fork's. None shows where an open pull request in your list
 long-lived `develop`, or is open from it again; where another worktree has the base checked out; nor on `/prs`'s own
 `pr-<number>` branch, on a visit, in the examples, or in a folder with no list.
 
-**Switch to main** waits for a turn under way to end, fetches the base and switches this checkout to it: it makes your
-local base, or brings it up to GitHub's (one with commits of yours ahead is taken as it is), installs what a changed
-lockfile needs, and deletes the merged branch where it is still at the merged commit and no pull request is open from
-it; its work stays in the merged pull request on GitHub. It changes nothing, and says why, where:
+**Switch to main** waits for a turn under way to end (the note's ✕ meanwhile stops it), fetches the base and switches
+this checkout to it: it makes your local base, or brings it up to GitHub's (one with commits of yours ahead is taken
+as it is), installs what a changed lockfile needs, and deletes the merged branch where it is still at the merged commit
+and no pull request is open from it; its work stays in the merged pull request on GitHub. It changes nothing, and says
+why, where:
 
 - you have uncommitted changes to files git tracks, the checkout moved since the note showed, or the note no longer
-  shows, as after its ✕ while the switch waited for a turn;
+  shows, as when a pull request opened into the branch meanwhile;
 - your base has commits GitHub's doesn't, while GitHub's has others;
 - another worktree has the base checked out, or a file git doesn't track here is in the base's way;
 - a merge, rebase or other git operation is under way;

@@ -154,7 +154,7 @@ describe("the note on a branch that merged", () => {
     expect(seen.toasts).toContain("Switched to main; feature/x deleted, as #1242 merged it.")
   })
 
-  test("its ✕ while the switch waits for a turn stops it, the checkout left as it was", async ($, on) => {
+  test("its ✕ while the switch waits for a turn stops it at once, the checkout left as it was", async ($, on) => {
     const { ui, clock, seen } = await mergedOn($, on)
 
     await $.turn.start({ text: "go", turnId: "t1" } as never)
@@ -163,9 +163,10 @@ describe("the note on a branch that merged", () => {
     await ui.press({ key: "dismiss-base" })
     await settleAll(clock, seen)
     expect(await ui.find(NOTE)).toBeUndefined()
+    // Said while the turn still runs, so nothing waits on it unseen.
+    expect(seen.toasts).toContain("Not switched to main: its note was put away.")
     await $.turn.complete({ answer: "", durationMs: 1, isAborted: false, reason: "answer", turnId: "t1" } as never)
     await settleAll(clock, seen)
-    expect(seen.toasts).toContain("Not switched to main: the pane no longer offers it.")
     expect(seen.toasts.filter((toast) => toast.startsWith("Switched"))).toEqual([])
   })
 

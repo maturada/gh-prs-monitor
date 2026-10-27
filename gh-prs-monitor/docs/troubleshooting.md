@@ -101,7 +101,7 @@ The minimum versions are in the [README](../README.md#requirements). This is wha
 a few features need beyond the minimum.
 
 **Claude Code** 2.1.292 or later. The plugin is tested on 2.1.292, 2.1.295, 2.1.296, 2.1.299 to 2.1.304 and 2.1.308 to
-2.1.310, the desktop app's 2.1.293 and 2.1.308, and the VS Code extension's 2.1.303 and 2.1.310.
+2.1.311, the desktop app's 2.1.293 and 2.1.308, and the VS Code extension's 2.1.303 and 2.1.310.
 
 - **Alerts as system notifications** needs 2.1.295; before it, alerts show as toasts only.
 - In VS Code and editors built on it, the pane needs the Claude Code extension 2.1.299 or later, in a session that

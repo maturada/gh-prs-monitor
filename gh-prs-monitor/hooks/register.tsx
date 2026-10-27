@@ -79,7 +79,7 @@ import type { SkillHost } from "./skill-runs"
 import { askPick, elsewhereCount } from "./repo-picker"
 import type { PickerHost } from "./repo-picker"
 import { stableButtons, stableInputs } from "./stable-elements"
-import { mergedBranchOf, SWITCH_BASE, switchToBase } from "./switch-base"
+import { mergedBranchOf, putAwaySwitch, SWITCH_BASE, switchToBase } from "./switch-base"
 import type { MergedBranch, SwitchBaseHost } from "./switch-base"
 import {
   claimCleanup,
@@ -880,11 +880,12 @@ async function switchFromMerged($: Engine, session: Session): Promise<void> {
   }
 }
 
-// The note's ✕: put away for this branch at this commit.
+// The note's ✕: put away for this branch at this commit, and a switch it started stopped before its move.
 async function dismissMerged($: Engine, session: Session): Promise<void> {
   const offer = await mergedBranchNow($, session)
   if (offer !== null) {
     await update($, dismissedBranchState, () => ({ repo: offer.repo, branch: offer.branch, head: offer.head }))
+    putAwaySwitch(session)
   }
 }
 
@@ -1526,10 +1527,10 @@ function suggestionsHostOf($: Engine): SuggestionsHost {
 }
 
 // The pull requests from the checkout's branch, as a lookup last found them, which a load, a press and a skill share.
-function branchPullsStateOf($: Engine): Pick<BranchLookupHost, "branchPulls" | "keepBranchPulls"> {
+function branchPullsStateOf($: Engine): Pick<BranchLookupHost, "branchPulls" | "changeBranchPulls"> {
   return {
     branchPulls: () => read($, branchPullsState),
-    keepBranchPulls: (looked) => update($, branchPullsState, () => looked)
+    changeBranchPulls: (change) => update($, branchPullsState, change)
   }
 }
 

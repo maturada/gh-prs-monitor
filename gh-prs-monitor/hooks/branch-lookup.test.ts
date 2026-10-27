@@ -370,7 +370,7 @@ describe("one lookup per branch and commit at a time", () => {
       ...hostAnswering(() => ({ exitCode: 0, stdout: JSON.stringify(merged) })),
       storedList: async () => snapshotOf({ mine: [{ number: 1, headRefName: "fix/menu" }] }),
       branchPulls: async () => null,
-      keepBranchPulls: async (looked) => kept.push(looked),
+      changeBranchPulls: async (change) => kept.push(change(null)),
       log: () => undefined
     }
 
@@ -412,7 +412,7 @@ describe("one lookup per branch and commit at a time", () => {
         }),
         storedList: async () => snapshotOf({ mine: [{ number: 1, headRefName: "fix/menu" }] }),
         branchPulls: async () => null,
-        keepBranchPulls: async (looked) => kept.push(looked),
+        changeBranchPulls: async (change) => kept.push(change(null)!),
         log: () => undefined
       }
 
@@ -421,10 +421,12 @@ describe("one lookup per branch and commit at a time", () => {
     }
   })
 
-  // An answer kept for feature/export at tip, merged as #5 into main, with what a host is asked and keeps.
-  function keptAnswer(known: BranchPulls, worktrees: string) {
+  // An answer kept for feature/export at tip, merged as #5 into main, with what a host is asked and keeps; `stored` is
+  // what the state holds once it is written, where a lookup kept another meanwhile.
+  function keptAnswer(known: BranchPulls, worktrees: string, stored: BranchPulls | null = known) {
     const asked: string[] = []
-    const kept: BranchPulls[] = []
+    const kept: (BranchPulls | null)[] = []
+    let now = stored
     const merged = {
       data: {
         repository: {
@@ -448,11 +450,14 @@ describe("one lookup per branch and commit at a time", () => {
       }),
       storedList: async () => LISTED,
       branchPulls: async () => known,
-      keepBranchPulls: async (looked) => kept.push(looked),
+      changeBranchPulls: async (change) => {
+        now = change(now)
+        kept.push(now)
+      },
       log: () => undefined
     }
 
-    return { host, asked, kept }
+    return { host, asked, kept, now: () => now }
   }
 
   const LISTED = snapshotOf({ mine: [{ number: 1, headRefName: "fix/menu" }] })
@@ -478,6 +483,12 @@ describe("one lookup per branch and commit at a time", () => {
     const still = keptAnswer(known, MAIN_HELD)
     await lookUpBranch(still.host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
     expect(still.kept).toEqual([])
+
+    // Another lookup kept a newer answer, at a later commit, while git was asked: that one stays.
+    const newer: BranchPulls = { ...known, head: "tip2", merged: null, baseHeldBy: null }
+    const raced = keptAnswer(known, ONLY_HERE, newer)
+    await lookUpBranch(raced.host, createSession(readSettings({})), REPO, "feature/export", "tip", false)
+    expect(raced.now()).toEqual(newer)
   })
 
   test("one kept by 1.5.0, taken with no word of what merge took it, is asked once more at a load; a press takes it", async () => {
@@ -511,7 +522,7 @@ describe("one lookup per branch and commit at a time", () => {
       isLink: async () => false,
       storedList: async () => snapshotOf({ mine: [{ number: 1, headRefName: "fix/menu" }] }),
       branchPulls: async () => null,
-      keepBranchPulls: async () => undefined,
+      changeBranchPulls: async () => undefined,
       log: () => undefined
     }
     const session = createSession(readSettings({}))

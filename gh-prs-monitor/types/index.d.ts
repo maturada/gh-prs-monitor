@@ -182,8 +182,8 @@ export type BranchPulls = {
   isTaken: boolean
   endedHead: string | null
   merged?: BranchMerge | null
-  // Where it merged: the folder of another worktree that has its base checked out, as git said when GitHub was asked;
-  // null for none.
+  // Where it merged: the folder of another worktree that has its base checked out, as git said when the answer was
+  // last taken, at a load or a press; null for none.
   baseHeldBy?: string | null
 }
 

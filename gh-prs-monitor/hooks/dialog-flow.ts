@@ -2,9 +2,9 @@
 
 // The plugin's dialog as it runs: a question asked in the pane where its button was pressed, or in Claude Code's own
 // dialog where the pane doesn't show, one at a time; an answer carried out before the question closes, where the asker
-// gives a check; and the pane's window put back on its row once it is answered. dialog.tsx, picker.tsx and repo-rows.tsx
-// draw the question, in question-frame.tsx's frame; branch-flow, review-flow, create-flow and repo-picker build the
-// questions and what their answers do. This one holds the open question (`Session`) and reaches the engine
+// gives a check; and the pane's window put back on its row once it is answered. dialog.tsx, picker.tsx and
+// repo-rows.tsx draw the question, in question-frame.tsx's frame; branch-flow, review-flow, create-flow and repo-picker
+// build the questions and what their answers do. This one holds the open question (`Session`) and reaches the engine
 // through a host.
 
 import type { AskOptions, Timer, UiPane, UiScrollResult } from "claude-code"
@@ -113,8 +113,8 @@ export async function ask(
     await host.showQuestion(question)
     // The person may answer before the keyboard has moved.
     const asked = host.isPaneShown().then(async (isShown) => {
-      // Answered meanwhile, as by the pane's close: nothing is left to show or to ask elsewhere. One answered in the pane,
-      // being carried out or kept open by a problem, is the pane's.
+      // Answered meanwhile, as by the pane's close: nothing is left to show or to ask elsewhere. One answered in the
+      // pane, being carried out or kept open by a problem, is the pane's.
       if (isSettled) {
         return null
       }

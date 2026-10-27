@@ -295,8 +295,8 @@ async function tickElsewhere(host: ElsewhereTimerHost, session: Session): Promis
 }
 
 // A check now, in every mode, as the folder's list is read again at once: whenever the pane opens (/prs, the band, an
-// app attaching) and at Refresh, the folder's, a visit's or the examples'. So "+N elsewhere" shows what waits now, which
-// the background's timer would leave as it was for up to an interval.
+// app attaching) and at ↻, the folder's, a visit's or the examples'. So "+N elsewhere" shows what waits now, which the
+// background's timer would leave as it was for up to an interval.
 export function askElsewhere(host: ElsewhereTimerHost, session: Session): void {
   if (session.settings.isAlertingElsewhere) {
     host.background(host.check())

@@ -402,8 +402,8 @@ export class World {
         await world.tiny()
         return sim.generation !== generation
       }
-      // The plugin's store as register.tsx hands it in (`storeOf`): this process's calls one at a time, the session's own
-      // clock, its debug log; a share refused where the engine's store would refuse it.
+      // The plugin's store as register.tsx hands it in (`storeOf`): this process's calls one at a time, the session's
+      // own clock, its debug log; a share refused where the engine's store would refuse it.
       const store: StoreHost = {
         get: (key) => $store.get(key),
         keys: () => $store.keys(),
